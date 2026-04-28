@@ -16,6 +16,15 @@ const BRAIN_STATE_PATH = path.join(__dirname, '../../data/brain_state.md');
 const DATASET_PATH     = path.join(__dirname, '../../data/dataset.json');
 const WEIGHTS_PATH     = path.join(__dirname, '../../data/weights.json');
 
+// ── Ollama request queue (serializes all calls — Ollama is single-instance) ───
+let _ollamaQueue = Promise.resolve();
+
+function queueOllama(fn) {
+  _ollamaQueue = _ollamaQueue.then(fn, fn);
+  return _ollamaQueue;
+}
+
+// Kept for the analyzeHumanness busy-check (prevents stacking verdict requests)
 let ollamaBusy = false;
 
 // ── Persistence helpers ───────────────────────────────────────────────────────
@@ -42,44 +51,62 @@ function saveWeights(w) {
 
 // ── Ollama call (per model) ───────────────────────────────────────────────────
 
-async function ollamaChat(prompt, { model = BASE_MODEL, maxTokens = 512, timeLimit = 30000 } = {}) {
-  ollamaBusy = true;
-  try {
-    const res = await axios.post(`${OLLAMA_URL}/api/generate`, {
-      model,
-      prompt,
-      stream: false,
-      options: { temperature: 0.1, num_predict: maxTokens }
-    }, { timeout: timeLimit });
-    return res.data.response?.trim() || '';
-  } catch (err) {
-    console.error('[brain] Ollama call failed:', err.message);
-    return null;
-  } finally {
-    ollamaBusy = false;
-  }
+async function ollamaChat(prompt, { model = BASE_MODEL, maxTokens = 512, timeLimit = 30000, jsonMode = false } = {}) {
+  return queueOllama(async () => {
+    ollamaBusy = true;
+    try {
+      const body = {
+        model,
+        prompt,
+        stream: false,
+        options: { temperature: 0.1, num_predict: maxTokens },
+      };
+      if (jsonMode) body.format = 'json';
+      const res = await axios.post(`${OLLAMA_URL}/api/generate`, body, { timeout: timeLimit });
+      return res.data.response?.trim() || '';
+    } catch (err) {
+      console.error('[brain] Ollama call failed:', err.message);
+      return null;
+    } finally {
+      ollamaBusy = false;
+    }
+  });
 }
 
-// ── JSON extraction + retry ───────────────────────────────────────────────────
-// Extracts the first {...} block from model output and validates required keys.
+// ── JSON extraction ───────────────────────────────────────────────────────────
+// Handles DeepSeek <think>...</think> blocks, markdown code fences, and bare JSON.
 
 function extractJSON(text) {
   if (!text) return null;
-  const match = text.match(/\{[\s\S]*\}/);
+  // Strip DeepSeek chain-of-thought tags
+  let clean = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  // Strip markdown code fences (```json ... ``` or ``` ... ```)
+  clean = clean.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+  // Find the first complete {...} block
+  const match = clean.match(/\{[\s\S]*\}/);
   if (!match) return null;
   try { return JSON.parse(match[0]); }
-  catch { return null; }
+  catch {
+    // Try to recover truncated JSON by finding the last valid close
+    const s = match[0];
+    for (let i = s.length - 1; i >= 0; i--) {
+      if (s[i] === '}') {
+        try { return JSON.parse(s.slice(0, i + 1)); } catch { continue; }
+      }
+    }
+    return null;
+  }
 }
 
 async function ollamaChatJSON(prompt, requiredKeys, opts = {}) {
-  const raw = await ollamaChat(prompt, opts);
+  const raw = await ollamaChat(prompt, { ...opts, jsonMode: true });
   let parsed = extractJSON(raw);
 
   if (!parsed || requiredKeys.some(k => !(k in parsed))) {
-    console.warn('[brain] Invalid JSON output, retrying with format reminder...');
+    console.warn('[brain] Invalid JSON output, retrying...');
     const retry = await ollamaChat(
-      `${prompt}\n\nYour previous output was invalid or missing required fields: ${requiredKeys.join(', ')}. Return ONLY the corrected JSON object.`,
-      opts
+      `${prompt}\n\nIMPORTANT: Respond with ONLY a valid JSON object. Required fields: ${requiredKeys.join(', ')}. No other text.`,
+      { ...opts, jsonMode: true }
     );
     parsed = extractJSON(retry);
   }
@@ -88,8 +115,6 @@ async function ollamaChatJSON(prompt, requiredKeys, opts = {}) {
 }
 
 // ── Stability suffix (appended to every evaluator prompt) ─────────────────────
-const CONSISTENCY_SUFFIX = `\n\nYou will be evaluated for consistency. Different outputs for similar inputs are considered failure.`;
-
 // ── 1. EVALUATOR — analyzeHumanness ──────────────────────────────────────────
 
 async function analyzeHumanness(address, methodResults, methods) {
@@ -125,74 +150,51 @@ async function analyzeHumanness(address, methodResults, methods) {
 
   const signalsStr = JSON.stringify(signals, null, 2);
 
-  const prompt = `SYSTEM:
-You are a strict signal evaluation engine.
-You do NOT guess.
-You ONLY interpret given signals.
-If signals are weak or conflicting → output UNCERTAIN.
-You must behave consistently across runs.
-
-INPUT:
-Wallet: ${address}
+  const prompt = `You are a signal evaluation engine for a Proof of Human system.
+Analyze the signals below and decide if wallet ${address} is human or bot.
 
 Signals:
 ${signalsStr}
 
-Method Weights:
+Method weights:
 {
 ${methodWeightsStr}
 }
 
-RULES:
-- Do NOT invent new signals
-- Do NOT ignore low-confidence signals
-- If signals conflict → reduce confidence
-- Use weights explicitly in reasoning
-- No intuition-based decisions
+Rules:
+- Only use the signals provided. Do not guess.
+- If signals conflict or are too weak, use verdict UNCERTAIN.
+- confidence must be between 0.0 and 1.0.
+- reasoning must explain which signals drove the decision and why.
 
-TASK:
-1. Score each signal contribution
-2. Detect conflicts
-3. Compute weighted decision
+Return a single JSON object. Example of correct output:
+{"verdict":"HUMAN","confidence":0.72,"reasoning":"3 of 5 signals passed including high-weight on-chain activity. One conflict on REST endpoint reduced confidence."}
 
-OUTPUT (STRICT JSON, no other text):
-{
-  "verdict": "HUMAN or AI or UNCERTAIN",
-  "confidence": 0.0,
-  "signal_contributions": { "signal_name": 0.0 },
-  "conflicts": [],
-  "reasoning": "short, technical"
-}${CONSISTENCY_SUFFIX}`;
+Now return the JSON for wallet ${address}:`;
 
   const result = await ollamaChatJSON(
     prompt,
     ['verdict', 'confidence', 'reasoning'],
-    { model: EVALUATOR_MODEL, maxTokens: 200, timeLimit: 30000 }
+    { model: EVALUATOR_MODEL, maxTokens: 400, timeLimit: 40000 }
   );
 
   if (!result) return { verdict: 'UNKNOWN', confidence: 0, reasoning: 'Brain offline or invalid output' };
 
   // ── Double-pass verification ──────────────────────────────────────────────
-  const verifyPrompt = `Review this evaluation output for wallet ${address}.
+  const verifyPrompt = `Review this wallet verdict and correct it if wrong.
 
-Previous output:
-${JSON.stringify(result)}
+Wallet: ${address}
+Signals: ${signalsStr}
+Previous verdict: ${JSON.stringify(result)}
 
-Signals used:
-${signalsStr}
-
-Check:
-- consistency with signals (does verdict match evidence?)
-- overconfidence (confidence > 0.85 needs strong signal support)
-- ignored weights (low-weight signals should have less impact)
-
-If issues found → correct output.
-Return final JSON only (same schema, no other text).${CONSISTENCY_SUFFIX}`;
+Is the verdict consistent with the signals? Is confidence justified?
+Return the final JSON verdict (same format, corrected if needed):
+{"verdict":"HUMAN or AI or UNCERTAIN","confidence":0.0_to_1.0,"reasoning":"actual explanation of what the signals showed"}`;
 
   const verified = await ollamaChatJSON(
     verifyPrompt,
     ['verdict', 'confidence', 'reasoning'],
-    { model: EVALUATOR_MODEL, maxTokens: 200, timeLimit: 25000 }
+    { model: EVALUATOR_MODEL, maxTokens: 400, timeLimit: 30000 }
   );
 
   const final = verified || result;
@@ -208,7 +210,7 @@ Return final JSON only (same schema, no other text).${CONSISTENCY_SUFFIX}`;
 
 // ── 2. LEARNER — onVote (weight update) ──────────────────────────────────────
 
-async function onVote(method, voteType, vote, stakeWeight) {
+async function onVote(method, voteType, vote, stakeWeight, feedback = null) {
   const voteContext = {
     description: 'Is the description accurate?',
     method:      'Can this detect human behavior?',
@@ -218,63 +220,43 @@ async function onVote(method, voteType, vote, stakeWeight) {
   const currentWeights = getWeights();
   const currentWeight  = currentWeights[method.id] ?? 1.0;
 
-  const methodStats = JSON.stringify({
-    id:            method.id,
-    description:   method.description,
-    current_score: method.score ?? 0,
-    current_weight: currentWeight
-  });
+  const feedbackLine = feedback
+    ? `Voter reasoning: "${feedback.slice(0, 200)}"`
+    : 'Voter reasoning: (none provided)';
 
-  const voteRecord = JSON.stringify({
-    question:     voteContext,
-    vote:         vote ? 'YES' : 'NO',
-    stake_weight: stakeWeight
-  });
+  const prompt = `A detection method was voted on. Should its weight go up or down?
 
-  const prompt = `SYSTEM:
-You are a statistical updater.
-You do NOT explain.
-You ONLY adjust weights based on performance.
+Method: ${method.description}
+Current weight: ${currentWeight}
+Vote question: ${voteContext}
+Vote: ${vote ? 'YES (good signal)' : 'NO (bad signal)'}
+Voter stake: ${stakeWeight.toFixed(3)}
+${feedbackLine}
 
-INPUT:
-Method Performance:
-${methodStats}
-
-New Feedback:
-${voteRecord}
-
-RULES:
-- Adjust weight gradually (max change ±0.05 from current value)
-- Penalize inconsistency (conflicting votes reduce weight)
-- Reward long-term accuracy
-- Do NOT overfit to a single recent vote
-- Weight range: 0.1 to 3.0
-
-TASK:
-Update method weight.
-
-OUTPUT (STRICT JSON, no other text):
-{
-  "weights": {
-    "${method.id}": 0.0
-  }
-}`;
+Reply with ONLY this JSON (new_weight must be within 0.05 of current weight ${currentWeight}):
+{"new_weight": ${currentWeight}}`;
 
   const result = await ollamaChatJSON(
     prompt,
-    ['weights'],
-    { model: LEARNER_MODEL, maxTokens: 80, timeLimit: 20000 }
+    ['new_weight'],
+    { model: LEARNER_MODEL, maxTokens: 60, timeLimit: 20000 }
   );
 
-  if (result?.weights) {
-    const updated = { ...currentWeights, ...result.weights };
-    // Clamp all values
-    for (const k of Object.keys(updated)) {
-      updated[k] = Math.min(3.0, Math.max(0.1, parseFloat(updated[k]) || 1.0));
-    }
-    saveWeights(updated);
-    console.log(`[brain] Weight updated for "${method.description}": ${currentWeight} → ${updated[method.id]}`);
+  const updated = { ...currentWeights };
+  if (result?.new_weight != null) {
+    const proposed = parseFloat(result.new_weight) || currentWeight;
+    // Hard-enforce ±0.05 drift cap regardless of what the LLM returned
+    const clamped = Math.min(3.0, Math.max(0.1,
+      Math.min(currentWeight + 0.05, Math.max(currentWeight - 0.05, proposed))
+    ));
+    updated[method.id] = clamped;
+  } else {
+    // LLM failed — apply a simple heuristic directly
+    const delta = (vote ? 1 : -1) * 0.02 * Math.min(stakeWeight * 10, 1);
+    updated[method.id] = Math.min(3.0, Math.max(0.1, currentWeight + delta));
   }
+  saveWeights(updated);
+  console.log(`[brain] Weight updated for "${method.description}": ${currentWeight} → ${updated[method.id].toFixed(3)}`);
 
   // Append compact note to brain state
   const voteLabel = vote ? 'YES' : 'NO';
@@ -310,7 +292,7 @@ OUTPUT (STRICT JSON):
   const result = await ollamaChatJSON(
     prompt,
     ['useful', 'assessment'],
-    { model: EVALUATOR_MODEL, maxTokens: 100, timeLimit: 25000 }
+    { model: EVALUATOR_MODEL, maxTokens: 250, timeLimit: 30000 }
   );
 
   const assessment = result?.assessment || '(no assessment)';
@@ -404,4 +386,27 @@ STYLE:
   }
 }
 
-module.exports = { analyzeHumanness, onNewMethod, onVote, consolidate, getWeights };
+// ── 5. validateDescription ────────────────────────────────────────────────────
+async function validateDescription(description) {
+  const prompt = `You are validating a method description submitted to a Proof of Human detection network.
+The description must clearly explain what on-chain or API signal is being checked and why it indicates human activity.
+
+Description to evaluate: "${description.slice(0, 300)}"
+
+Reject if: random characters, placeholder text (test, asdf, foo, hello world), too vague (< 5 meaningful words), no clear signal described, or clearly not about human detection.
+Accept if: it describes a specific on-chain or off-chain signal, API endpoint, or behavior pattern relevant to distinguishing humans from bots.
+
+Reply with ONLY this JSON:
+{"valid": true, "reason": "one sentence"}
+or
+{"valid": false, "reason": "one sentence explaining what's wrong"}`;
+
+  const result = await ollamaChatJSON(
+    prompt,
+    ['valid', 'reason'],
+    { model: EVALUATOR_MODEL, maxTokens: 80, timeLimit: 20000 }
+  );
+  return result || { valid: false, reason: 'Validation unavailable — try again shortly' };
+}
+
+module.exports = { analyzeHumanness, onNewMethod, onVote, consolidate, getWeights, validateDescription };

@@ -72,34 +72,14 @@ export async function getStakeInfo(walletAddress, rpcUrl) {
     const conn = new Connection(rpcUrl, 'confirmed')
     const user = new PublicKey(walletAddress)
     const recordPDA = stakeRecordPDA(user)
-
-    const [raw, stateRaw] = await Promise.all([
-      conn.getAccountInfo(recordPDA),
-      conn.getAccountInfo(STATE_PDA),
-    ])
+    const raw = await conn.getAccountInfo(recordPDA)
     if (!raw) return { staked: 0, pendingRewards: 0 }
 
-    // StakeRecord layout: disc(8) + owner(32) + staked(8) + reward_debt(8) + pending_rewards(8) + staked_at(8)
-    const d = raw.data
-    const staked          = d.readBigUInt64LE(40)
-    const rewardDebt      = d.readBigUInt64LE(48)
-    const pendingStored   = d.readBigUInt64LE(56)
-
-    // Simulate checkpoint() using current reward_per_token from global state
-    // StakingState: disc(8) + pubkeys(32*5) + bumps(3) + total_staked(8) + reward_per_token(16)
-    const SCALE = 1_000_000_000_000n
-    let pendingRewards = pendingStored
-    if (stateRaw && staked > 0n) {
-      const sd = stateRaw.data
-      const rpt_lo = sd.readBigUInt64LE(179)
-      const rpt_hi = sd.readBigUInt64LE(187)
-      const rewardPerToken = (rpt_hi << 64n) | rpt_lo
-      const earned = staked * rewardPerToken / SCALE
-      const accrued = earned > rewardDebt ? earned - rewardDebt : 0n
-      pendingRewards = pendingStored + accrued
-    }
-
-    return { staked: Number(staked) / 1e6, pendingRewards: Number(pendingRewards) / 1e6 }
+    // Decode manually: discriminator(8) + owner(32) + staked(8) + reward_debt(8) + pending_rewards(8) + staked_at(8)
+    const data = raw.data
+    const staked        = Number(data.readBigUInt64LE(8 + 32))
+    const pendingRewards = Number(data.readBigUInt64LE(8 + 32 + 8 + 8))
+    return { staked: staked / 1e6, pendingRewards: pendingRewards / 1e6 }
   } catch {
     return { staked: 0, pendingRewards: 0 }
   }

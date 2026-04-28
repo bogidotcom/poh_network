@@ -104,6 +104,23 @@ function distributeRewards(pohPaid, executedMethodIds, allMethods, weights) {
   saveRewards(rewards);
 }
 
+// ── Staker reward distribution ────────────────────────────────────────────────
+// Distributes poolRaw (6-decimal POH units) to stakers proportional to stake/total_staked.
+// stakers: [{ address: string, stakedRaw: number }]
+function distributeStakerRewards(poolRaw, stakers) {
+  if (poolRaw <= 0 || !stakers.length) return;
+  const totalStaked = stakers.reduce((s, x) => s + x.stakedRaw, 0);
+  if (totalStaked === 0) return;
+
+  for (const { address, stakedRaw } of stakers) {
+    const share = Math.floor((stakedRaw / totalStaked) * poolRaw);
+    if (share <= 0) continue;
+    upsertProfile(address, {
+      balance: (getProfile(address)?.balance || 0) + share,
+    });
+  }
+}
+
 // ── IP abuse check ────────────────────────────────────────────────────────────
 // Returns true if this IP already has a different wallet with free scans used
 function isIpAbuse(ip, address) {
@@ -126,11 +143,31 @@ function recordIp(address, ip) {
   upsertProfile(address, { ips: [...ips].slice(-20) }); // keep last 20 IPs
 }
 
+// ── Vote tracking ─────────────────────────────────────────────────────────────
+
+function recordVote(address, methodId, vote) {
+  const p = getProfile(address) || {};
+  const votes = p.votes || {};
+  votes[methodId] = { vote, at: new Date().toISOString() };
+  upsertProfile(address, { votes });
+}
+
+function getMyVotes(address) {
+  const p = getProfile(address);
+  return p?.votes || {};
+}
+
+function hasVoted(address, methodId) {
+  const p = getProfile(address);
+  return !!p?.votes?.[methodId];
+}
+
 module.exports = {
   getProfile, upsertProfile, getProfiles,
   getRewards, saveRewards,
   getFreeScansLeft, consumeFreeScan,
-  calcScanCost, distributeRewards,
+  calcScanCost, distributeRewards, distributeStakerRewards,
   isIpAbuse, recordIp,
+  recordVote, getMyVotes, hasVoted,
   FREE_SCANS_PER_WALLET,
 };

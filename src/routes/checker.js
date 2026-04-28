@@ -10,8 +10,9 @@ const { evaluate } = require('../eval/evaluator');
 const multer = require('multer');
 const { parse } = require('csv-parse/sync');
 const { getCachedResponse, setCachedResponse } = require('../utils/redis');
-const { getVoteTokenStake, verifyBurnTransaction } = require('../utils/solana');
+const { verifyPohTransfer } = require('../utils/solana');
 const brain = require('../utils/brain');
+const { recordMethodResult } = require('../utils/methodHealth');
 const {
   getProfile, getProfiles, consumeFreeScan, calcScanCost,
   getFreeScansLeft, distributeRewards, isIpAbuse, recordIp,
@@ -85,7 +86,7 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
     const isFree   = freeLeft >= inputs.length;
 
     if (!isFree) {
-      // Paid path: verify POH burn transaction
+      // Paid path: verify POH transfer to FEE_RECIPIENT
       if (!txHash) {
         const { total, perAddress } = calcScanCost(inputs.length);
         return res.status(402).json({
@@ -96,10 +97,12 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
           freeScansLeft: freeLeft,
         });
       }
-      const isPaid = await verifyBurnTransaction(txHash, inputs.length, effectiveWallet);
-      if (!isPaid) return res.status(402).json({ error: `Burn verification failed for ${inputs.length} POH` });
+      const { total } = calcScanCost(inputs.length);
+      const isPaid = await verifyPohTransfer(txHash, total, effectiveWallet);
+      if (!isPaid) return res.status(402).json({ error: `POH payment not verified — expected ${total / 1e6} POH` });
     } else {
       // Free tier: IP abuse check
+      console.log(effectiveWallet, isIpAbuse(clientIp, effectiveWallet))
       if (effectiveWallet && isIpAbuse(clientIp, effectiveWallet)) {
         return res.status(403).json({ error: 'Free tier already used from this IP on another wallet' });
       }
@@ -114,17 +117,24 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
     const allResults = [];
 
     for (const singleInput of inputs) {
+      const isEvm    = /^0x[0-9a-fA-F]{40}$/.test(singleInput);
+      const isSolana = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(singleInput);
+
+      if (!isEvm && !isSolana) {
+        allResults.push({ input: singleInput, error: 'Unrecognised address format' });
+        continue;
+      }
+
       let methods = getMethods();
-      
-      // Filter methods — REST is always included, chain-specific types are filtered by input
-      if (singleInput.startsWith('0x')) {
+
+      if (isEvm) {
         methods = methods.filter(m => m.type === 'evm' || m.type === 'rest');
         if (chainFilter) {
           const allowedChains = chainFilter.split(',').map(Number);
           methods = methods.filter(m => m.type === 'rest' || allowedChains.includes(Number(m.chainId)));
         }
-      } else if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(singleInput)) {
-        // Solana base58
+      } else {
+        // Solana — never run EVM contract methods against a Solana address
         methods = methods.filter(m => m.type === 'solana' || m.type === 'rest');
       }
 
@@ -209,11 +219,18 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
 
       const results = settled.map((s, i) => {
         const m = methods[i];
+        const isError = s.status === 'rejected' || s.reason?.message === 'Timeout';
         const outcome = s.status === 'fulfilled' ? Boolean(s.value) : false;
         if (s.status === 'rejected') {
           console.error(`[checker] ✗ "${m.description.slice(0,50)}" failed: ${s.reason?.message}`);
         }
         console.log(`[checker] ${outcome ? '✓' : '✗'} ${m.description.slice(0,60)}`);
+
+        // Track API health — only REST and EVM methods count toward delist countdown
+        if (m.type === 'rest' || m.type === 'evm') {
+          recordMethodResult(m.id, isError);
+        }
+
         appendToDataset({
           instruction: `Verification response for ${singleInput} using ${m.description}`,
           input: JSON.stringify(m),

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import axios from 'axios'
 import {
   Search, PlusSquare, Vote, ShieldCheck,
@@ -10,7 +10,6 @@ import {
   PublicKey,
   Transaction,
   SystemProgram,
-  LAMPORTS_PER_SOL
 } from '@solana/web3.js'
 import {
   getAssociatedTokenAddress,
@@ -22,11 +21,6 @@ import {
   stakeTokens, unstakeTokens, registerMethod,
   castVote as castVoteOnChain, claimStakerRewards,
 } from '../pohProgram.js'
-// import {
-//   createBurnInstruction,
-//   getAssociatedTokenAddress
-// } from '@solana/spl-token'
-
 // ── Wallet State ─────────────────────────────────────────────────────────────
 const walletAddress = ref(null)      // string | null
 const walletProvider = ref(null)     // the raw provider object
@@ -84,15 +78,19 @@ async function connectWallet(type) {
       walletProvider.value = null
       console.log('[wallet] Disconnected')
     })
-    // Listen for account change
-    provider.on('accountChanged', (pk) => {
+    // Listen for account change (Phantom / Solflare)
+    const handleAccountChange = (pk) => {
       if (pk) {
         walletAddress.value = pk.toString()
+        loadProfile()
+        if (POH_MINT.value) loadPohBalance()
       } else {
         walletAddress.value = null
         walletProvider.value = null
       }
-    })
+    }
+    provider.on('accountChanged', handleAccountChange)
+    provider.on('connect', (pk) => pk && handleAccountChange(pk))
   } catch (err) {
     error.value = `Connection failed: ${err.message}`
     console.error(err)
@@ -150,6 +148,7 @@ async function signAndSendTransaction(transaction) {
 const scanInput = ref('')
 const resolvedInputDisplay = ref('')
 const checkerResults = ref(null)
+const showEvidence   = ref(false)
 const brainVerdict = ref(null)
 const brainPolling = ref(false)
 const batchFile = ref(null)
@@ -175,10 +174,20 @@ const detectedChain = computed(() => {
 async function resolveToAddress(input) {
   const trimmed = input.trim()
   if (isWalletAddress(trimmed)) return trimmed
-  // Try Space ID resolution
+
+  // .sol domain → Bonfida SNS
+  if (trimmed.endsWith('.sol')) {
+    const domain = trimmed.slice(0, -4)
+    const res = await axios.get(`https://sns-sdk-proxy.bonfida.workers.dev/resolve/${domain}`)
+    if (res.data?.result) return res.data.result
+    throw new Error(`Could not resolve "${trimmed}" — SNS domain not found`)
+  }
+
+  // Other ENS/Space ID domains
   const res = await axios.get('https://nameapi.space.id/getAddress', { params: { domain: trimmed } })
-  if (res.data.code === 0 && res.data.address) return res.data.address
-  throw new Error(`Could not resolve "${trimmed}" — not a valid address or Space ID`)
+  if (res.data?.code === 0 && res.data.address) return res.data.address
+
+  throw new Error(`Could not resolve "${trimmed}" — not a valid address or domain`)
 }
 
 const handleFileSelect = (event) => {
@@ -216,18 +225,25 @@ const runCheck = async () => {
     }
     isResolving.value = false
 
-    // ── Burn POH tokens ──────────────────────────────────────────────────
-    // const connection = new Connection(SOLANA_RPC.value, 'confirmed')
-    // const count = resolvedInputs.length
-    // if (!POH_MINT.value || POH_MINT.value.startsWith('YOUR_')) throw new Error('POH_MINT not configured on server — set POH_TOKEN_MINT in .env')
-    // const mintPubkey = new PublicKey(POH_MINT.value)
-    // const walletPubkey = new PublicKey(walletAddress.value)
-    // const ata = await getAssociatedTokenAddress(mintPubkey, walletPubkey)
-    // const tx = new Transaction().add(
-    //   createBurnInstruction(ata, mintPubkey, walletPubkey, count * 1e9)
-    // )
-    // const txHash = await signAndSendTransaction(tx)
-    const txHash = 'MOCK_BURN'
+    // ── Charge POH for scan ───────────────────────────────────────────────
+    let txHash = null
+    const { data: pricingData } = await axios.get(`/checker/pricing?count=${resolvedInputs.length}`)
+    const freeScanData = await axios.get('/profile/' + walletAddress.value).catch(() => null)
+    const freeScansLeft = freeScanData?.data?.profile?.freeScansLeft ?? 100
+
+    if (freeScansLeft < resolvedInputs.length && POH_MINT.value && !POH_MINT.value.startsWith('YOUR_')) {
+      const costRaw = pricingData.total // 6-decimal units
+      const connection = new Connection(SOLANA_RPC.value, 'confirmed')
+      const mintPubkey = new PublicKey(POH_MINT.value)
+      const walletPubkey = new PublicKey(walletAddress.value)
+      const recipientPubkey = new PublicKey(FEE_RECIPIENT.value)
+      const fromAta = await getAssociatedTokenAddress(mintPubkey, walletPubkey)
+      const toAta = await getAssociatedTokenAddress(mintPubkey, recipientPubkey)
+      const payTx = new Transaction().add(
+        createTransferInstruction(fromAta, toAta, walletPubkey, BigInt(costRaw))
+      )
+      txHash = await signAndSendTransaction(payTx)
+    }
 
     // ── Build form data with resolved addresses ───────────────────────────
     const formData = new FormData()
@@ -240,11 +256,12 @@ const runCheck = async () => {
       formData.append('input', resolvedInputs[0])
     }
     formData.append('walletAddress', walletAddress.value)
-    formData.append('txHash', txHash)
+    if (txHash) formData.append('txHash', txHash)
 
     const res = await axios.post('/checker', formData)
     checkerResults.value = res.data.result
     brainVerdict.value = null
+    showEvidence.value = false
 
     // Poll for brain verdict in background
     const brainKey = res.data.brainKey
@@ -264,7 +281,8 @@ const runCheck = async () => {
       setTimeout(() => { clearInterval(poll); brainPolling.value = false }, 180000)
     }
   } catch (err) {
-    error.value = err.message || 'Scan failed'
+    console.log(err.data, err.message, err.response)
+    error.value = err.response?.data?.error || err.message || 'Scan failed' 
     isResolving.value = false
   } finally {
     loading.value = false
@@ -340,7 +358,21 @@ const submitListing = async () => {
     error.value = `Insufficient POH — need ${LISTING_FEE_POH} POH, you have ${pohBalance.value.toFixed(2)}`
     return
   }
+  if (!listing.value.description?.trim()) { error.value = 'Description is required'; return }
+
+  // Validate description with LLM before paying
   loading.value = true
+  try {
+    const validation = await axios.post('/methods/listing/validate-description', { description: listing.value.description })
+    if (!validation.data.valid) {
+      error.value = `Description rejected: ${validation.data.reason}`
+      loading.value = false
+      return
+    }
+  } catch {
+    // If validation service is down, proceed (don't block on LLM availability)
+  }
+
   try {
     // Generate deterministic method ID for on-chain registration
     const methodId = crypto.randomUUID().replace(/-/g, '')
@@ -383,13 +415,17 @@ const submitListing = async () => {
 const votingList = ref([])
 const voteIndex = ref(0)
 const voteSubmitting = ref(false)
+const voteFeedback = ref('')
 const currentVoteItem = computed(() => votingList.value[voteIndex.value] ?? null)
 
 const loadVoting = async () => {
   loading.value = true
   try {
-    const res = await axios.get('/methods/verifyer')
-    votingList.value = res.data.sort((a, b) => (a.score || 0) - (b.score || 0))
+    const params = walletAddress.value ? { address: walletAddress.value } : {}
+    const res = await axios.get('/methods/verifyer', { params })
+    // Server returns least-voted first, random within same score.
+    // Hide methods the wallet already voted on.
+    votingList.value = res.data.filter(m => !m.myVoted)
     voteIndex.value = 0
   } catch (err) {
     error.value = 'Failed to load voting queue'
@@ -399,71 +435,115 @@ const loadVoting = async () => {
 }
 
 const castVote = async (voteVal) => {
-  if (voteVal === 'skip') { voteIndex.value++; return }
+  if (voteVal === 'skip') { voteIndex.value++; voteFeedback.value = ''; return }
   if (!connected.value) { error.value = 'Connect wallet to vote'; return }
   voteSubmitting.value = true
   try {
-    if (!FEE_RECIPIENT.value || FEE_RECIPIENT.value.startsWith('YOUR_')) throw new Error('FEE_RECIPIENT not configured')
     const tx = new Transaction().add(
       SystemProgram.transfer({
         fromPubkey: new PublicKey(walletAddress.value),
-        toPubkey: new PublicKey(FEE_RECIPIENT.value),
-        lamports: 0.001 * LAMPORTS_PER_SOL
+        toPubkey: new PublicKey(FEE_RECIPIENT.value || walletAddress.value),
+        lamports: 1000,
       })
     )
     const txHash = await signAndSendTransaction(tx)
     await axios.post('/methods/verifyer/vote', {
       methodId: currentVoteItem.value.id, vote: voteVal, type: 'method',
-      walletAddress: walletAddress.value, txHash
+      walletAddress: walletAddress.value, txHash,
+      feedback: voteFeedback.value.trim() || undefined,
     })
+    voteFeedback.value = ''
     voteIndex.value++
   } catch (err) {
-    error.value = err.message || 'Vote failed'
+    error.value = err.response?.data?.error || err.message || 'Vote failed'
   } finally {
     voteSubmitting.value = false
   }
 }
 
-// ── Network graph (static illustrative layout) ────────────────────────────
-const gW = 700, gH = 340
+// ── Network visualization ─────────────────────────────────────────────────
+const NET_CX = 400, NET_CY = 210
 
-const graphNodes = [
-  // Brain — center
-  { id: 'brain',   kind: 'brain',  label: 'AI Brain',     x: 350, y: 170, r: 28 },
-  // EVM methods
-  { id: 'evm1',    kind: 'evm',    label: 'ETH Balance',  x: 120, y:  70, r: 14 },
-  { id: 'evm2',    kind: 'evm',    label: 'TX Count',     x:  70, y: 180, r: 14 },
-  { id: 'evm3',    kind: 'evm',    label: 'USDC Hold',    x: 155, y: 280, r: 14 },
-  // Solana methods
-  { id: 'sol1',    kind: 'solana', label: 'SOL Balance',  x: 580, y:  65, r: 14 },
-  { id: 'sol2',    kind: 'solana', label: 'SPL Token',    x: 635, y: 180, r: 14 },
-  // REST methods
-  { id: 'rest1',   kind: 'rest',   label: 'Farcaster',    x: 260, y:  35, r: 14 },
-  { id: 'rest2',   kind: 'rest',   label: 'ENS',          x: 440, y:  35, r: 14 },
-  { id: 'rest3',   kind: 'rest',   label: 'Snapshot',     x: 560, y: 290, r: 14 },
-  // Wallet outputs
-  { id: 'w1',      kind: 'wallet', label: 'HUMAN',        x: 230, y: 310, r: 10 },
-  { id: 'w2',      kind: 'wallet', label: 'BOT',          x: 460, y: 310, r: 10 },
-]
+function netShortLabel(desc = '') {
+  const segment = desc.split(' — ')[0].split(' – ')[0].split(' (')[0].trim()
+  const words = segment.split(' ').slice(0, 2).join(' ')
+  return words.length > 13 ? words.slice(0, 12) + '…' : words
+}
 
-const graphEdges = [
-  // methods → brain
-  ...['evm1','evm2','evm3','sol1','sol2','rest1','rest2','rest3'].map((id) => {
-    const n = graphNodes.find(n => n.id === id)
-    const b = graphNodes.find(n => n.id === 'brain')
-    return { id: `e-${id}`, x1: n.x, y1: n.y, x2: b.x, y2: b.y }
-  }),
-  // brain → outputs
-  { id: 'e-w1', x1: 350, y1: 170, x2: 230, y2: 310 },
-  { id: 'e-w2', x1: 350, y1: 170, x2: 460, y2: 310 },
-]
+// Varied animation durations per node (deterministic from id chars)
+function netDuration(id) {
+  const h = String(id).split('').reduce((a, c) => a + c.charCodeAt(0), 0)
+  return (1.4 + (h % 8) * 0.2).toFixed(1) + 's'
+}
+
+const netNodes = computed(() => {
+  const all  = votingList.value
+  const evm  = all.filter(m => m.type === 'evm').slice(0, 6)
+  const rest = all.filter(m => m.type === 'rest').slice(0, 5)
+  const sol  = all.filter(m => m.type === 'solana').slice(0, 4)
+
+  // Static fallback shown before methods load
+  if (!all.length) return [
+    { id:'s0', type:'evm',    label:'ETH Balance',  x:192, y:100 },
+    { id:'s1', type:'evm',    label:'TX Count',     x:148, y:210 },
+    { id:'s2', type:'evm',    label:'USDC Hold',    x:192, y:320 },
+    { id:'s3', type:'rest',   label:'ENS',          x:295, y: 48 },
+    { id:'s4', type:'rest',   label:'Farcaster',    x:400, y: 34 },
+    { id:'s5', type:'rest',   label:'Gitcoin',      x:505, y: 48 },
+    { id:'s6', type:'solana', label:'SOL Balance',  x:608, y:100 },
+    { id:'s7', type:'solana', label:'SPL Token',    x:652, y:210 },
+    { id:'s8', type:'solana', label:'TX Count',     x:608, y:320 },
+  ]
+
+  const R = 188
+  const nodes = []
+  const place = (arr, aStart, aSpan) => arr.forEach((m, i) => {
+    const a = (aStart + (arr.length > 1 ? i * aSpan / (arr.length - 1) : aSpan / 2)) * Math.PI / 180
+    nodes.push({ id: m.id, type: m.type, label: netShortLabel(m.description),
+      x: Math.round(NET_CX + R * Math.cos(a)),
+      y: Math.round(NET_CY + R * Math.sin(a)) })
+  })
+  place(evm,  140, 80)
+  place(rest, 245, 50)
+  place(sol,  320, 80)
+  return nodes
+})
+
+// Pulsing animation state
+const netActiveId  = ref(null)
+const netBrainPulse = ref(false)
+let _netTimer = null
+
+function startNetAnim() {
+  _netTimer = setInterval(() => {
+    const nodes = netNodes.value
+    if (!nodes.length) return
+    netActiveId.value = nodes[Math.floor(Math.random() * nodes.length)].id
+    setTimeout(() => { netBrainPulse.value = true  }, 680)
+    setTimeout(() => { netBrainPulse.value = false; netActiveId.value = null }, 1100)
+  }, 1700)
+}
+
+// Fetch methods silently for the graph (no loading spinner)
+async function fetchMethodsForGraph() {
+  try {
+    const res = await axios.get('/methods/verifyer')
+    votingList.value = res.data.sort((a, b) => (a.score || 0) - (b.score || 0))
+  } catch {}
+}
 
 // ── 4. Profile ────────────────────────────────────────────────────────────────
-const profileData   = ref(null)
+const profileData    = ref(null)
 const profileLoading = ref(false)
-const profileError  = ref(null)
-const signupLoading = ref(false)
+const profileError   = ref(null)
+const signupLoading  = ref(false)
 const STAKING_CONTRACT = ref('')
+
+const myVotesData    = ref([])
+const showDepositModal = ref(false)
+const depositAmount  = ref('')
+const depositLoading = ref(false)
+const depositMsg     = ref(null)
 
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 function encodeBase58(bytes) {
@@ -514,6 +594,42 @@ async function rotateApiKey() {
     if (profileData.value?.profile) profileData.value.profile.apiKey = res.data.apiKey
   } catch (err) {
     profileError.value = err.response?.data?.error || 'Rotate failed'
+  }
+}
+
+async function loadMyVotes() {
+  if (!walletAddress.value) return
+  try {
+    const res = await axios.get(`/profile/${walletAddress.value}/votes`)
+    myVotesData.value = res.data.votes || []
+  } catch { myVotesData.value = [] }
+}
+
+async function submitDeposit() {
+  if (!connected.value || !depositAmount.value) return
+  const amount = parseFloat(depositAmount.value)
+  if (!amount || amount <= 0) { depositMsg.value = 'Enter a valid amount'; return }
+  depositLoading.value = true
+  depositMsg.value = null
+  try {
+    const connection = new Connection(SOLANA_RPC.value, 'confirmed')
+    const mintPubkey = new PublicKey(POH_MINT.value)
+    const walletPubkey = new PublicKey(walletAddress.value)
+    const recipientPubkey = new PublicKey(FEE_RECIPIENT.value)
+    const fromAta = await getAssociatedTokenAddress(mintPubkey, walletPubkey)
+    const toAta = await getAssociatedTokenAddress(mintPubkey, recipientPubkey)
+    const tx = new Transaction().add(
+      createTransferInstruction(fromAta, toAta, walletPubkey, BigInt(Math.floor(amount * 1_000_000)))
+    )
+    const txHash = await signAndSendTransaction(tx)
+    const res = await axios.post('/profile/deposit', { address: walletAddress.value, txHash, amount })
+    depositMsg.value = `Deposited ${amount} POH ✓`
+    if (profileData.value?.profile) profileData.value.profile.balance = res.data.balance
+    depositAmount.value = ''
+  } catch (err) {
+    depositMsg.value = err.response?.data?.error || err.message || 'Deposit failed'
+  } finally {
+    depositLoading.value = false
   }
 }
 
@@ -602,18 +718,45 @@ async function claimRewards() {
   }
 }
 
+const offchainClaimLoading = ref(false)
+
+async function claimOffchainBalance() {
+  if (!connected.value) { error.value = 'Connect wallet to claim'; return }
+  offchainClaimLoading.value = true
+  stakeMessage.value = null
+  try {
+    const res = await axios.post('/profile/claim', { address: walletAddress.value })
+    const poh = (res.data.claimed / 1e6).toFixed(2)
+    stakeMessage.value = `Claimed ${poh} POH off-chain rewards ✓`
+    await loadProfile()
+    await loadPohBalance()
+  } catch (err) {
+    const msg = err.response?.data?.error || err.message || 'Claim failed'
+    stakeMessage.value = msg
+  } finally {
+    offchainClaimLoading.value = false
+  }
+}
+
 function goTo (url) {
   window.open(url, '_blank')
 }
 
 watch(walletAddress, (addr) => {
   if (addr && POH_MINT.value) loadPohBalance()
+  if (addr) loadProfile()
 })
 
 onMounted(async () => {
   await fetchConfig()
   if (currentSection.value === 'votes') loadVoting()
   if (connected.value) loadPohBalance()
+  fetchMethodsForGraph()
+  startNetAnim()
+})
+
+onUnmounted(() => {
+  if (_netTimer) clearInterval(_netTimer)
 })
 </script>
 
@@ -638,7 +781,7 @@ onMounted(async () => {
         <button :class="['nav-btn', { active: currentSection === 'staking' }]" @click="showSection('staking')">
           <SquareArrowDown class="icon" :size="14" /> Stake
         </button>
-        <button :class="['nav-btn', { active: currentSection === 'profile' }]" @click="showSection('profile'); loadProfile()">
+        <button :class="['nav-btn', { active: currentSection === 'profile' }]" @click="showSection('profile'); loadProfile(); loadMyVotes()">
           <PersonStanding class="icon" :size="14" /> Profile
         </button>
         <button :class="['nav-btn', { active: currentSection === 'api' }]" @click="showSection('api')">
@@ -675,7 +818,7 @@ onMounted(async () => {
         <button :class="['mobile-nav-btn', { active: currentSection === 'votes' }]" @click="showSection('votes'); loadVoting()">Vote</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'api' }]" @click="showSection('api')">API</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'staking' }]" @click="showSection('staking')">Stake</button>
-        <button :class="['mobile-nav-btn', { active: currentSection === 'profile' }]" @click="showSection('profile'); loadProfile()">Profile</button>
+        <button :class="['mobile-nav-btn', { active: currentSection === 'profile' }]" @click="showSection('profile'); loadProfile(); loadMyVotes()">Profile</button>
         <div class="mobile-menu-divider"></div>
         <button v-if="!connected" @click="showWalletModal = true; mobileMenuOpen = false" class="mobile-nav-btn mobile-connect">
           Connect Wallet
@@ -692,13 +835,25 @@ onMounted(async () => {
     <div v-if="showWalletModal" class="modal-overlay" @click.self="showWalletModal = false">
       <div class="glass-panel modal">
         <h3 class="modal-title">Select Wallet</h3>
-        <button class="wallet-option" @click="connectWallet('phantom')">
-          Phantom
-        </button>
-        <button class="wallet-option" @click="connectWallet('solflare')">
-          Solflare
-        </button>
+        <button class="wallet-option" @click="connectWallet('phantom')">Phantom</button>
+        <button class="wallet-option" @click="connectWallet('solflare')">Solflare</button>
         <button class="modal-close" @click="showWalletModal = false">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Deposit POH Modal -->
+    <div v-if="showDepositModal" class="modal-overlay" @click.self="showDepositModal = false">
+      <div class="glass-panel modal">
+        <h3 class="modal-title">Deposit POH</h3>
+        <p class="modal-desc">Send POH to your off-chain API balance. Useful for API calls without wallet interaction.</p>
+        <div class="flex-input" style="margin:1rem 0">
+          <input type="number" v-model="depositAmount" placeholder="Amount in POH" class="premium-input flex-grow" min="1" step="1" />
+        </div>
+        <div v-if="depositMsg" :class="['deposit-msg', depositMsg.includes('✓') ? 'deposit-ok' : 'deposit-err']">{{ depositMsg }}</div>
+        <button class="submit-listing-btn" :disabled="depositLoading || !depositAmount" @click="submitDeposit()">
+          {{ depositLoading ? 'Sending...' : 'Send POH' }}
+        </button>
+        <button class="modal-close" @click="showDepositModal = false; depositMsg = null">Cancel</button>
       </div>
     </div>
 
@@ -707,15 +862,29 @@ onMounted(async () => {
 
       <!-- Landing -->
       <div v-if="currentSection === 'landing'" class="landing">
-        <section class="landing-hero">
+
+        <!-- Problem screen -->
+        <section class="problem-screen">
+          <div class="problem-inner">
+            <div class="problem-tag">THE PROBLEM</div>
+            <h2 class="problem-title">AI agents now mimic human behavior with <span class="problem-accent">99% accuracy.</span></h2>
+            <blockquote class="problem-quote">
+              "The company already has a lot more cybersecurity AI agents than people working on cybersecurity."
+              <cite>— Jensen Huang, CEO of NVIDIA</cite>
+            </blockquote>
+            <p class="problem-desc">Wallets, votes, and on-chain identities can no longer be trusted at face value. POH verifies humanity through evidence — not promises.</p>
+            <button class="neon-btn" @click="showSection('checker')">Scan a Wallet →</button>
+          </div>
+        </section>
+
+        <!-- <section class="landing-hero">
           <div class="landing-tag">PROOF OF HUMAN</div>
           <h1 class="landing-title">Decentralized<br>Human Verification</h1>
-          <p class="landing-sub">On-chain evidence. Community-powered signal.<br>100 free scans per wallet. API access. Community rewards.</p>
           <div class="landing-cta-row">
             <button class="neon-btn landing-cta" @click="showSection('checker')">Start Scanning →</button>
             <button class="outline-btn landing-cta" @click="showSection('api')">View API Docs</button>
           </div>
-        </section>
+        </section> -->
 
         <!-- How it works -->
         <section class="how-section">
@@ -734,7 +903,7 @@ onMounted(async () => {
               <div class="how-step-title">AI Brain</div>
               <ul class="how-list">
                 <li>Multi-role Ollama pipeline — Evaluator, Learner, Compiler on separate models</li>
-                <li>Evaluator interprets top 5 signals with explicit per-method weights, runs a second pass to catch overconfidence</li>
+                <li>Evaluator scores top 5 signals weighted by community stake, runs a second verification pass, learns from voter natural-language feedback</li>
                 <li>Learner updates weights after every community vote (±0.05 max drift)</li>
                 <li>Compiler rewrites a compact brain state hourly — no hallucination, stats only</li>
               </ul>
@@ -742,10 +911,10 @@ onMounted(async () => {
           </div>
         </section>
 
-        <div class="network-label">$POH Token</div>
+        <div class="network-label">$POH TOKEN</div>
 
         <section class="landing-token">
-          <p class="token-desc">Fair launch via bonding curve. No VC rounds. No pre-mine. Every scan either burns $POH or flows 50% back to method contributors. Stake to govern signal quality.</p>
+          <p class="token-desc">Fair launch via bonding curve. No VC rounds. No pre-mine. Every scan flows 50% back to method contributors. Stake to govern signal quality.</p>
 
           <div class="token-split">
             <div class="split-row">
@@ -770,7 +939,7 @@ onMounted(async () => {
             </div>
             <div class="econ-row">
               <span class="econ-label">Method owner share</span>
-              <span class="econ-val">50% of each paid scan, weighted by score × stake</span>
+              <span class="econ-val">50% of each paid scan, weighted by stake</span>
             </div>
             <div class="econ-row">
               <span class="econ-label">Free tier</span>
@@ -802,6 +971,8 @@ onMounted(async () => {
             </button>
           </div>
         </section>
+
+        <div style="margin-top: 10rem;" class="network-label">FEATURES</div>
 
         <section class="landing-utilities">
           <div class="utility-card">
@@ -836,28 +1007,143 @@ onMounted(async () => {
           </div>
         </section>
 
-        <!-- Network graph -->
-        <section class="network-section">
-          <div class="network-label">DETECTION NETWORK</div>
-          <div class="network-graph">
-            <svg class="network-svg" :viewBox="`0 0 ${gW} ${gH}`" preserveAspectRatio="xMidYMid meet">
-              <!-- edges -->
-              <line v-for="e in graphEdges" :key="e.id"
-                :x1="e.x1" :y1="e.y1" :x2="e.x2" :y2="e.y2"
-                class="g-edge" />
-              <!-- nodes -->
-              <g v-for="n in graphNodes" :key="n.id" :transform="`translate(${n.x},${n.y})`">
-                <circle :r="n.r" :class="['g-node', `g-node--${n.kind}`]" />
-                <text class="g-label" :y="n.r + 12" text-anchor="middle">{{ n.label }}</text>
+        <!-- Network visualization -->
+        <section class="net-section">
+          <div style="margin-top: 10rem;" class="network-label">DETECTION NETWORK</div>
+          <p class="net-subtitle">
+            {{ votingList.length || 9 }} active methods · signals flow to AI brain in real time
+          </p>
+
+          <div class="net-wrap">
+            <svg class="net-svg" viewBox="0 0 800 440" preserveAspectRatio="xMidYMid meet">
+              <defs>
+                <filter id="net-glow" x="-50%" y="-50%" width="200%" height="200%">
+                  <feGaussianBlur stdDeviation="5" result="b"/>
+                  <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+                </filter>
+                <filter id="net-glow-sm" x="-80%" y="-80%" width="260%" height="260%">
+                  <feGaussianBlur stdDeviation="2.5" result="b"/>
+                  <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+                </filter>
+              </defs>
+
+              <!-- Method → Brain edges (flowing dashes) -->
+              <line
+                v-for="n in netNodes" :key="`edge-${n.id}`"
+                :x1="n.x" :y1="n.y" :x2="NET_CX" :y2="NET_CY"
+                :class="['net-edge', `net-edge--${n.type}`, { 'net-edge--active': netActiveId === n.id }]"
+                :style="{ animationDuration: netDuration(n.id) }"
+              />
+
+              <!-- Brain → verdict edges -->
+              <line :x1="NET_CX" :y1="NET_CY + 38" x2="272" y2="378"
+                class="net-verdict-edge net-verdict-edge--human" />
+              <line :x1="NET_CX" :y1="NET_CY + 38" x2="528" y2="378"
+                class="net-verdict-edge net-verdict-edge--bot" />
+
+              <!-- Method nodes -->
+              <g
+                v-for="n in netNodes" :key="n.id"
+                :transform="`translate(${n.x},${n.y})`"
+                :class="['net-ngroup', `net-ngroup--${n.type}`, { 'net-ngroup--active': netActiveId === n.id }]"
+              >
+                <circle r="9" class="net-node" />
+                <text y="21" text-anchor="middle" class="net-nlabel">{{ n.label }}</text>
+              </g>
+
+              <!-- AI Brain: outer g positions via SVG translate, inner g handles CSS scale animation -->
+              <g :transform="`translate(${NET_CX},${NET_CY})`">
+                <g :class="['net-brain-g', { 'net-brain-g--pulse': netBrainPulse }]">
+                  <circle r="46" class="net-brain-ring" />
+                  <circle r="35" class="net-brain-core" filter="url(#net-glow)" />
+                  <text y="-13" text-anchor="middle" class="net-brain-title">AI Brain</text>
+                  <!-- Role badges: E = Evaluator, L = Learner, C = Compiler -->
+                  <g transform="translate(-16,9)">
+                    <circle r="7.5" class="net-role net-role--eval" filter="url(#net-glow-sm)" />
+                    <text y="4" text-anchor="middle" class="net-role-lbl">E</text>
+                  </g>
+                  <g transform="translate(0,15)">
+                    <circle r="7.5" class="net-role net-role--learn" filter="url(#net-glow-sm)" />
+                    <text y="4" text-anchor="middle" class="net-role-lbl">L</text>
+                  </g>
+                  <g transform="translate(16,9)">
+                    <circle r="7.5" class="net-role net-role--comp" filter="url(#net-glow-sm)" />
+                    <text y="4" text-anchor="middle" class="net-role-lbl">C</text>
+                  </g>
+                </g>
+              </g>
+
+              <!-- Verdict output nodes -->
+              <g transform="translate(272,394)">
+                <rect x="-52" y="-18" width="104" height="34" rx="17" class="net-verdict net-verdict--human" />
+                <text y="5" text-anchor="middle" class="net-verdict-lbl">HUMAN</text>
+              </g>
+              <g transform="translate(528,394)">
+                <rect x="-40" y="-18" width="80" height="34" rx="17" class="net-verdict net-verdict--bot" />
+                <text y="5" text-anchor="middle" class="net-verdict-lbl">BOT</text>
               </g>
             </svg>
           </div>
-          <div class="network-legend">
-            <div class="nl-item"><span class="nl-dot nl-dot--brain"></span>AI Brain</div>
-            <div class="nl-item"><span class="nl-dot nl-dot--evm"></span>EVM Method</div>
-            <div class="nl-item"><span class="nl-dot nl-dot--solana"></span>Solana Method</div>
-            <div class="nl-item"><span class="nl-dot nl-dot--rest"></span>REST Method</div>
-            <div class="nl-item"><span class="nl-dot nl-dot--wallet"></span>Wallet</div>
+
+          <!-- Legend -->
+          <div class="net-legend">
+            <div class="net-legend-group">
+              <div class="nl-item"><span class="nl-dot nl-dot--evm"></span>EVM</div>
+              <div class="nl-item"><span class="nl-dot nl-dot--solana"></span>Solana</div>
+              <div class="nl-item"><span class="nl-dot nl-dot--rest"></span>REST</div>
+            </div>
+            <div class="nl-sep"></div>
+            <div class="net-legend-group">
+              <div class="nl-item"><span class="nl-dot nl-dot--eval"></span>Evaluator · DeepSeek R1</div>
+              <div class="nl-item"><span class="nl-dot nl-dot--learn"></span>Learner · Qwen 2.5</div>
+              <div class="nl-item"><span class="nl-dot nl-dot--comp"></span>Compiler · Mixtral</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Roadmap -->
+        <section class="roadmap-section">
+          <div class="network-label">ROADMAP</div>
+          <div class="roadmap-list">
+            <div class="roadmap-item roadmap-active">
+              <div class="roadmap-dot"></div>
+              <div class="roadmap-content">
+                <div class="roadmap-date">May 2026</div>
+                <div class="roadmap-desc">Devnet public launch · Colosseum Hackathon submission</div>
+                <div class="roadmap-desc">Data providers onboarding</div>
+              </div>
+            </div>
+            <div class="roadmap-item">
+              <div class="roadmap-dot"></div>
+              <div class="roadmap-content">
+                <div class="roadmap-date">May-June 2026</div>
+                <div class="roadmap-desc">POH token launch (date TBA)</div>
+              </div>
+            </div>
+            <div class="roadmap-item">
+              <div class="roadmap-dot"></div>
+              <div class="roadmap-content">
+                <div class="roadmap-date">June-July 2026</div>
+                <div class="roadmap-desc">Visual analytics powered by charts & behavioral data mapping</div>
+                <div class="roadmap-desc">Trading pair analysis to identify fake liquidity and real market activity</div>
+                <div class="roadmap-desc">Multi-chain support across Bitcoin, Litecoin, and Tron</div>
+              </div>
+            </div>
+              
+            <div class="roadmap-item">
+              <div class="roadmap-dot"></div>
+              <div class="roadmap-content">
+                <div class="roadmap-date">Q3–Q4 2026</div>
+                <div class="roadmap-desc">Enterprise onboarding</div>
+              </div>
+            </div>
+            <div class="roadmap-item">
+              <div class="roadmap-dot"></div>
+              <div class="roadmap-content">
+                <div class="roadmap-date">2027</div>
+                <div class="roadmap-desc">TBA</div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -919,14 +1205,25 @@ onMounted(async () => {
           <div class="brain-conf">Confidence: {{ Math.round((brainVerdict.confidence || 0) * 100) }}%</div>
         </div>
 
-        <div v-if="checkerResults" class="results-list">
-          <div class="results-header">
-            <span class="section-title">Evidence — {{ checkerResults.filter(r => r.result).length }}/{{ checkerResults.length }} passed</span>
-          </div>
-          <div v-for="res in checkerResults" :key="res.methodId" class="result-row">
-            <div class="result-dot" :class="res.result ? 'pass' : 'fail'"></div>
-            <span class="result-desc">{{ res.description }}</span>
-            <span :class="['status-badge', res.result ? 'human' : 'ai']">{{ res.result ? 'PASS' : 'FAIL' }}</span>
+        <div v-if="checkerResults" class="results-accordion">
+          <button class="results-accordion-header" @click="showEvidence = !showEvidence">
+            <div class="accordion-left">
+              <div class="accordion-dots">
+                <span v-for="r in checkerResults.slice(0, 12)" :key="r.methodId"
+                  :class="['acc-dot', r.result ? 'pass' : 'fail']"></span>
+              </div>
+              <span class="accordion-summary">
+                Evidence — {{ checkerResults.filter(r => r.result).length }}/{{ checkerResults.length }} passed
+              </span>
+            </div>
+            <span class="accordion-chevron" :class="{ open: showEvidence }">›</span>
+          </button>
+          <div v-show="showEvidence" class="results-list">
+            <div v-for="res in checkerResults" :key="res.methodId" class="result-row">
+              <div class="result-dot" :class="res.result ? 'pass' : 'fail'"></div>
+              <span class="result-desc">{{ res.description }}</span>
+              <span :class="['status-badge', res.result ? 'human' : 'ai']">{{ res.result ? 'PASS' : 'FAIL' }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -1176,6 +1473,14 @@ onMounted(async () => {
               <div class="vcs-score-fill" :style="{ width: Math.min(100, Math.max(0, (currentVoteItem.score || 0) * 10)) + '%' }"></div>
             </div>
 
+            <textarea
+              v-model="voteFeedback"
+              class="vcs-feedback"
+              placeholder="Optional: explain your reasoning to help the AI learn…"
+              rows="2"
+              maxlength="200"
+            ></textarea>
+
             <div class="vcs-actions">
               <button class="vcs-btn vcs-btn-yes" :disabled="voteSubmitting" @click="castVote(true)">
                 {{ voteSubmitting ? '...' : '✓ Human' }}
@@ -1227,14 +1532,26 @@ onMounted(async () => {
                 <div class="pstat-val">{{ profileData.profile?.totalScans ?? 0 }}</div>
                 <div class="pstat-label">Total Scans</div>
               </div>
-              <div class="pstat-card">
+              <div class="pstat-card deposit-stat" @click="showDepositModal = true" title="Click to deposit POH">
                 <div class="pstat-val">{{ ((profileData.profile?.balance ?? 0) / 1e6).toFixed(2) }}</div>
-                <div class="pstat-label">Balance (POH)</div>
+                <div class="pstat-label">Balance (POH) <br><span class="pstat-deposit-hint">Tap to Deposit</span></div>
               </div>
               <div class="pstat-card">
                 <div class="pstat-val">{{ profileData.earned ? (profileData.earned / 1e6).toFixed(2) : '0.00' }}</div>
                 <div class="pstat-label">Total Earned</div>
               </div>
+            </div>
+
+            <!-- Claimable scan earnings -->
+            <div v-if="(profileData.pending ?? 0) > 0" class="profile-card profile-claim-card">
+              <div class="profile-card-header">
+                <span class="profile-card-title">Scan Earnings</span>
+                <span class="claim-amount">{{ (profileData.pending / 1e6).toFixed(4) }} POH</span>
+              </div>
+              <p class="profile-hint">Your methods earned this from paid scans. Claim to receive tokens on-chain.</p>
+              <button class="submit-listing-btn claim-btn" :disabled="offchainClaimLoading" @click="claimOffchainBalance()">
+                {{ offchainClaimLoading ? 'Claiming...' : 'Claim Earnings' }}
+              </button>
             </div>
 
             <!-- API Key -->
@@ -1268,7 +1585,33 @@ onMounted(async () => {
                   </div>
                   <div class="mlist-meta">
                     <span class="mlist-score">score {{ m.score?.toFixed(1) ?? '0.0' }}</span>
-                    <span class="mlist-earned">{{ ((profileData.pending) / 1e6).toFixed(4) }} POH pending</span>
+                    <span class="mlist-earned">{{ ((profileData.pending || 0) / 1e6).toFixed(4) }} POH pending</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- My Votes -->
+            <div class="profile-card">
+              <div class="profile-card-header">
+                <span class="profile-card-title">My Votes</span>
+                <span class="profile-card-count">{{ myVotesData.length }}</span>
+              </div>
+              <div v-if="!myVotesData.length" class="profile-empty">
+                No votes cast yet.
+                <button class="utility-link no-margin" @click="showSection('votes'); loadVoting()">Go vote →</button>
+              </div>
+              <div v-else class="method-list-profile">
+                <div v-for="v in myVotesData" :key="v.methodId" class="mlist-row">
+                  <div class="mlist-main">
+                    <span class="mlist-type">{{ v.type?.toUpperCase() }}</span>
+                    <span class="mlist-desc">{{ v.description }}</span>
+                  </div>
+                  <div class="mlist-meta">
+                    <span :class="['vote-badge', v.vote ? 'vote-human' : 'vote-bot']">
+                      {{ v.vote ? '✓ Human' : '✗ Bot' }}
+                    </span>
+                    <span class="mlist-score">{{ new Date(v.at).toLocaleDateString() }}</span>
                   </div>
                 </div>
               </div>
@@ -1390,7 +1733,7 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
         </div>
 
         <div class="api-cta">
-          <p>Get your API key from your <button class="utility-link" @click="showSection('profile'); loadProfile()">profile →</button></p>
+          <p>Get your API key from your <button class="utility-link" @click="showSection('profile'); loadProfile(); loadMyVotes()">profile →</button></p>
         </div>
       </div>
 
@@ -1454,7 +1797,7 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
             <div class="stake-action-row">
               <div class="flex-input">
                 <input type="number" v-model="stakeAmount" placeholder="POH to stake" class="premium-input flex-grow" min="0" step="1" />
-                <button class="neon-btn" :disabled="stakeLoading || !stakeAmount" @click="submitStake()">
+                <button class="outline-btn" :disabled="stakeLoading || !stakeAmount" @click="submitStake()">
                   {{ stakeLoading ? '...' : 'Stake' }}
                 </button>
               </div>
@@ -1472,11 +1815,19 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
               <button class="max-btn" @click="unstakeAmount = stakedBalance.toFixed(2)">MAX</button>
             </div>
 
-            <!-- Claim rewards -->
+            <!-- Claim on-chain staking rewards -->
             <div v-if="claimable > 0" class="stake-claim-row">
-              <span class="claim-desc">{{ claimable.toFixed(4) }} POH from staking rewards</span>
-              <button class="neon-btn" :disabled="claimLoading" @click="claimRewards()">
+              <span class="claim-desc">{{ claimable.toFixed(4) }} POH from on-chain staking</span>
+              <button class="outline-btn" :disabled="claimLoading" @click="claimRewards()">
                 {{ claimLoading ? 'Claiming...' : 'Claim Rewards' }}
+              </button>
+            </div>
+
+            <!-- Claim off-chain rewards (listing fees + scan revenue distributed by backend) -->
+            <div v-if="(profileData?.profile?.balance ?? 0) > 0" class="stake-claim-row">
+              <span class="claim-desc">{{ ((profileData.profile.balance) / 1e6).toFixed(4) }} POH off-chain rewards</span>
+              <button class="outline-btn" :disabled="offchainClaimLoading" @click="claimOffchainBalance()">
+                {{ offchainClaimLoading ? 'Claiming...' : 'Claim POH' }}
               </button>
             </div>
 
@@ -1491,18 +1842,88 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
     </main>
 
     <footer class="footer">
-      <div class="network-label">Connect</div>
+      <div class="network-label">CONNECT</div>
     </footer>
   </div>
 </template>
 
 <style scoped>
+
+.neon-btn {
+  background: #000;
+  color: #fff;
+  border: none;
+  padding: 0.7rem 1.4rem;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  font-size: 1rem;
+}
+
+
 /* ── Landing ─────────────────────────────────────────────────────────────── */
+.network-label {
+  font-size: 3rem;
+  margin: auto;
+  color: #888;
+  display: block;
+  text-align: center;
+  margin: 3.5rem 0;
+}
+
 .landing {
   max-width: 1280px;
   margin: 0 auto 0;
   padding: 0 0 2rem;
 }
+
+/* ── Problem screen ───────────────────────────────────────────────────────── */
+.problem-screen {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6rem 2rem;
+  /* border-bottom: 1px solid #111; */
+}
+.problem-inner { max-width: 680px; text-align: center; }
+.problem-tag {
+  font-size: 0.7rem; letter-spacing: 0.18em; color: #333;
+  font-family: 'JetBrains Mono', monospace; margin-bottom: 2rem;
+}
+.problem-title {
+  font-size: clamp(1.8rem, 4vw, 3rem);
+  font-weight: 700; color: #ccc; line-height: 1.25; margin-bottom: 2.5rem;
+}
+.problem-accent { color: #fff; }
+.problem-quote {
+  border-left: 2px solid #222; margin: 0 0 2rem; padding: 1rem 1.5rem;
+  text-align: left; color: #555; font-style: italic; font-size: 0.95rem; line-height: 1.6;
+}
+.problem-quote cite { display: block; margin-top: 0.5rem; font-style: normal; color: #333; font-size: 0.82rem; }
+.problem-desc { color: #444; font-size: 1rem; line-height: 1.7; margin-bottom: 2.5rem; }
+
+/* ── Roadmap ──────────────────────────────────────────────────────────────── */
+.roadmap-section { padding: 5rem 0 6rem; border-top: 1px solid #111; }
+.roadmap-list { max-width: 520px; margin: 2.5rem auto 0; display: flex; flex-direction: column; gap: 0; }
+.roadmap-item {
+  display: flex; gap: 1.25rem; align-items: flex-start;
+  padding: 1.1rem 0; position: relative;
+}
+.roadmap-item:not(:last-child)::after {
+  content: ''; position: absolute; left: 5px; top: 2.2rem; bottom: -1rem;
+  width: 1px; background: #1a1a1a;
+}
+.roadmap-dot {
+  width: 11px; height: 11px; border-radius: 50%; border: 1px solid #2a2a2a;
+  background: #0d0d0d; flex-shrink: 0; margin-top: 3px;
+}
+.roadmap-active .roadmap-dot { border-color: #555; background: #1a1a1a; box-shadow: 0 0 6px #333; }
+.roadmap-date { font-size: 0.75rem; color: #444; font-family: 'JetBrains Mono', monospace; margin-bottom: 0.2rem; }
+.roadmap-active .roadmap-date { color: #888; }
+.roadmap-desc { font-size: 0.9rem; color: #333; }
+.roadmap-active .roadmap-desc { color: #666; }
 
 .landing-hero {
   padding: 10rem 0 10rem;
@@ -1557,7 +1978,6 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
   border: 1px solid #111;
   border-radius: 8px;
   overflow: hidden;
-  margin: 10rem 0;
 }
 
 .utility-card {
@@ -1685,7 +2105,7 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
 }
 
 /* ── How it works ────────────────────────────────────────────────────────── */
-.how-section { margin: 0 0 3rem; }
+.how-section { margin: 0 0 10rem; }
 
 .how-label {
   font-size: 0.81rem;
@@ -1761,86 +2181,204 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
   vertical-align: middle;
 }
 
-/* ── Network graph ───────────────────────────────────────────────────────── */
-.network-section {
+/* ── Network visualization ───────────────────────────────────────────────── */
+.net-section {
   margin-bottom: 3rem;
 }
 
-.network-label {
-  font-size: 3rem;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  color: #333;
-  text-transform: uppercase;
-  margin: 10rem 0 3rem 0;
+.net-subtitle {
   text-align: center;
+  font-size: 1.1rem;
+  color: #555;
+  margin: -2rem 0 2.5rem;
+  letter-spacing: 0.03em;
 }
 
-.network-graph {
-  border: 1px solid #111;
-  border-radius: 8px;
+.net-wrap {
+  /* border: 1px solid #111; */
+  border-radius: 10px;
   overflow: hidden;
   background: #000;
   width: 100%;
 }
 
-.network-svg {
+.net-svg {
   display: block;
   width: 100%;
   height: auto;
 }
 
-.g-edge {
+/* ── Edges ── */
+.net-edge {
+  stroke: #1c1c1c;
+  stroke-width: 1.2;
+  stroke-dasharray: 3 11;
+  animation: net-flow 2s linear infinite;
+}
+.net-edge--evm    { stroke: #2a2a2a; }
+.net-edge--rest   { stroke: #222; }
+.net-edge--solana { stroke: #2a1a44; }
+
+.net-edge--active {
+  stroke-width: 1.8;
+  animation-duration: 0.45s !important;
+}
+.net-edge--active.net-edge--evm    { stroke: #555; }
+.net-edge--active.net-edge--rest   { stroke: #444; }
+.net-edge--active.net-edge--solana { stroke: #9945ff88; }
+
+@keyframes net-flow {
+  to { stroke-dashoffset: -28; }
+}
+
+/* ── Brain → verdict edges ── */
+.net-verdict-edge {
+  stroke-width: 1;
+  stroke-dasharray: 3 9;
+  animation: net-flow 3s linear infinite;
+}
+.net-verdict-edge--human { stroke: #1a3a1a; }
+.net-verdict-edge--bot   { stroke: #3a1a1a; }
+
+/* ── Method nodes ── */
+.net-ngroup circle {
+  fill: #080808;
+  stroke-width: 1.5;
+  transition: fill 0.25s, filter 0.25s;
+}
+.net-ngroup--evm    circle { stroke: #2a2a2a; }
+.net-ngroup--rest   circle { stroke: #1e1e1e; }
+.net-ngroup--solana circle { stroke: #4a2a7a; }
+
+.net-ngroup--active circle { fill: #111; }
+.net-ngroup--active.net-ngroup--evm    circle { stroke: #666;      filter: drop-shadow(0 0 5px #555); }
+.net-ngroup--active.net-ngroup--rest   circle { stroke: #555;      filter: drop-shadow(0 0 5px #444); }
+.net-ngroup--active.net-ngroup--solana circle { stroke: #9945ff;   filter: drop-shadow(0 0 6px #9945ff88); }
+
+.net-nlabel {
+  font-size: 9.5px;
+  fill: #3a3a3a;
+  font-family: -apple-system, 'SF Mono', monospace;
+  pointer-events: none;
+  transition: fill 0.25s;
+}
+.net-ngroup--active .net-nlabel { fill: #666; }
+
+/* ── AI Brain ── */
+.net-brain-ring {
+  fill: none;
   stroke: #1a1a1a;
   stroke-width: 1;
+  stroke-dasharray: 4 6;
+  animation: net-flow 8s linear infinite reverse;
 }
-
-.g-node {
+.net-brain-core {
+  fill: #0d0d0d;
+  stroke: #fff;
   stroke-width: 1.5;
-  fill: #000;
+  transition: filter 0.3s;
 }
-
-.g-node--brain  { r: 28; fill: #fff;  stroke: #fff; }
-.g-node--evm    { fill: #0a0a0a; stroke: #2a2a2a; }
-.g-node--solana { fill: #0a0a0a; stroke: #9945ff44; }
-.g-node--rest   { fill: #0a0a0a; stroke: #1a1a1a; }
-.g-node--wallet { fill: #111; stroke: #333; }
-
-.g-label {
-  font-size: 11px;
-  fill: #444;
+.net-brain-g--pulse .net-brain-core {
+  filter: drop-shadow(0 0 18px rgba(255,255,255,0.35)) drop-shadow(0 0 6px rgba(255,255,255,0.2));
+}
+.net-brain-g {
+  transition: transform 0.2s ease;
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+.net-brain-g--pulse {
+  transform: scale(1.04);
+}
+.net-brain-title {
+  font-size: 8.5px;
+  font-weight: 600;
+  fill: #888;
   font-family: -apple-system, sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   pointer-events: none;
 }
 
-.network-legend {
+/* ── Role badges (E / L / C) ── */
+.net-role { stroke-width: 1; }
+.net-role--eval  { fill: #0a1a0a; stroke: #1a4a1a; }
+.net-role--learn { fill: #0a100a; stroke: #1a3a2a; }
+.net-role--comp  { fill: #0a0a1a; stroke: #1a1a4a; }
+
+.net-brain-g--pulse .net-role--eval  { stroke: #2aaa2a; filter: drop-shadow(0 0 4px #2aaa2a88); }
+.net-brain-g--pulse .net-role--learn { stroke: #2a8a5a; filter: drop-shadow(0 0 4px #2a8a5a88); }
+.net-brain-g--pulse .net-role--comp  { stroke: #2a4aaa; filter: drop-shadow(0 0 4px #2a4aaa88); }
+
+.net-role-lbl {
+  font-size: 7px;
+  font-weight: 700;
+  fill: #555;
+  font-family: -apple-system, monospace;
+  pointer-events: none;
+}
+.net-brain-g--pulse .net-role-lbl { fill: #aaa; }
+
+/* ── Verdict output nodes ── */
+.net-verdict {
+  stroke-width: 1;
+  fill: #060606;
+  transition: stroke 0.3s, filter 0.3s;
+}
+.net-verdict--human { stroke: #1a3a1a; }
+.net-verdict--bot   { stroke: #3a1a1a; }
+
+.net-verdict-lbl {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  font-family: -apple-system, monospace;
+  pointer-events: none;
+}
+.net-verdict--human + .net-verdict-lbl,
+.net-verdict-lbl { fill: #444; }
+
+/* ── Legend ── */
+.net-legend {
   display: flex;
   justify-content: center;
-  gap: 1.5rem;
-  margin-top: 0.75rem;
+  align-items: center;
+  gap: 0.5rem 1.5rem;
+  margin-top: 1rem;
   flex-wrap: wrap;
 }
-
+.net-legend-group {
+  display: flex;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.nl-sep {
+  width: 1px;
+  height: 14px;
+  background: #222;
+  flex-shrink: 0;
+}
 .nl-item {
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  font-size: 1.25rem;
-  color: #444;
+  font-size: 1.1rem;
+  color: #3a3a3a;
+  white-space: nowrap;
 }
-
 .nl-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
   flex-shrink: 0;
+  border: 1px solid transparent;
 }
-
-.nl-dot--brain  { background: #fff; }
-.nl-dot--evm    { background: #444; border: 1px solid #555; }
-.nl-dot--solana { background: #1a0033; border: 1px solid #9945ff66; }
-.nl-dot--rest   { background: #111; border: 1px solid #2a2a2a; }
-.nl-dot--wallet { background: #222; border: 1px solid #333; }
+.nl-dot--evm    { background: #1a1a1a; border-color: #333; }
+.nl-dot--solana { background: #0d0019; border-color: #4a2a7a; }
+.nl-dot--rest   { background: #0d0d0d; border-color: #222; }
+.nl-dot--eval   { background: #0a1a0a; border-color: #1a4a1a; }
+.nl-dot--learn  { background: #0a100a; border-color: #1a3a2a; }
+.nl-dot--comp   { background: #0a0a1a; border-color: #1a1a4a; }
 
 /* ── Form sections (Listing) ─────────────────────────────────────────────── */
 .form-section {
@@ -2060,7 +2598,65 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
 
 .brain-conf { font-size: 1.25rem; color: #444; margin-top: 0.5rem; }
 
-.results-header { margin-bottom: 0.75rem; }
+.results-accordion {
+  border: 1px solid #1a1a1a;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.results-accordion-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1rem;
+  background: #0a0a0a;
+  border: none;
+  cursor: pointer;
+  gap: 1rem;
+  transition: background 0.15s;
+}
+.results-accordion-header:hover { background: #0f0f0f; }
+
+.accordion-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.accordion-dots {
+  display: flex;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.acc-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+.acc-dot.pass { background: #2a6a2a; }
+.acc-dot.fail { background: #3a1a1a; }
+
+.accordion-summary {
+  font-size: 1rem;
+  color: #555;
+  white-space: nowrap;
+}
+
+.accordion-chevron {
+  font-size: 1.1rem;
+  color: #333;
+  transform: rotate(0deg);
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+.accordion-chevron.open { transform: rotate(90deg); }
+
+.results-list {
+  border-top: 1px solid #111;
+  padding: 0 1rem;
+}
 
 .result-row {
   display: flex;
@@ -2222,6 +2818,24 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
   background: #2a2a2a;
   border-radius: 1px;
 }
+
+.vcs-feedback {
+  width: 100%;
+  margin-top: 0.75rem;
+  background: #080808;
+  border: 1px solid #1e1e1e;
+  border-radius: 6px;
+  color: #888;
+  font-size: 0.78rem;
+  font-family: inherit;
+  padding: 0.5rem 0.65rem;
+  resize: none;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+}
+.vcs-feedback::placeholder { color: #333; }
+.vcs-feedback:focus { border-color: #333; color: #aaa; }
 
 .vcs-actions {
   display: flex;
@@ -2518,7 +3132,7 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
   border-radius: 7px;
   padding: 0.6rem 0.85rem;
   color: #e0e0e0;
-  font-size: 0.875rem;
+  font-size: 1rem;
   line-height: 1.4;
   transition: border-color 0.15s, background 0.15s;
   font-family: inherit;
@@ -2771,6 +3385,7 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
   letter-spacing: 0.12em;
   font-weight: 700;
   color: #444;
+  margin-right: 10px;
 }
 
 .brain-reasoning {
@@ -3009,7 +3624,7 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
   background: transparent;
   border: 1px solid #333;
   color: #888;
-  padding: 0.875rem 2rem;
+  padding: 1rem 2rem;
   border-radius: 6px;
   font-size: 1.0625rem;
   font-weight: 500;
@@ -3034,8 +3649,8 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
   gap: 1rem;
 }
 .econ-row:last-child { border-bottom: none; }
-.econ-label { color: #555; font-size: 0.875rem; white-space: nowrap; }
-.econ-val { color: #999; font-size: 0.875rem; text-align: right; }
+.econ-label { color: #555; font-size: 1rem; white-space: nowrap; }
+.econ-val { color: #999; font-size: 1rem; text-align: right; }
 
 /* ── Profile page ────────────────────────────────────────────────────────── */
 .profile-page { max-width: 800px; margin: 0 auto; padding: 2rem 1rem 4rem; }
@@ -3065,7 +3680,7 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
   padding: 0.75rem 1rem;
   border-radius: 6px;
   margin-bottom: 1rem;
-  font-size: 0.9375rem;
+  font-size: 1.3rem;
 }
 
 .profile-stats {
@@ -3080,8 +3695,20 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
   padding: 1.25rem;
   text-align: center;
 }
+.pstat-card.deposit-stat { cursor: pointer; transition: border-color 0.2s; }
+.pstat-card.deposit-stat:hover { border-color: #333; }
+.pstat-deposit-hint { font-size: 0.7rem; color: #444; margin-left: 0.35rem; }
 .pstat-val { font-size: 1.75rem; font-weight: 700; color: #fff; }
 .pstat-label { font-size: 0.8125rem; color: #555; margin-top: 0.25rem; }
+
+.vote-badge { font-size: 0.75rem; font-weight: 600; padding: 0.2rem 0.5rem; border-radius: 4px; }
+.vote-human { color: #2aaa2a; background: #0a1a0a; }
+.vote-bot   { color: #aa2a2a; background: #1a0a0a; }
+
+.modal-desc { font-size: 0.9rem; color: #555; margin: 0.5rem 0 0; line-height: 1.5; }
+.deposit-msg { font-size: 1rem; padding: 0.5rem; border-radius: 4px; margin-bottom: 0.75rem; }
+.deposit-ok  { color: #2aaa2a; background: #0a1a0a; }
+.deposit-err { color: #aa4444; background: #1a0a0a; }
 
 .profile-card {
   border: 1px solid #1a1a1a;
@@ -3093,9 +3720,13 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 0.875rem;
+  margin-bottom: 1rem;
 }
-.profile-card-title { font-size: 0.9375rem; font-weight: 600; color: #ccc; }
+.profile-card-title { font-size: 1.3rem; font-weight: 600; color: #ccc; }
+
+.profile-claim-card { border-color: #1a3a1a; }
+.claim-amount { font-size: 1rem; font-weight: 700; color: #5a8a5a; font-family: 'JetBrains Mono', monospace; }
+.claim-btn { margin-top: 0.75rem; width: 100%; }
 .profile-card-count {
   background: #111;
   border: 1px solid #222;
@@ -3118,14 +3749,14 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
 .apikey-display {
   flex: 1;
   font-family: monospace;
-  font-size: 0.875rem;
+  font-size: 1rem;
   color: #888;
   word-break: break-all;
 }
 .profile-hint { font-size: 0.8125rem; color: #444; margin-top: 0.5rem; }
 .profile-hint code { background: #111; padding: 0.1rem 0.3rem; border-radius: 3px; color: #888; }
 
-.profile-empty { color: #444; font-size: 0.9375rem; display: flex; gap: 0.5rem; align-items: center; }
+.profile-empty { color: #444; font-size: 1.3rem; display: flex; gap: 0.5rem; align-items: center; }
 
 .method-list-profile { display: flex; flex-direction: column; gap: 0.5rem; }
 .mlist-row {
@@ -3149,7 +3780,7 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
   border-radius: 3px;
   white-space: nowrap;
 }
-.mlist-desc { font-size: 0.9375rem; color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mlist-desc { font-size: 1.3rem; color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mlist-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 0.2rem; white-space: nowrap; }
 .mlist-score { font-size: 0.8125rem; color: #555; }
 .mlist-earned { font-size: 0.8125rem; color: #888; }
@@ -3175,14 +3806,14 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
 .api-desc {
   padding: 1rem 1.25rem;
   color: #666;
-  font-size: 0.9375rem;
+  font-size: 1.3rem;
   line-height: 1.6;
   border-bottom: 1px solid #111;
 }
-.api-desc code { background: #111; padding: 0.1rem 0.3rem; border-radius: 3px; color: #888; font-size: 0.875rem; }
+.api-desc code { background: #111; padding: 0.1rem 0.3rem; border-radius: 3px; color: #888; font-size: 1rem; }
 .api-params { padding: 0.75rem 1.25rem; border-bottom: 1px solid #111; display: flex; flex-direction: column; gap: 0.4rem; }
 .param-row { display: flex; align-items: baseline; gap: 0.75rem; font-size: 0.9rem; }
-.param-row code { color: #fff; font-size: 0.875rem; background: #0c0c0c; border: 1px solid #1e1e1e; padding: 0.1rem 0.35rem; border-radius: 3px; white-space: nowrap; }
+.param-row code { color: #fff; font-size: 1rem; background: #0c0c0c; border: 1px solid #1e1e1e; padding: 0.1rem 0.35rem; border-radius: 3px; white-space: nowrap; }
 .param-row span { color: #555; }
 
 .code-block { border-top: 1px solid #111; }
@@ -3201,7 +3832,7 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
   padding: 1rem 1.25rem;
   background: #030303;
   color: #888;
-  font-size: 0.875rem;
+  font-size: 1rem;
   font-family: monospace;
   white-space: pre-wrap;
   word-break: break-all;
@@ -3217,7 +3848,7 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
   grid-template-columns: 1fr 1fr 1.2fr;
   padding: 0.75rem 1.25rem;
   border-bottom: 1px solid #111;
-  font-size: 0.9375rem;
+  font-size: 1.3rem;
   gap: 1rem;
 }
 .pt-row:last-child { border-bottom: none; }
@@ -3249,7 +3880,7 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
 }
 .si-title { font-size: 1rem; font-weight: 600; color: #ccc; margin-bottom: 1rem; }
 .si-list { padding-left: 1.25rem; display: flex; flex-direction: column; gap: 0.6rem; }
-.si-list li { color: #666; font-size: 0.9375rem; line-height: 1.5; }
+.si-list li { color: #666; font-size: 1.3rem; line-height: 1.5; }
 
 .stake-form-card {
   border: 1px solid #1a1a1a;
@@ -3257,7 +3888,7 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
   padding: 1.5rem;
 }
 .stake-form-title { font-size: 1.0625rem; font-weight: 600; color: #ccc; margin-bottom: 1.25rem; }
-.stake-message { margin-top: 0.75rem; font-size: 0.9375rem; color: #888; }
+.stake-message { margin-top: 0.75rem; font-size: 1.3rem; color: #888; }
 
 /* ── Stake balance row ───────────────────────────────────────────────────── */
 .stake-balance-row {
@@ -3270,7 +3901,7 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
   background: #050505;
   border: 1px solid #1a1a1a;
   border-radius: 8px;
-  padding: 0.875rem 0.75rem;
+  padding: 1rem 0.75rem;
   text-align: center;
 }
 .sbal-val { font-size: 1.25rem; font-weight: 700; color: #fff; }
@@ -3305,11 +3936,11 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
   background: #0a0f0a;
   border: 1px solid #1a2a1a;
   border-radius: 8px;
-  padding: 0.875rem 1rem;
+  padding: 1rem 1rem;
   margin-top: 0.5rem;
   margin-bottom: 0.75rem;
 }
-.claim-desc { font-size: 0.9375rem; color: #5a8a5a; }
+.claim-desc { font-size: 1.3rem; color: #5a8a5a; }
 
 /* ── Listing fee row ─────────────────────────────────────────────────────── */
 .listing-fee-row {
@@ -3317,7 +3948,7 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
   justify-content: space-between;
   align-items: center;
   padding: 0.75rem 0;
-  font-size: 0.9375rem;
+  font-size: 1.3rem;
 }
 .listing-fee-label { color: #888; }
 .listing-fee-balance { color: #666; }

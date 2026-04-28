@@ -1,11 +1,59 @@
 {
-  "G8bFssuQsNxmMopW9bjYgA4iuUZ7z8uELiNL6UKvSjyy": {
+  "6bvB3PTz48wozyPJeuTB77axexWu9MfUSjBYbQzEgK88": {
     "ips": [
       "::ffff:127.0.0.1"
     ],
+    "address": "6bvB3PTz48wozyPJeuTB77axexWu9MfUSjBYbQzEgK88",
+    "updatedAt": "2026-04-27T07:30:51.922Z",
+    "freeScansLeft": 0,
+    "totalScans": 100,
+    "votes": {
+      "1776780461277Base_—_t": {
+        "vote": true,
+        "at": "2026-04-24T09:35:38.692Z"
+      },
+      "1777035613182kxp1tsqyh": {
+        "vote": false,
+        "at": "2026-04-24T13:29:12.208Z"
+      },
+      "1776688380812assetux_stake": {
+        "vote": false,
+        "at": "2026-04-24T13:35:07.802Z"
+      },
+      "1776689122827sol_balance": {
+        "vote": false,
+        "at": "2026-04-24T13:38:48.123Z"
+      }
+    },
+    "apiKey": "606ceb7b-92d2-4831-a4bb-517b8307ddbb",
+    "balance": 500000
+  },
+  "TestWallet123": {
+    "apiKey": "40c915ad-f093-4b6d-a010-cbc58caec6f9",
+    "address": "TestWallet123",
+    "updatedAt": "2026-04-23T09:25:13.827Z"
+  },
+  "G8bFssuQsNxmMopW9bjYgA4iuUZ7z8uELiNL6UKvSjyy": {
+    "votes": {
+      "1776688380812assetux_stake": {
+        "vote": false,
+        "at": "2026-04-24T09:50:25.564Z"
+      },
+      "1776689122827sol_balance": {
+        "vote": false,
+        "at": "2026-04-24T09:50:54.980Z"
+      },
+      "1776780461277Base_—_t": {
+        "vote": false,
+        "at": "2026-04-24T09:51:07.325Z"
+      },
+      "1776780461291Ethersca": {
+        "vote": true,
+        "at": "2026-04-24T13:15:28.034Z"
+      }
+    },
     "address": "G8bFssuQsNxmMopW9bjYgA4iuUZ7z8uELiNL6UKvSjyy",
-    "updatedAt": "2026-04-22T10:17:11.455Z",
-    "freeScansLeft": 99,
-    "totalScans": 1
+    "updatedAt": "2026-04-24T13:40:33.506Z",
+    "balance": 0
   }
 }

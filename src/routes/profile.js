@@ -6,7 +6,8 @@ const nacl  = require('tweetnacl');
 const bs58  = require('bs58');
 const fs    = require('fs');
 const path  = require('path');
-const { getProfile, upsertProfile, getRewards, getProfiles } = require('../utils/profiles');
+const { getProfile, upsertProfile, getRewards, saveRewards, getProfiles, getMyVotes } = require('../utils/profiles');
+const { verifyPohTransfer, sendPohTokens } = require('../utils/solana');
 
 const METHODS_PATH = path.join(__dirname, '../../data/methods.json');
 function getMethods() {
@@ -83,12 +84,77 @@ router.get('/:address/apikey', (req, res) => {
   res.json({ apiKey: p.apiKey });
 });
 
+// ── GET /profile/:address/votes ───────────────────────────────────────────────
+router.get('/:address/votes', (req, res) => {
+  const votes = getMyVotes(req.params.address);
+  const methods = getMethods();
+  const detail = Object.entries(votes).map(([methodId, v]) => {
+    const m = methods.find(x => x.id === methodId);
+    return { methodId, vote: v.vote, at: v.at, description: m?.description || '', type: m?.type || '' };
+  }).sort((a, b) => new Date(b.at) - new Date(a.at));
+  res.json({ votes: detail });
+});
+
+// ── POST /profile/deposit — credit profile balance from POH transfer ──────────
+router.post('/deposit', async (req, res, next) => {
+  try {
+    const { address, txHash, amount } = req.body;
+    if (!address || !txHash || !amount) {
+      return res.status(400).json({ error: 'address, txHash and amount are required' });
+    }
+    const amountRaw = Math.floor(parseFloat(amount) * 1_000_000);
+    if (amountRaw <= 0) return res.status(400).json({ error: 'Invalid amount' });
+
+    const isValid = await verifyPohTransfer(txHash, amountRaw, address);
+    if (!isValid) return res.status(402).json({ error: 'POH transfer not verified' });
+
+    const p = getProfile(address) || {};
+    const updated = upsertProfile(address, { balance: (p.balance || 0) + amountRaw });
+    res.json({ success: true, balance: updated.balance });
+  } catch (err) { next(err); }
+});
+
+// ── POST /profile/claim — withdraw off-chain balance as on-chain POH tokens ───
+router.post('/claim', async (req, res, next) => {
+  try {
+    const { address } = req.body;
+    if (!address) return res.status(400).json({ error: 'address required' });
+
+    const p = getProfile(address);
+    if (!p) return res.status(404).json({ error: 'Profile not found' });
+
+    // Claimable = sum of pendingWithdrawal across owned methods (authoritative source)
+    const methods = getMethods().filter(m => m.ownerWallet === address);
+    const rewards  = getRewards();
+    const claimable = methods.reduce((s, m) => s + (rewards[m.id]?.pendingWithdrawal || 0), 0);
+
+    if (claimable <= 0) return res.status(400).json({ error: 'No scan earnings to claim' });
+
+    const txHash = await sendPohTokens(address, claimable);
+
+    // Zero out pending withdrawals and sync profile balance
+    for (const m of methods) {
+      if (rewards[m.id]) rewards[m.id].pendingWithdrawal = 0;
+    }
+    saveRewards(rewards);
+    upsertProfile(address, { balance: Math.max(0, (p.balance || 0) - claimable) });
+
+    console.log(`[profile] Claimed ${claimable / 1_000_000} POH → ${address} tx: ${txHash}`);
+    res.json({ success: true, claimed: claimable, txHash });
+  } catch (err) {
+    // If backend wallet isn't configured, return a clear error without 500
+    if (err.message.includes('not configured')) {
+      return res.status(503).json({ error: err.message, claimable: (getProfile(req.body.address)?.balance || 0) });
+    }
+    next(err);
+  }
+});
+
 // ── POST /profile/apikey/rotate ───────────────────────────────────────────────
 router.post('/apikey/rotate', (req, res, next) => {
   try {
     const { address } = req.body;
-    const p = getProfile(address);
-    if (!p) return res.status(404).json({ error: 'Profile not found' });
+    if (!address) return res.status(400).json({ error: 'Address required' });
     const updated = upsertProfile(address, { apiKey: crypto.randomUUID() });
     res.json({ apiKey: updated.apiKey });
   } catch (err) { next(err); }

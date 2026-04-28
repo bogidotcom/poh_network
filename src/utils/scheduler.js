@@ -2,6 +2,7 @@
 
 const cron = require('node-cron');
 const { consolidate } = require('./brain');
+const { delistStaleMethod } = require('./methodHealth');
 
 function startScheduler() {
   // Consolidate brain state every hour
@@ -14,7 +15,14 @@ function startScheduler() {
     }
   });
 
-  console.log('[scheduler] Brain consolidation scheduled (hourly).');
+  // Delist methods unresponsive for 30+ days (runs daily at 03:00)
+  cron.schedule('0 3 * * *', () => {
+    console.log('[scheduler] Checking method health for stale delists...');
+    try { delistStaleMethod(); }
+    catch (err) { console.error('[scheduler] Health check failed:', err.message); }
+  });
+
+  console.log('[scheduler] Brain consolidation (hourly) + method health check (daily) scheduled.');
 }
 
 module.exports = { startScheduler };

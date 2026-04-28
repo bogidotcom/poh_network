@@ -51,6 +51,11 @@ body, html {
   font-size: 0.875rem;
 }
 
+.network-label {
+  font-size: 3rem;
+  margin: auto;
+}
+
 .neon-btn:hover:not(:disabled) { opacity: 0.85; }
 .neon-btn:active:not(:disabled) { opacity: 0.7; }
 .neon-btn:disabled { opacity: 0.25; cursor: not-allowed; }

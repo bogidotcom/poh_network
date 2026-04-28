@@ -15,11 +15,13 @@ export default defineConfig({
   ],
   server: {
     proxy: {
-      '/config': 'http://localhost:3000',
+      '/config':  'http://localhost:3000',
       '/checker': 'http://localhost:3000',
       '/methods': 'http://localhost:3000',
-      '/evm': 'http://localhost:3000',
-      '/rest': 'http://localhost:3000'
+      '/profile': 'http://localhost:3000',
+      '/evm':     'http://localhost:3000',
+      '/rest':    'http://localhost:3000',
+      '/abi':     'http://localhost:3000',
     }
   }
 })

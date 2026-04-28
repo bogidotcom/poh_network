@@ -6,7 +6,8 @@ const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const { parse } = require('csv-parse/sync');
-const { verifySolPayment, getVoteTokenStake } = require('../utils/solana');
+const { getVoteTokenStake, verifyTxSuccess } = require('../utils/solana');
+const { recordVote, getMyVotes, hasVoted } = require('../utils/profiles');
 const brain = require('../utils/brain');
 
 const METHODS_PATH = path.join(__dirname, '../../data/methods.json');
@@ -36,9 +37,21 @@ function appendToDataset(record) {
 }
 
 /**
+ * POST /listing/validate-description
+ * Pre-submit LLM check that the description is meaningful.
+ */
+router.post('/listing/validate-description', async (req, res, next) => {
+  try {
+    const { description } = req.body;
+    if (!description) return res.status(400).json({ error: 'description required' });
+    const result = await brain.validateDescription(description);
+    res.json(result);
+  } catch (err) { next(err); }
+});
+
+/**
  * POST /listing
- * Register a new method. 
- * Charges 0.01 SOL.
+ * Register a new method.
  */
 router.post('/listing', upload.single('csv'), async (req, res, next) => {
   try {
@@ -56,13 +69,12 @@ router.post('/listing', upload.single('csv'), async (req, res, next) => {
       newMethods.push({ type, chainId, address, method, abiTypes, returnTypes, expression, lang, description, headers, body, decimals });
     }
 
-    const feePerMethod = 0.01;
-    const totalFee = newMethods.length * feePerMethod;
-    const recipient = process.env.FEE_RECIPIENT || 'YOUR_SOLANA_ADDRESS';
-
-    const isPaid = await verifySolPayment(txHash, totalFee, recipient);
-    if (!isPaid) {
-      return res.status(402).json({ error: `Payment verification failed. Expected ${totalFee} SOL to ${recipient}` });
+    // Payment is enforced on-chain by the registerMethod Anchor instruction
+    // (1000 POH: 500 to deployer vault + 500 to staker fee vault).
+    // We only verify the transaction was confirmed successfully.
+    const isConfirmed = await verifyTxSuccess(txHash);
+    if (!isConfirmed) {
+      return res.status(402).json({ error: 'Transaction not confirmed — please wait and retry, or check your POH balance' });
     }
 
     const currentMethods = getMethods();
@@ -73,6 +85,7 @@ router.post('/listing', upload.single('csv'), async (req, res, next) => {
 
       m.id = Date.now() + Math.random().toString(36).substr(2, 9);
       m.score = 0;
+      m.ownerWallet = walletAddress || null;
       m.created_at = new Date().toISOString();
       currentMethods.push(m);
 
@@ -85,6 +98,9 @@ router.post('/listing', upload.single('csv'), async (req, res, next) => {
     });
 
     saveMethods(currentMethods);
+
+    // NOTE: staker share (500 POH) is handled entirely on-chain by the Anchor registerMethod
+    // instruction → SFEE_PDA. Stakers claim via claimStakerRewards. No off-chain distribution needed.
 
     // ── Brain: evaluate each new method ──────────────────────────────────
     for (const m of newMethods) {
@@ -99,10 +115,26 @@ router.post('/listing', upload.single('csv'), async (req, res, next) => {
 
 /**
  * GET /verifyer
- * Returns methods for voting
+ * Returns methods for voting.
+ * ?address=<wallet> — annotates each method with myVoted and filters out already-voted ones.
+ * Order: random shuffle, but least-voted (lowest score) methods surface first.
  */
 router.get('/verifyer', (req, res) => {
-  res.json(getMethods());
+  const { address } = req.query;
+  let methods = getMethods();
+
+  const myVotes = address ? getMyVotes(address) : {};
+
+  // Annotate and sort: least-voted (lowest score) first, shuffled within same score bucket
+  methods = methods
+    .map(m => ({ ...m, myVoted: !!myVotes[m.id] }))
+    .sort((a, b) => {
+      const scoreDiff = (a.score || 0) - (b.score || 0);
+      if (scoreDiff !== 0) return scoreDiff;
+      return Math.random() - 0.5; // shuffle within same score
+    });
+
+  res.json(methods);
 });
 
 /**
@@ -111,41 +143,46 @@ router.get('/verifyer', (req, res) => {
  */
 router.post('/verifyer/vote', async (req, res, next) => {
   try {
-    const { methodId, type, vote, walletAddress, txHash } = req.body;
+    const { methodId, type, vote, walletAddress, txHash, feedback } = req.body;
     // type: 'description' | 'method' | 'risk'
     // vote: true | false (or yes/no)
+    // feedback: optional natural-language reasoning from the voter
 
-    if (!txHash) return res.status(400).json({ error: 'Gas fee payment txHash required' });
+    if (!txHash) return res.status(400).json({ error: 'txHash required' });
 
-    // Verify "gas fee" (e.g. 0.001 SOL)
-    const isPaid = await verifySolPayment(txHash, 0.001, process.env.FEE_RECIPIENT || 'YOUR_SOLANA_ADDRESS');
-    if (!isPaid) return res.status(402).json({ error: 'Gas fee payment verification failed' });
+    const isConfirmed = await verifyTxSuccess(txHash);
+    if (!isConfirmed) return res.status(402).json({ error: 'Transaction not confirmed' });
 
     const methods = getMethods();
     const method = methods.find(m => m.id === methodId);
     if (!method) return res.status(404).json({ error: 'Method not found' });
 
+    if (walletAddress && hasVoted(walletAddress, methodId)) {
+      return res.status(409).json({ error: 'Already voted on this method' });
+    }
+
     const stakeWeight = await getVoteTokenStake(walletAddress);
-    const impact = stakeWeight * 10; // Scale impact by stake
+    // Scale impact: base 1 + stake fraction * 9 → range [1, 10]
+    const impact = 1 + stakeWeight * 9;
 
     if (type === 'risk') {
       method.score += (vote === true ? -impact : impact);
     } else {
-      // 'description', 'method', or unspecified — all increase/decrease score directly
       method.score += (vote === true ? impact : -impact);
     }
+    method.voteCount = (method.voteCount || 0) + 1;
 
     saveMethods(methods);
 
-    // Record vote for training
+    if (walletAddress) recordVote(walletAddress, methodId, vote);
+
     appendToDataset({
       instruction: `Voter assessment for method: ${method.description}`,
-      input: `Type: ${type}, Vote: ${vote}, StakeWeight: ${stakeWeight}`,
+      input: `Type: ${type}, Vote: ${vote}, StakeWeight: ${stakeWeight}${feedback ? `, Feedback: ${feedback}` : ''}`,
       output: vote ? "Representative of human nature" : "Not human nature"
     });
 
-    // ── Brain: process the vote ───────────────────────────────────────────
-    brain.onVote(method, type || 'description', vote, stakeWeight)
+    brain.onVote(method, type || 'description', vote, stakeWeight, feedback || null)
       .catch(err => console.error('[brain] onVote error:', err.message));
 
     res.json({ status: 'voted', newScore: method.score });
