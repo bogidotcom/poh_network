@@ -301,5 +301,3 @@ Token utility: scan fee payment · stake-weighted voting · method reward distri
 - X / Twitter: https://x.com/poh_network
 
 ---
-
-© 2026 PROXIMA CORE | SECURED BY HUMAN POWER

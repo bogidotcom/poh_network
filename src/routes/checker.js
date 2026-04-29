@@ -165,6 +165,9 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
             } else if (m.method === 'eth_getTransactionCount') {
               const provider = new ethers.JsonRpcProvider(rpcUrl);
               result = [BigInt(await provider.getTransactionCount(singleInput))];
+            } else if (m.method === 'eth_getCode') {
+              const provider = new ethers.JsonRpcProvider(rpcUrl);
+              result = [await provider.getCode(singleInput)];
             } else {
               result = await callContract(rpcUrl, m.address, m.method, JSON.parse(m.abiTypes || '[]'), JSON.parse(m.returnTypes || '[]'), [singleInput]);
             }
@@ -205,6 +208,15 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
               const ata = await getAssociatedTokenAddress(mint, pubkey);
               const account = await getAccount(conn, ata);
               result = Number(account.amount);
+            } else if (m.method === 'getAccountInfo') {
+              const info = await conn.getAccountInfo(pubkey);
+              result = info?.executable ?? false;
+            } else if (m.method === 'getProgramAccounts' && m.address) {
+              const programId = new PublicKey(m.address);
+              const accounts = await conn.getProgramAccounts(programId, {
+                filters: [{ memcmp: { offset: 8, bytes: singleInput } }],
+              });
+              result = accounts.length > 0;
             }
             console.log(`[checker] [${m.type}] "${m.description.slice(0,50)}" → raw: ${result}`);
             return evaluate(m.expression, { result, decimals }, m.lang || 'js');
