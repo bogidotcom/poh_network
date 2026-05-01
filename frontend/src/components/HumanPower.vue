@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import axios from 'axios'
+import BrainGraph from './BrainGraph.vue'
 import {
   Search, PlusSquare, Vote, ShieldCheck,
   Activity, Trash2, FileUp, SquareArrowDown, PersonStanding, FolderCode, CreditCard, Bitcoin
@@ -183,9 +184,29 @@ async function resolveToAddress(input) {
     throw new Error(`Could not resolve "${trimmed}" — SNS domain not found`)
   }
 
-  // Other ENS/Space ID domains
-  const res = await axios.get('https://nameapi.space.id/getAddress', { params: { domain: trimmed } })
-  if (res.data?.code === 0 && res.data.address) return res.data.address
+  // ENS / Space ID domains
+  try {
+    const res = await axios.get('https://nameapi.space.id/getAddress', { params: { domain: trimmed } })
+    if (res.data?.code === 0 && res.data.address) return res.data.address
+  } catch { /* fall through to ZNS */ }
+
+  // ZNS domains — API requires chain + domain params
+  const ZNS_TLD_CHAIN = {
+    ink: 57073, bnb: 56, base: 8453, blast: 81457, polygon: 137,
+    zora: 7777777, scroll: 534352, taiko: 167000, bera: 80094,
+    sonic: 146, kaia: 8217, abstract: 2741, defi: 130, unichain: 1301,
+    soneium: 1868, plume: 98865, hemi: 43111, xrpl: 1440002,
+  }
+  const tld = trimmed.split('.').pop()?.toLowerCase()
+  const onlyDomain = trimmed.split('.').slice(0, -1).join('.')
+
+  const znsChains = ZNS_TLD_CHAIN[tld] ? [ZNS_TLD_CHAIN[tld]] : Object.values(ZNS_TLD_CHAIN)
+  for (const chain of znsChains) {
+    try {
+      const res = await axios.get('https://zns.bio/api/resolveDomain', { params: { chain, domain: onlyDomain } })
+      if (res.data?.code === 200 && isWalletAddress(res.data.address)) return res.data.address
+    } catch { /* try next chain */ }
+  }
 
   throw new Error(`Could not resolve "${trimmed}" — not a valid address or domain`)
 }
@@ -867,12 +888,12 @@ onUnmounted(() => {
         <section class="problem-screen">
           <div class="problem-inner">
             <div class="problem-tag">THE PROBLEM</div>
-            <h2 class="problem-title">AI agents now mimic human behavior with <span class="problem-accent">99% accuracy.</span></h2>
+            <h2 class="problem-title">Soon, there will be more AI-agents, than <span class="problem-accent">people</span></h2>
             <blockquote class="problem-quote">
               "The company already has a lot more cybersecurity AI agents than people working on cybersecurity."
               <cite>— Jensen Huang, CEO of NVIDIA</cite>
             </blockquote>
-            <p class="problem-desc">Wallets, votes, and on-chain identities can no longer be trusted at face value. POH verifies humanity through evidence — not promises.</p>
+            <p class="problem-desc">Wallets, votes, and on-chain identities can no longer be trusted at face value. <br>POH verifies humanity through evidence — not promises.</p>
             <button class="neon-btn" @click="showSection('checker')">Scan a Wallet →</button>
           </div>
         </section>
@@ -903,7 +924,7 @@ onUnmounted(() => {
               <div class="how-step-title">AI Brain</div>
               <ul class="how-list">
                 <li>Multi-role Ollama pipeline — Evaluator, Learner, Compiler on separate models</li>
-                <li>Evaluator scores top 5 signals weighted by community stake, runs a second verification pass, learns from voter natural-language feedback</li>
+                <li>Evaluator scores signals weighted by community stake, runs a second verification pass, learns from voter natural-language feedback</li>
                 <li>Learner updates weights after every community vote (±0.05 max drift)</li>
                 <li>Compiler rewrites a compact brain state hourly — no hallucination, stats only</li>
               </ul>
@@ -1011,81 +1032,11 @@ onUnmounted(() => {
         <section class="net-section">
           <div style="margin-top: 10rem;" class="network-label">DETECTION NETWORK</div>
           <p class="net-subtitle">
-            {{ votingList.length || 9 }} active methods · signals flow to AI brain in real time
+            {{ votingList.length || '—' }} active methods · signals flow to AI brain in real time
           </p>
 
-          <div class="net-wrap">
-            <svg class="net-svg" viewBox="0 0 800 440" preserveAspectRatio="xMidYMid meet">
-              <defs>
-                <filter id="net-glow" x="-50%" y="-50%" width="200%" height="200%">
-                  <feGaussianBlur stdDeviation="5" result="b"/>
-                  <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-                </filter>
-                <filter id="net-glow-sm" x="-80%" y="-80%" width="260%" height="260%">
-                  <feGaussianBlur stdDeviation="2.5" result="b"/>
-                  <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-                </filter>
-              </defs>
+          <BrainGraph :methods="votingList" />
 
-              <!-- Method → Brain edges (flowing dashes) -->
-              <line
-                v-for="n in netNodes" :key="`edge-${n.id}`"
-                :x1="n.x" :y1="n.y" :x2="NET_CX" :y2="NET_CY"
-                :class="['net-edge', `net-edge--${n.type}`, { 'net-edge--active': netActiveId === n.id }]"
-                :style="{ animationDuration: netDuration(n.id) }"
-              />
-
-              <!-- Brain → verdict edges -->
-              <line :x1="NET_CX" :y1="NET_CY + 38" x2="272" y2="378"
-                class="net-verdict-edge net-verdict-edge--human" />
-              <line :x1="NET_CX" :y1="NET_CY + 38" x2="528" y2="378"
-                class="net-verdict-edge net-verdict-edge--bot" />
-
-              <!-- Method nodes -->
-              <g
-                v-for="n in netNodes" :key="n.id"
-                :transform="`translate(${n.x},${n.y})`"
-                :class="['net-ngroup', `net-ngroup--${n.type}`, { 'net-ngroup--active': netActiveId === n.id }]"
-              >
-                <circle r="9" class="net-node" />
-                <text y="21" text-anchor="middle" class="net-nlabel">{{ n.label }}</text>
-              </g>
-
-              <!-- AI Brain: outer g positions via SVG translate, inner g handles CSS scale animation -->
-              <g :transform="`translate(${NET_CX},${NET_CY})`">
-                <g :class="['net-brain-g', { 'net-brain-g--pulse': netBrainPulse }]">
-                  <circle r="46" class="net-brain-ring" />
-                  <circle r="35" class="net-brain-core" filter="url(#net-glow)" />
-                  <text y="-13" text-anchor="middle" class="net-brain-title">AI Brain</text>
-                  <!-- Role badges: E = Evaluator, L = Learner, C = Compiler -->
-                  <g transform="translate(-16,9)">
-                    <circle r="7.5" class="net-role net-role--eval" filter="url(#net-glow-sm)" />
-                    <text y="4" text-anchor="middle" class="net-role-lbl">E</text>
-                  </g>
-                  <g transform="translate(0,15)">
-                    <circle r="7.5" class="net-role net-role--learn" filter="url(#net-glow-sm)" />
-                    <text y="4" text-anchor="middle" class="net-role-lbl">L</text>
-                  </g>
-                  <g transform="translate(16,9)">
-                    <circle r="7.5" class="net-role net-role--comp" filter="url(#net-glow-sm)" />
-                    <text y="4" text-anchor="middle" class="net-role-lbl">C</text>
-                  </g>
-                </g>
-              </g>
-
-              <!-- Verdict output nodes -->
-              <g transform="translate(272,394)">
-                <rect x="-52" y="-18" width="104" height="34" rx="17" class="net-verdict net-verdict--human" />
-                <text y="5" text-anchor="middle" class="net-verdict-lbl">HUMAN</text>
-              </g>
-              <g transform="translate(528,394)">
-                <rect x="-40" y="-18" width="80" height="34" rx="17" class="net-verdict net-verdict--bot" />
-                <text y="5" text-anchor="middle" class="net-verdict-lbl">BOT</text>
-              </g>
-            </svg>
-          </div>
-
-          <!-- Legend -->
           <div class="net-legend">
             <div class="net-legend-group">
               <div class="nl-item"><span class="nl-dot nl-dot--evm"></span>EVM</div>
@@ -1094,7 +1045,7 @@ onUnmounted(() => {
             </div>
             <div class="nl-sep"></div>
             <div class="net-legend-group">
-              <div class="nl-item"><span class="nl-dot nl-dot--eval"></span>Evaluator · DeepSeek R1</div>
+              <div class="nl-item"><span class="nl-dot nl-dot--eval"></span>Evaluator · Qvac / DeepSeek</div>
               <div class="nl-item"><span class="nl-dot nl-dot--learn"></span>Learner · Qwen 2.5</div>
               <div class="nl-item"><span class="nl-dot nl-dot--comp"></span>Compiler · Mixtral</div>
             </div>
@@ -1660,23 +1611,32 @@ onUnmounted(() => {
         <div class="api-section">
           <div class="api-section-title">POST /checker</div>
           <div class="api-card">
-            <div class="api-desc">Scan one or more wallet addresses against all registered detection methods. Returns per-method results and a <code>brainKey</code> for async AI verdict polling.</div>
+            <div class="api-desc">Scan one or more wallet addresses against all registered detection methods. Single address → synchronous result with <code>brainKey</code>. Multiple addresses or CSV upload → async job with <code>jobId</code> to poll.</div>
             <div class="api-params">
               <div class="param-row"><code>input</code><span>string or array — wallet address(es) to scan</span></div>
               <div class="param-row"><code>walletAddress</code><span>your Solana wallet (for free tier tracking)</span></div>
               <div class="param-row"><code>apiKey</code><span>API key from your profile (alternative to walletAddress)</span></div>
               <div class="param-row"><code>txHash</code><span>POH burn transaction hash (required for paid scans)</span></div>
               <div class="param-row"><code>chainIds</code><span>comma-separated chain IDs to filter EVM methods (optional)</span></div>
-              <div class="param-row"><code>csv</code><span>multipart file upload — CSV with address column (batch mode)</span></div>
+              <div class="param-row"><code>csv</code><span>multipart file upload — CSV with address column (bulk mode)</span></div>
             </div>
             <div class="code-block">
-              <div class="code-lang">curl</div>
+              <div class="code-lang">curl — single</div>
               <pre class="code-pre">curl -X POST https://poh.assetux.com/checker \
   -H "Content-Type: application/json" \
   -d '{
     "input": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
     "apiKey": "your-api-key-here"
-  }'</pre>
+  }'
+# → { result: [...], brainKey, freeScansLeft }</pre>
+            </div>
+            <div class="code-block">
+              <div class="code-lang">curl — bulk (CSV)</div>
+              <pre class="code-pre">curl -X POST https://poh.assetux.com/checker \
+  -F "csv=@wallets.csv" \
+  -F "apiKey=your-api-key-here" \
+  -F "txHash=your-payment-tx"
+# → { jobId, status: "queued", total, pollUrl }</pre>
             </div>
             <div class="code-block">
               <div class="code-lang">JavaScript</div>
@@ -1689,6 +1649,36 @@ onUnmounted(() => {
   })
 })
 const { result, brainKey, freeScansLeft } = await res.json()</pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="api-section">
+          <div class="api-section-title">GET /checker/job/:jobId</div>
+          <div class="api-card">
+            <div class="api-desc">Poll the status of a bulk scan job. <code>jobId</code> is returned by POST /checker when more than one address is submitted. Jobs are retained for 2 hours after completion.</div>
+            <div class="api-params">
+              <div class="param-row"><code>status</code><span>queued | running | done</span></div>
+              <div class="param-row"><code>total</code><span>total addresses in the job</span></div>
+              <div class="param-row"><code>done</code><span>addresses processed so far</span></div>
+              <div class="param-row"><code>percent</code><span>completion percentage (0–100)</span></div>
+              <div class="param-row"><code>results</code><span>array of per-method scan results (grows incrementally)</span></div>
+              <div class="param-row"><code>errors</code><span>array of error messages for failed addresses</span></div>
+            </div>
+            <div class="code-block">
+              <div class="code-lang">JavaScript — poll until done</div>
+              <pre class="code-pre">const { jobId } = await fetch('/checker', { method: 'POST', ... }).then(r => r.json())
+
+async function pollJob(jobId) {
+  while (true) {
+    const job = await fetch(`/checker/job/${jobId}`).then(r => r.json())
+    console.log(`${job.percent}% — ${job.done}/${job.total}`)
+    if (job.status === 'done') return job.results
+    await new Promise(r => setTimeout(r, 3000))
+  }
+}
+
+const results = await pollJob(jobId)</pre>
             </div>
           </div>
         </div>
@@ -1899,10 +1889,10 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
 .problem-accent { color: #fff; }
 .problem-quote {
   border-left: 2px solid #222; margin: 0 0 2rem; padding: 1rem 1.5rem;
-  text-align: left; color: #555; font-style: italic; font-size: 0.95rem; line-height: 1.6;
+  text-align: left; color: #555; font-style: italic; font-size: 1.25rem; line-height: 1.6;
 }
 .problem-quote cite { display: block; margin-top: 0.5rem; font-style: normal; color: #333; font-size: 0.82rem; }
-.problem-desc { color: #444; font-size: 1rem; line-height: 1.7; margin-bottom: 2.5rem; }
+.problem-desc { color: #444; font-size: 1.25rem; line-height: 1.7; margin-bottom: 2.5rem; }
 
 /* ── Roadmap ──────────────────────────────────────────────────────────────── */
 .roadmap-section { padding: 5rem 0 6rem; border-top: 1px solid #111; }
@@ -1920,9 +1910,9 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
   background: #0d0d0d; flex-shrink: 0; margin-top: 3px;
 }
 .roadmap-active .roadmap-dot { border-color: #555; background: #1a1a1a; box-shadow: 0 0 6px #333; }
-.roadmap-date { font-size: 0.75rem; color: #444; font-family: 'JetBrains Mono', monospace; margin-bottom: 0.2rem; }
+.roadmap-date { font-size: 2rem; color: #444; font-family: 'JetBrains Mono', monospace; margin-bottom: 0.2rem; }
 .roadmap-active .roadmap-date { color: #888; }
-.roadmap-desc { font-size: 0.9rem; color: #333; }
+.roadmap-desc { font-size: 1.25rem; color: #333; padding: 5px 0px; }
 .roadmap-active .roadmap-desc { color: #666; }
 
 .landing-hero {
@@ -2183,7 +2173,13 @@ const { result, brainKey, freeScansLeft } = await res.json()</pre>
 
 /* ── Network visualization ───────────────────────────────────────────────── */
 .net-section {
+  width: 100vw;
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);
   margin-bottom: 3rem;
+  background: #000;
+  padding: 0 0 2rem;
 }
 
 .net-subtitle {

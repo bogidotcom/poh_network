@@ -32,6 +32,14 @@ const CHAIN_REGISTRY = {
   25:       'https://evm.cronos.org',                      // Cronos
   1666600000: 'https://api.harmony.one',                   // Harmony
   9001:     'https://eth.bd.evmos.org:8545',               // Evmos
+  // ── ZNS-supported chains (only those without RPC_* env coverage) ─────────
+  7777777:  'https://rpc.zora.energy',                     // Zora
+  98865:    'https://rpc.plumenetwork.xyz',                // Plume Mainnet
+  43111:    'https://rpc.hemi.network/rpc',                // Hemi Network
+  1440002:  'https://rpc-evm-sidechain.xrpl.org',         // XRPL EVM Sidechain
+  8217:     'https://public-en-cypress.klaytn.net',        // Kaia (ex-Klaytn)
+  999:      'https://rpc.hyperliquid.xyz/evm',             // Hyperliquid HyperEVM
+  7771:     'https://mainnet.coti.io/rpc',                 // Coti Network
 };
 
 /**
@@ -72,11 +80,14 @@ function toHexSelector(method, abiTypes = []) {
   return ethers.id(sig).slice(0, 10); // keccak256, take first 4 bytes
 }
 
-async function callContract(rpcUrl, address, hexMethod, abiTypes, returnTypes, params) {
+async function callContract(rpcUrl, address, hexMethod, abiTypes, returnTypes, params, chainId) {
   const { ethers } = require('ethers');
   hexMethod = toHexSelector(hexMethod, abiTypes);
 
-  const provider = new ethers.JsonRpcProvider(rpcUrl);
+  const network = chainId ? ethers.Network.from(Number(chainId)) : undefined;
+  const provider = network
+    ? new ethers.JsonRpcProvider(rpcUrl, network, { staticNetwork: network })
+    : new ethers.JsonRpcProvider(rpcUrl);
 
   // ABI-encode input params (empty if no params)
   let calldata = hexMethod;

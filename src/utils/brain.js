@@ -8,9 +8,14 @@ const path = require('path');
 // Override per-role via env. All default to OLLAMA_MODEL so it works out-of-box.
 const OLLAMA_URL       = process.env.OLLAMA_URL        || 'http://localhost:11434';
 const BASE_MODEL       = process.env.OLLAMA_MODEL      || 'llama3.2';
-const EVALUATOR_MODEL  = process.env.EVALUATOR_MODEL   || BASE_MODEL; // DeepSeek R1
+const EVALUATOR_MODEL  = process.env.EVALUATOR_MODEL   || BASE_MODEL; // DeepSeek R1 / Qvac
 const LEARNER_MODEL    = process.env.LEARNER_MODEL     || BASE_MODEL; // Qwen 2.5
 const COMPILER_MODEL   = process.env.COMPILER_MODEL    || BASE_MODEL; // Mixtral
+
+// ── Qvac config (OpenAI-compatible evaluator — set QVAC_URL to enable) ────────
+// Run: qvac serve openai --port 11435
+const QVAC_URL   = process.env.QVAC_URL   || null;
+const QVAC_MODEL = process.env.QVAC_MODEL || EVALUATOR_MODEL;
 
 const BRAIN_STATE_PATH = path.join(__dirname, '../../data/brain_state.md');
 const DATASET_PATH     = path.join(__dirname, '../../data/dataset.json');
@@ -22,6 +27,14 @@ let _ollamaQueue = Promise.resolve();
 function queueOllama(fn) {
   _ollamaQueue = _ollamaQueue.then(fn, fn);
   return _ollamaQueue;
+}
+
+// ── Qvac request queue (separate from Ollama — runs on different port) ────────
+let _qvacQueue = Promise.resolve();
+
+function queueQvac(fn) {
+  _qvacQueue = _qvacQueue.then(fn, fn);
+  return _qvacQueue;
 }
 
 // Kept for the analyzeHumanness busy-check (prevents stacking verdict requests)
@@ -114,90 +127,157 @@ async function ollamaChatJSON(prompt, requiredKeys, opts = {}) {
   return parsed;
 }
 
-// ── Stability suffix (appended to every evaluator prompt) ─────────────────────
+// ── Qvac chat (OpenAI-compatible, for Evaluator role) ────────────────────────
+
+let _qvacFailures = 0;
+const QVAC_CIRCUIT_OPEN_AFTER = 3;  // disable after this many consecutive failures
+let _qvacCircuitOpenAt = 0;         // timestamp when circuit opened (0 = closed)
+const QVAC_RETRY_AFTER_MS = 5 * 60 * 1000; // re-probe after 5 minutes
+
+async function qvacChat(prompt, { model = QVAC_MODEL, maxTokens = 512, timeLimit = 120000, jsonMode = false } = {}) {
+  // Circuit breaker: skip if too many recent failures; re-probe after cooldown
+  if (_qvacCircuitOpenAt) {
+    if (Date.now() - _qvacCircuitOpenAt < QVAC_RETRY_AFTER_MS) return null;
+    _qvacCircuitOpenAt = 0; // probe again
+  }
+
+  return queueQvac(async () => {
+    try {
+      const body = {
+        model,
+        messages: [
+          { role: 'system', content: 'You are a JSON-only responder. Output only valid JSON. No explanations, no markdown, no preamble.' },
+          { role: 'user', content: prompt + '\n/no_think' }, // suppresses Qwen3 chain-of-thought
+        ],
+        max_tokens: maxTokens,
+        temperature: 0.1,
+        stream: false,
+      };
+      const res = await axios.post(`${QVAC_URL}/v1/chat/completions`, body, { timeout: timeLimit });
+      _qvacFailures = 0; // reset on success
+      return res.data.choices?.[0]?.message?.content?.trim() || '';
+    } catch (err) {
+      _qvacFailures++;
+      if (_qvacFailures >= QVAC_CIRCUIT_OPEN_AFTER) {
+        _qvacCircuitOpenAt = Date.now();
+        console.warn(`[brain] Qvac circuit open after ${_qvacFailures} failures — will retry in 5 min`);
+      } else {
+        console.error('[brain] Qvac call failed:', err.message);
+      }
+      return null;
+    }
+  });
+}
+
+// ── Evaluator router — Qvac if configured, Ollama otherwise ──────────────────
+
+async function evaluatorChat(prompt, opts = {}) {
+  if (QVAC_URL) {
+    const result = await qvacChat(prompt, opts);
+    if (result !== null) return result;
+    if (!_qvacCircuitOpenAt) console.warn('[brain] Qvac unavailable — falling back to Ollama for evaluation');
+  }
+  return ollamaChat(prompt, { ...opts, model: EVALUATOR_MODEL });
+}
+
+async function evaluatorChatJSON(prompt, requiredKeys, opts = {}) {
+  const raw = await evaluatorChat(prompt, { ...opts, jsonMode: true });
+  let parsed = extractJSON(raw);
+
+  if (!parsed || requiredKeys.some(k => !(k in parsed))) {
+    console.warn('[brain] Evaluator invalid JSON, retrying... raw:', (raw || '').slice(0, 200));
+    const retry = await evaluatorChat(
+      `Output ONLY a JSON object with fields ${requiredKeys.join(', ')}. Example: {"verdict":"HUMAN","confidence":0.8,"reasoning":"x"}\n\nNow output JSON for this task:\n${prompt}`,
+      { ...opts, jsonMode: false }
+    );
+    console.warn('[brain] Retry raw:', (retry || '').slice(0, 200));
+    parsed = extractJSON(retry);
+  }
+
+  return parsed;
+}
+
 // ── 1. EVALUATOR — analyzeHumanness ──────────────────────────────────────────
 
 async function analyzeHumanness(address, methodResults, methods) {
-  if (ollamaBusy) {
+  if (!QVAC_URL && ollamaBusy) {
     console.log('[brain] Ollama busy — skipping verdict for', address);
     return { verdict: 'PENDING', confidence: 0, reasoning: 'Brain is busy, try again shortly' };
   }
 
   const weights = getWeights();
+  const usingQvac = QVAC_URL && !_qvacCircuitOpenAt;
 
-  // Top 5 signals by community score
-  const signals = methodResults
-    .slice()
-    .sort((a, b) => {
-      const sa = methods.find(m => m.id === a.methodId)?.score ?? 0;
-      const sb = methods.find(m => m.id === b.methodId)?.score ?? 0;
-      return Math.abs(sb) - Math.abs(sa);
-    })
-    .slice(0, 5)
-    .map(r => {
-      const m = methods.find(m => m.id === r.methodId);
-      return {
-        name: r.description,
-        result: r.result,
-        community_score: m?.score ?? 0,
-        weight: weights[r.methodId] ?? 1.0
-      };
-    });
+  // Qvac 600M has ~2k token context — keep prompt tiny
+  // Ollama: all passed + top-10 failed; Qvac: top-4 passed + top-4 failed
+  const passed = methodResults
+    .filter(r => r.result === true)
+    .sort((a, b) => (weights[b.methodId] ?? 1) - (weights[a.methodId] ?? 1))
+    .slice(0, usingQvac ? 4 : Infinity);
+  const failed = methodResults
+    .filter(r => r.result === false)
+    .sort((a, b) => (weights[b.methodId] ?? 1) - (weights[a.methodId] ?? 1))
+    .slice(0, usingQvac ? 4 : 10);
 
-  const methodWeightsStr = signals
-    .map(s => `  "${s.name}": ${s.weight}`)
-    .join(',\n');
+  const signals = [...passed, ...failed].map(r => ({
+    name: r.description,
+    pass: r.result,
+    w: +(weights[r.methodId] ?? 1.0).toFixed(2),
+  }));
 
-  const signalsStr = JSON.stringify(signals, null, 2);
+  const signalsStr = signals
+    .map(s => `[${s.pass ? 'PASS' : 'FAIL'}] ${s.name} (w:${s.w})`)
+    .join('\n');
 
-  const prompt = `You are a signal evaluation engine for a Proof of Human system.
-Analyze the signals below and decide if wallet ${address} is human or bot.
+  const prompt = `Proof of Human evaluator. Is wallet ${address} HUMAN, AI, or UNCERTAIN?
 
-Signals:
+Signals (${passed.length} passed, ${failed.length} failed shown):
 ${signalsStr}
 
-Method weights:
-{
-${methodWeightsStr}
-}
+Return ONLY valid JSON:
+{"verdict":"HUMAN","confidence":0.72,"reasoning":"brief"}`;
 
-Rules:
-- Only use the signals provided. Do not guess.
-- If signals conflict or are too weak, use verdict UNCERTAIN.
-- confidence must be between 0.0 and 1.0.
-- reasoning must explain which signals drove the decision and why.
+  const backend = usingQvac ? 'Qvac' : 'Ollama';
+  console.log(`[brain] Evaluating ${address} via ${backend}`);
 
-Return a single JSON object. Example of correct output:
-{"verdict":"HUMAN","confidence":0.72,"reasoning":"3 of 5 signals passed including high-weight on-chain activity. One conflict on REST endpoint reduced confidence."}
-
-Now return the JSON for wallet ${address}:`;
-
-  const result = await ollamaChatJSON(
+  const result = await evaluatorChatJSON(
     prompt,
     ['verdict', 'confidence', 'reasoning'],
-    { model: EVALUATOR_MODEL, maxTokens: 400, timeLimit: 40000 }
+    { maxTokens: 256, timeLimit: usingQvac ? 120000 : 40000 }
   );
 
-  if (!result) return { verdict: 'UNKNOWN', confidence: 0, reasoning: 'Brain offline or invalid output' };
+  if (!result) {
+    // Heuristic fallback: score by pass ratio weighted by method weights
+    const totalW = signals.reduce((s, x) => s + x.w, 0) || 1;
+    const passW  = signals.filter(x => x.pass).reduce((s, x) => s + x.w, 0);
+    const ratio  = passW / totalW;
+    return {
+      verdict:    ratio >= 0.55 ? 'HUMAN' : ratio <= 0.35 ? 'AI' : 'UNCERTAIN',
+      confidence: Math.round(Math.abs(ratio - 0.5) * 2 * 100) / 100,
+      reasoning:  `Heuristic fallback: ${signals.filter(x => x.pass).length}/${signals.length} signals passed`,
+    };
+  }
 
-  // ── Double-pass verification ──────────────────────────────────────────────
-  const verifyPrompt = `Review this wallet verdict and correct it if wrong.
+  // Double-pass verification — skip for Qvac (small model, no concurrent jobs)
+  let final = result;
+  if (!usingQvac) {
+    const verifyPrompt = `Review and correct this verdict if wrong.
 
 Wallet: ${address}
-Signals: ${signalsStr}
-Previous verdict: ${JSON.stringify(result)}
+Signals:
+${signalsStr}
+Previous: ${JSON.stringify(result)}
 
-Is the verdict consistent with the signals? Is confidence justified?
-Return the final JSON verdict (same format, corrected if needed):
-{"verdict":"HUMAN or AI or UNCERTAIN","confidence":0.0_to_1.0,"reasoning":"actual explanation of what the signals showed"}`;
+Return corrected JSON only:
+{"verdict":"HUMAN or AI or UNCERTAIN","confidence":0.0_to_1.0,"reasoning":"explanation"}`;
 
-  const verified = await ollamaChatJSON(
-    verifyPrompt,
-    ['verdict', 'confidence', 'reasoning'],
-    { model: EVALUATOR_MODEL, maxTokens: 400, timeLimit: 30000 }
-  );
-
-  const final = verified || result;
+    const verified = await evaluatorChatJSON(
+      verifyPrompt,
+      ['verdict', 'confidence', 'reasoning'],
+      { maxTokens: 400, timeLimit: 30000 }
+    );
+    final = verified || result;
+  }
 
   return {
     verdict: (final.verdict || 'UNKNOWN').toUpperCase(),
@@ -289,10 +369,10 @@ OUTPUT (STRICT JSON):
   "assessment": "one sentence"
 }`;
 
-  const result = await ollamaChatJSON(
+  const result = await evaluatorChatJSON(
     prompt,
     ['useful', 'assessment'],
-    { model: EVALUATOR_MODEL, maxTokens: 250, timeLimit: 30000 }
+    { maxTokens: 250, timeLimit: 30000 }
   );
 
   const assessment = result?.assessment || '(no assessment)';
@@ -401,10 +481,10 @@ Reply with ONLY this JSON:
 or
 {"valid": false, "reason": "one sentence explaining what's wrong"}`;
 
-  const result = await ollamaChatJSON(
+  const result = await evaluatorChatJSON(
     prompt,
     ['valid', 'reason'],
-    { model: EVALUATOR_MODEL, maxTokens: 80, timeLimit: 20000 }
+    { maxTokens: 80, timeLimit: 20000 }
   );
   return result || { valid: false, reason: 'Validation unavailable — try again shortly' };
 }

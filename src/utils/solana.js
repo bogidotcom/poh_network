@@ -234,7 +234,11 @@ async function sendPohTokens(toAddress, amountRaw) {
   const { Keypair, Transaction, sendAndConfirmTransaction } = require('@solana/web3.js');
   const { createTransferInstruction, getOrCreateAssociatedTokenAccount } = require('@solana/spl-token');
 
-  const payer = Keypair.fromSecretKey(bs58decode(privKeyB58));
+  // Accept 64-byte hex (128 chars) or base58 encoded private key
+  const secretKey = /^[0-9a-fA-F]{128}$/.test(privKeyB58)
+    ? Buffer.from(privKeyB58, 'hex')
+    : bs58decode(privKeyB58);
+  const payer = Keypair.fromSecretKey(secretKey);
   const mint = new PublicKey(process.env.POH_TOKEN_MINT);
   const toPubkey = new PublicKey(toAddress);
 

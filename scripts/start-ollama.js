@@ -3,7 +3,7 @@
 const { spawn } = require('child_process');
 const http = require('http');
 
-const PORT = parseInt(process.env.OLLAMA_PORT || '11435', 10);
+const PORT = parseInt(process.env.OLLAMA_PORT || '11434', 10);
 const MODEL = process.env.OLLAMA_MODEL || 'llama3.2';
 
 function isRunning() {

@@ -27,7 +27,7 @@ function go(section, extra) {
         <Search :size="14" class="icon" /> Scan
       </button>
       <button :class="['nav-btn', { active: current === 'listing'  }]" @click="go('listing')">
-        <PlusSquare :size="14" class="icon" /> List
+        <PlusSquare :size="14" class="icon" /> Train
       </button>
       <button :class="['nav-btn', { active: current === 'votes'    }]" @click="go('votes', 'load')">
         <Vote :size="14" class="icon" /> Vote
@@ -68,7 +68,7 @@ function go(section, extra) {
     <div class="mobile-menu-inner">
       <button :class="['mobile-nav-btn', { active: current === 'landing'  }]" @click="go('landing')">POH</button>
       <button :class="['mobile-nav-btn', { active: current === 'checker'  }]" @click="go('checker')">Scan</button>
-      <button :class="['mobile-nav-btn', { active: current === 'listing'  }]" @click="go('listing')">List</button>
+      <button :class="['mobile-nav-btn', { active: current === 'listing'  }]" @click="go('listing')">Train</button>
       <button :class="['mobile-nav-btn', { active: current === 'votes'    }]" @click="go('votes', 'load')">Vote</button>
       <button :class="['mobile-nav-btn', { active: current === 'api'      }]" @click="go('api')">API</button>
       <button :class="['mobile-nav-btn', { active: current === 'staking'  }]" @click="go('staking')">Stake</button>

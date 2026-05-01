@@ -7,9 +7,14 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "start:all": "node scripts/launch.js prod",
-    "dev:all": "node scripts/launch.js dev"
+    "dev:all": "node scripts/launch.js dev",
+    "qvac": "node scripts/start-qvac.js",
+    "start:qvac": "node scripts/start-qvac.js",
+    "test": "node tests/jobQueue.test.js",
+    "deploy": "bash scripts/deploy.sh"
   },
   "dependencies": {
+    "@qvac/sdk": "^0.9.1",
     "@solana/spl-token": "^0.4.14",
     "@solana/web3.js": "^1.98.4",
     "axios": "^1.6.8",

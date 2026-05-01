@@ -123,21 +123,21 @@ router.post('/claim', async (req, res, next) => {
     const p = getProfile(address);
     if (!p) return res.status(404).json({ error: 'Profile not found' });
 
-    // Claimable = sum of pendingWithdrawal across owned methods (authoritative source)
     const methods = getMethods().filter(m => m.ownerWallet === address);
     const rewards  = getRewards();
-    const claimable = methods.reduce((s, m) => s + (rewards[m.id]?.pendingWithdrawal || 0), 0);
+    const fromScanEarnings = methods.reduce((s, m) => s + (rewards[m.id]?.pendingWithdrawal || 0), 0);
+    const fromOffchainBalance = p.balance || 0;
+    const claimable = fromScanEarnings + fromOffchainBalance;
 
-    if (claimable <= 0) return res.status(400).json({ error: 'No scan earnings to claim' });
+    if (claimable <= 0) return res.status(400).json({ error: 'Nothing to claim' });
 
     const txHash = await sendPohTokens(address, claimable);
 
-    // Zero out pending withdrawals and sync profile balance
     for (const m of methods) {
       if (rewards[m.id]) rewards[m.id].pendingWithdrawal = 0;
     }
     saveRewards(rewards);
-    upsertProfile(address, { balance: Math.max(0, (p.balance || 0) - claimable) });
+    upsertProfile(address, { balance: 0 });
 
     console.log(`[profile] Claimed ${claimable / 1_000_000} POH → ${address} tx: ${txHash}`);
     res.json({ success: true, claimed: claimable, txHash });

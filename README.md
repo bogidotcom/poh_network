@@ -44,6 +44,7 @@ poh/dev/
 │   │   └── evaluator.js       Multi-language expression sandbox (JS/Go/Rust/PHP/Java)
 │   └── utils/
 │       ├── brain.js           Multi-role AI brain (Evaluator · Learner · Compiler)
+│       ├── jobQueue.js        Async job queue — bulk scans, 2 concurrent jobs, 5 wallets/batch
 │       ├── scheduler.js       Hourly brain consolidation via node-cron
 │       ├── redis.js           Response cache (falls back to in-memory)
 │       ├── solana.js          Solana RPC helpers (balance, SPL token, burn verify)
@@ -58,7 +59,8 @@ poh/dev/
 │   └── brain_state.md         Compiler output — compact system summary (updated hourly)
 └── scripts/
     ├── launch.js              Orchestrator: Redis · Ollama · backend · frontend
-    └── start-ollama.js        Ensures dedicated Ollama instance on :11435
+    ├── start-ollama.js        Ensures dedicated Ollama instance on :11434
+    └── start-qvac.js          Ensures Qvac OpenAI-compatible server on :11435
 ```
 
 ---
@@ -66,19 +68,51 @@ poh/dev/
 ## Core APIs
 
 ### `POST /checker`
-Scans a wallet against all registered methods in parallel.
+Scans one or more wallet addresses against all registered methods.
 
 | Field | Description |
 |---|---|
-| `input` | EVM address, Solana base58 address, Space ID name (`.eth`, `.bnb`…), or CSV upload |
-| `walletAddress` | Connected wallet (for burn verification) |
-| `txHash` | POH burn transaction hash |
-| `chainIds` | Optional chain filter, e.g. `1,56` |
+| `input` | EVM address, Solana base58, ZNS domain (`.eth`, `.bnb`, `.defi`…), or array |
+| `walletAddress` | Connected wallet (for free-tier tracking) |
+| `apiKey` | API key from profile (alternative to `walletAddress`) |
+| `txHash` | POH burn transaction hash (required for paid scans) |
+| `chainIds` | Optional EVM chain filter, e.g. `1,56` |
+| `csv` | Multipart CSV upload with `address` column (bulk mode) |
 
-Returns `{ result, count, brainKey }`. Poll `brainKey` for the AI verdict.
+**Single address** → synchronous `{ result, count, brainKey, freeScansLeft }`.  
+**Multiple addresses / CSV** → async `{ jobId, status: "queued", total, pollUrl }`.
 
-**`GET /checker/brain/:key`**  
-Poll for the async brain verdict after a scan. Returns:
+### `GET /checker/job/:jobId`
+Poll the status of a bulk scan job. Retained for 2 hours after completion.
+
+```json
+{
+  "jobId": "...",
+  "status": "queued | running | done",
+  "total": 1000,
+  "done": 423,
+  "percent": 42,
+  "results": [...],
+  "errors": [...]
+}
+```
+
+**Concurrency limits:** 2 jobs run simultaneously; within each job, 5 wallets are processed in parallel. Up to 10 concurrent API requests map onto 2 running jobs — additional jobs queue automatically.
+
+```js
+// Poll until complete
+async function pollJob(jobId) {
+  while (true) {
+    const job = await fetch(`/checker/job/${jobId}`).then(r => r.json())
+    if (job.status === 'done') return job.results
+    await new Promise(r => setTimeout(r, 3000))
+  }
+}
+```
+
+### `GET /checker/brain/:key`
+Poll for the async AI verdict after a single-wallet scan. `brainKey` is returned by `POST /checker`.
+
 ```json
 {
   "status": "done",
@@ -132,11 +166,28 @@ ollama pull mixtral
 ### Role 1 — Evaluator (`analyzeHumanness`)
 Called after every scan. Uses strict signal interpretation — no free-form guessing.
 
-- Takes top 5 signals by community score + per-method weights from `weights.json`
+- Sends all passing signals + the top-10 failing signals by weight (compact format)
 - Scores each signal contribution, detects conflicts between signals
 - If signals are weak or conflicting → outputs `UNCERTAIN` instead of a false positive
 - Runs a **second verification pass** after the first: checks for overconfidence (>0.85 needs strong multi-signal support) and ignored weights
 - Appends `"You will be evaluated for consistency. Different outputs for similar inputs are considered failure."` to every prompt — stabilises weaker open models
+
+**Optional: accelerate with Qvac**  
+The Evaluator natively integrates with [Qvac](https://qvac.tether.io) — an on-device OpenAI-compatible inference server by Tether. When `QVAC_URL` is set, small quantised models (Qwen3 600M) run locally for faster verdicts with a heuristic fallback if JSON parsing fails. Ollama is used automatically when `QVAC_URL` is unset.
+
+```bash
+# Install Qvac CLI and SDK globally
+npm install -g @qvac/cli @qvac/sdk
+
+# Start the evaluator model (runs on :11435)
+yarn qvac
+
+# then in .env:
+QVAC_URL=http://localhost:11435
+QVAC_MODEL=evaluator
+```
+
+Model config lives in `qvac.config.json` at the project root. The Evaluator sends `POST /v1/chat/completions` — any OpenAI-compatible server works (LM Studio, llama.cpp ≥ b3670, Ollama with `/v1` prefix).
 
 **Output schema:**
 ```json
@@ -168,10 +219,12 @@ Runs hourly via scheduler. Rewrites `data/brain_state.md`.
 Called when a listing is submitted. Evaluates signal quality and edge-case risk (`none | low | medium | high`). Result is appended to `brain_state.md`.
 
 ### JSON contract enforcement
-All brain calls use `ollamaChatJSON()`:
+All brain calls use `evaluatorChatJSON()` / `ollamaChatJSON()`:
 1. Extracts the first `{...}` block from model output
 2. Validates required fields are present
 3. On failure, retries once with: `"Your previous output was invalid. Fix format only."`
+
+Qvac path additionally sets `response_format: { type: "json_object" }` for native JSON mode — eliminates the need for regex extraction on capable models.
 
 ---
 
@@ -245,15 +298,20 @@ ALCHEMY_KEY=<Alchemy API key>
 RPC_1=https://eth-mainnet.g.alchemy.com/v2/<key>
 RPC_56=...        # RPC_{chainId} for any additional EVM chain
 
-# Ollama — base model (fallback for all roles if role-specific vars not set)
-OLLAMA_URL=http://localhost:11435
+# Ollama — Learner + Compiler roles
+OLLAMA_URL=http://localhost:11434
 OLLAMA_MODEL=llama3.2
 
-# Brain roles — override per role with a different model
-# Recommended: DeepSeek R1 (evaluator), Qwen 2.5 (learner), Mixtral (compiler)
-EVALUATOR_MODEL=deepseek-r1:1.5b
+# Brain role models
 LEARNER_MODEL=qwen2.5:1.5b
-COMPILER_MODEL=mixtral
+COMPILER_MODEL=llama3.2
+
+# Evaluator role — Qvac / OpenAI-compatible server (optional, faster verdicts)
+# Leave QVAC_URL unset to fall back to Ollama for the Evaluator role.
+# Any OpenAI-compatible server works: llama.cpp, LM Studio, Ollama /v1, etc.
+# QVAC_URL=http://localhost:11435
+# QVAC_MODEL=deepseek-r1-distill-qwen-1.5b-q8_0
+EVALUATOR_MODEL=deepseek-r1:1.5b   # used by Ollama fallback
 
 # Cache
 REDIS_URL=redis://localhost:6379
@@ -287,7 +345,8 @@ Token utility: scan fee payment · stake-weighted voting · method reward distri
 |---|---|
 | Backend | Node.js · Express · ethers.js v6 · @solana/web3.js |
 | Frontend | Vue 3 · Vite · Lucide icons |
-| AI | Ollama — local, multi-role (Evaluator · Learner · Compiler) |
+| AI (Evaluator) | Qvac / llama.cpp / LM Studio — any OpenAI-compatible server; falls back to Ollama |
+| AI (Learner · Compiler) | Ollama — local inference |
 | Cache | Redis (in-memory fallback) |
 | Scheduler | node-cron (hourly brain consolidation) |
 | Wallet | Phantom · Solflare (Solana) |

@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * launch.js — kills any existing POH processes, starts Redis + Ollama,
+ * launch.js — kills any existing POH processes, starts Redis + Ollama + Qvac (optional),
  * then launches backend + frontend via concurrently.
  *
  * Usage:
@@ -9,6 +9,7 @@
  *   node scripts/launch.js prod  → node + vite preview (or just node)
  */
 
+require('dotenv').config();
 const { execSync, spawn } = require('child_process');
 const net = require('net');
 
@@ -83,22 +84,51 @@ async function ensureRedis() {
 }
 
 async function ensureOllama() {
-  if (await isPortOpen(11435)) {
-    log('Ollama already running on :11435');
+  if (await isPortOpen(11434)) {
+    log('Ollama already running on :11434');
     return;
   }
-  log('Starting Ollama on port 11435...');
+  log('Starting Ollama on port 11434...');
   const ollamaProc = spawn('ollama', ['serve'], {
-    env: { ...process.env, OLLAMA_HOST: '0.0.0.0:11435' },
+    env: { ...process.env, OLLAMA_HOST: '0.0.0.0:11434' },
     stdio: 'ignore',
     detached: true,
   });
   ollamaProc.unref();
   for (let i = 0; i < 20; i++) {
     await sleep(1000);
-    if (await isPortOpen(11435)) { log('Ollama started.'); return; }
+    if (await isPortOpen(11434)) { log('Ollama started.'); return; }
   }
   log('WARNING: Ollama did not start within 20s — brain will be offline');
+}
+
+async function ensureQvac() {
+  if (!process.env.QVAC_URL) return; // not configured — skip silently
+
+  const port = parseInt((process.env.QVAC_URL || '').split(':').pop() || '11435', 10);
+  if (await isPortOpen(port)) {
+    log(`Qvac already running on :${port}`);
+    return;
+  }
+
+  const path = require('path');
+  const configPath = path.join(__dirname, '..', 'qvac.config.json');
+  if (!require('fs').existsSync(configPath)) {
+    log('WARNING: qvac.config.json not found — Evaluator will fall back to Ollama');
+    return;
+  }
+
+  const args = ['serve', 'openai', '--port', String(port), '--host', '127.0.0.1', '--config', configPath, '--model', 'evaluator'];
+  log(`Starting Qvac on :${port}...`);
+  const proc = spawn('qvac', args, { stdio: 'ignore', detached: true, cwd: path.join(__dirname, '..') });
+  proc.unref();
+  proc.on('error', () => log('WARNING: qvac binary not found — run: npm install -g @qvac/cli'));
+
+  for (let i = 0; i < 60; i++) {
+    await sleep(1000);
+    if (await isPortOpen(port)) { log('Qvac started.'); return; }
+  }
+  log('WARNING: Qvac did not start within 60s — Evaluator will fall back to Ollama');
 }
 
 function killExisting() {
@@ -118,6 +148,7 @@ async function main() {
 
   await ensureRedis();
   await ensureOllama();
+  await ensureQvac();
 
   const backendCmd = mode === 'dev'
     ? 'npx nodemon src/server.js'

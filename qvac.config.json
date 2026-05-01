@@ -1,0 +1,11 @@
+{
+  "serve": {
+    "models": {
+      "evaluator": {
+        "model": "QWEN3_600M_INST_Q4",
+        "default": true,
+        "preload": true
+      }
+    }
+  }
+}
