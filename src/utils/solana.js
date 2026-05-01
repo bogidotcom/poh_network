@@ -254,4 +254,20 @@ async function sendPohTokens(toAddress, amountRaw) {
   return sendAndConfirmTransaction(connection, tx, [payer], { commitment: 'confirmed' });
 }
 
-module.exports = { verifySolPayment, verifyTxSuccess, verifyPohTransfer, getVoteTokenStake, getSolBalance, getVoteBalance, verifyBurnTransaction, getAllStakers, sendPohTokens };
+// Verify a Solana wallet signed a specific message.
+// Signature and public key are expected as base58 strings.
+function verifyWalletSignature(message, signatureB58, walletAddress) {
+  try {
+    const nacl   = require('tweetnacl');
+    const _bs58  = require('bs58');
+    const decode = (_bs58.default || _bs58).decode;
+    const msgBytes = Buffer.from(message, 'utf8');
+    const sigBytes = decode(signatureB58);
+    const pubBytes = decode(walletAddress);
+    return nacl.sign.detached.verify(msgBytes, sigBytes, pubBytes);
+  } catch {
+    return false;
+  }
+}
+
+module.exports = { verifySolPayment, verifyTxSuccess, verifyPohTransfer, getVoteTokenStake, getSolBalance, getVoteBalance, verifyBurnTransaction, getAllStakers, sendPohTokens, verifyWalletSignature };

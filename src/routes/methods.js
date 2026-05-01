@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const { parse } = require('csv-parse/sync');
-const { getVoteTokenStake, verifyTxSuccess } = require('../utils/solana');
+const { getVoteTokenStake, verifyWalletSignature } = require('../utils/solana');
 const { recordVote, getMyVotes, hasVoted, isTxUsed, recordTx } = require('../utils/profiles');
 const brain = require('../utils/brain');
 
@@ -143,27 +143,38 @@ router.get('/verifyer', (req, res) => {
  */
 router.post('/verifyer/vote', async (req, res, next) => {
   try {
-    const { methodId, type, vote, walletAddress, txHash, feedback } = req.body;
+    const { methodId, type, vote, walletAddress, signature, message, feedback } = req.body;
     // type: 'description' | 'method' | 'risk'
     // vote: true | false
-    // feedback: optional natural-language reasoning from the voter
+    // signature: base58 wallet signature over `message`
+    // message: "poh-vote-v1:{methodId}:{vote}:{type}:{walletAddress}:{timestamp}"
 
     if (!walletAddress) return res.status(400).json({ error: 'walletAddress required' });
-    if (!txHash)        return res.status(400).json({ error: 'txHash required' });
+    if (!signature || !message) return res.status(400).json({ error: 'signature and message required' });
 
-    // Prevent replaying a txHash that was already accepted for any action
-    if (isTxUsed(txHash)) return res.status(409).json({ error: 'Transaction already used' });
+    // Verify the wallet actually signed this exact message
+    if (!verifyWalletSignature(message, signature, walletAddress))
+      return res.status(401).json({ error: 'Invalid signature' });
 
-    const isConfirmed = await verifyTxSuccess(txHash);
-    if (!isConfirmed) return res.status(402).json({ error: 'Transaction not confirmed' });
+    // Validate message binds to this request (prevents swapping vote/method after signing)
+    const expected = `poh-vote-v1:${methodId}:${vote}:${type || 'method'}:${walletAddress}:`;
+    if (!message.startsWith(expected))
+      return res.status(400).json({ error: 'Message does not match request' });
+
+    // Reject messages older than 5 minutes
+    const ts = parseInt(message.split(':').pop(), 10);
+    if (!ts || Date.now() - ts > 5 * 60 * 1000)
+      return res.status(400).json({ error: 'Message expired' });
+
+    // Prevent signature replay
+    if (isTxUsed(signature)) return res.status(409).json({ error: 'Signature already used' });
 
     const methods = getMethods();
     const method = methods.find(m => m.id === methodId);
     if (!method) return res.status(404).json({ error: 'Method not found' });
 
-    if (hasVoted(walletAddress, methodId)) {
+    if (hasVoted(walletAddress, methodId))
       return res.status(409).json({ error: 'Already voted on this method' });
-    }
 
     const stakeWeight = await getVoteTokenStake(walletAddress);
     // Scale impact: base 1 + stake fraction * 9 → range [1, 10]
@@ -178,7 +189,7 @@ router.post('/verifyer/vote', async (req, res, next) => {
 
     saveMethods(methods);
 
-    recordTx(txHash, { action: 'vote', wallet: walletAddress, methodId });
+    recordTx(signature, { action: 'vote', wallet: walletAddress, methodId });
     recordVote(walletAddress, methodId, vote);
 
     appendToDataset({

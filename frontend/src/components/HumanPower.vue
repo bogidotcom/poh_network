@@ -458,19 +458,18 @@ const loadVoting = async () => {
 const castVote = async (voteVal) => {
   if (voteVal === 'skip') { voteIndex.value++; voteFeedback.value = ''; return }
   if (!connected.value) { error.value = 'Connect wallet to vote'; return }
+  if (!walletProvider.value) { error.value = 'Wallet provider not ready'; return }
   voteSubmitting.value = true
   try {
-    const tx = new Transaction().add(
-      SystemProgram.transfer({
-        fromPubkey: new PublicKey(walletAddress.value),
-        toPubkey: new PublicKey(FEE_RECIPIENT.value || walletAddress.value),
-        lamports: 1000,
-      })
-    )
-    const txHash = await signAndSendTransaction(tx)
+    const type     = 'method'
+    const methodId = currentVoteItem.value.id
+    const message  = `poh-vote-v1:${methodId}:${voteVal}:${type}:${walletAddress.value}:${Date.now()}`
+    const { signature } = await walletProvider.value.signMessage(new TextEncoder().encode(message), 'utf8')
+    const sig58 = encodeBase58(signature)
     await axios.post('/methods/verifyer/vote', {
-      methodId: currentVoteItem.value.id, vote: voteVal, type: 'method',
-      walletAddress: walletAddress.value, txHash,
+      methodId, vote: voteVal, type,
+      walletAddress: walletAddress.value,
+      signature: sig58, message,
       feedback: voteFeedback.value.trim() || undefined,
     })
     voteFeedback.value = ''
@@ -1065,28 +1064,44 @@ onUnmounted(() => {
             <div class="roadmap-item roadmap-active">
               <div class="roadmap-dot"></div>
               <div class="roadmap-content">
-                <div class="roadmap-date">May 2026</div>
-                <div class="roadmap-desc">Devnet public launch · Colosseum Hackathon submission</div>
+                <div class="roadmap-date">Apr-May 2026</div>
+                <div class="roadmap-desc">Devnet public launch</div>
+                <div class="roadmap-desc">Colosseum Hackathon submission</div>
                 <div class="roadmap-desc">Data providers onboarding</div>
               </div>
             </div>
             <div class="roadmap-item">
               <div class="roadmap-dot"></div>
               <div class="roadmap-content">
-                <div class="roadmap-date">May-June 2026</div>
+                <div class="roadmap-date">May-Jun 2026</div>
+                <div class="roadmap-desc">Quantum Resistant </div>
                 <div class="roadmap-desc">POH token launch (date TBA)</div>
               </div>
             </div>
             <div class="roadmap-item">
               <div class="roadmap-dot"></div>
               <div class="roadmap-content">
-                <div class="roadmap-date">June-July 2026</div>
-                <div class="roadmap-desc">Visual analytics powered by charts & behavioral data mapping</div>
-                <div class="roadmap-desc">Trading pair analysis to identify fake liquidity and real market activity</div>
+                <div class="roadmap-date">Jun-Jul 2026</div>
                 <div class="roadmap-desc">Multi-chain support across Bitcoin, Litecoin, and Tron</div>
               </div>
             </div>
-              
+
+            <div class="roadmap-item">
+              <div class="roadmap-dot"></div>
+              <div class="roadmap-content">
+                <div class="roadmap-date">Jul-Aug 2026</div>
+                <div class="roadmap-desc">Trading pair analysis to identify fake liquidity and real market activity</div>
+              </div>
+            </div>
+            
+            <div class="roadmap-item">
+              <div class="roadmap-dot"></div>
+              <div class="roadmap-content">
+                <div class="roadmap-date">Aug-Sep 2026</div>
+                <div class="roadmap-desc">Visual analytics powered by charts & behavioral data mapping</div>
+              </div>
+            </div>
+
             <div class="roadmap-item">
               <div class="roadmap-dot"></div>
               <div class="roadmap-content">
