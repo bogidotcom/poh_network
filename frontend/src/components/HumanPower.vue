@@ -763,6 +763,12 @@ function goTo (url) {
   window.open(url, '_blank')
 }
 
+function autoExpand(e) {
+  const el = e.target
+  el.style.height = 'auto'
+  el.style.height = el.scrollHeight + 'px'
+}
+
 watch(walletAddress, (addr) => {
   if (addr && POH_MINT.value) loadPohBalance()
   if (addr) loadProfile()
@@ -1360,7 +1366,7 @@ onUnmounted(() => {
         <div class="form-section">
           <div class="form-label-row"><span class="form-section-label">Description</span></div>
           <div class="input-group">
-            <textarea v-model="listing.description" placeholder="What does this method detect? What constitutes human evidence?" class="premium-textarea" rows="2"></textarea>
+            <textarea v-model="listing.description" placeholder="What does this method detect? What constitutes human evidence?" class="premium-textarea" rows="2" @input="autoExpand"></textarea>
             <div class="listing-fee-row">
               <span class="listing-fee-label">Listing fee: <strong>1000 POH</strong></span>
               <span class="listing-fee-balance" :class="{ insufficient: pohBalance < 1000 }">
@@ -1430,6 +1436,7 @@ onUnmounted(() => {
               placeholder="Optional: explain your reasoning to help the AI learn…"
               rows="2"
               maxlength="200"
+              @input="autoExpand"
             ></textarea>
 
             <div class="vcs-actions">
@@ -2826,6 +2833,7 @@ const results = await pollJob(jobId)</pre>
   font-family: inherit;
   padding: 0.5rem 0.65rem;
   resize: none;
+  overflow: hidden;
   outline: none;
   box-sizing: border-box;
   transition: border-color 0.2s;
@@ -3137,7 +3145,8 @@ const results = await pollJob(jobId)</pre>
 
 .premium-textarea {
   min-height: 80px;
-  resize: vertical;
+  resize: none;
+  overflow: hidden;
   line-height: 1.55;
 }
 
