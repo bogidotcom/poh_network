@@ -234,8 +234,8 @@ async function analyzeHumanness(address, methodResults, methods) {
 Signals (${passed.length} passed, ${failed.length} failed shown):
 ${signalsStr}
 
-Return ONLY valid JSON:
-{"verdict":"HUMAN","confidence":0.72,"reasoning":"brief"}`;
+Return ONLY valid JSON with verdict HUMAN|AI|UNCERTAIN, confidence 0.0-1.0, and reasoning:
+{"verdict":"...","confidence":0.0,"reasoning":"..."}`;
 
   const backend = usingQvac ? 'Qvac' : 'Ollama';
   console.log(`[brain] Evaluating ${address} via ${backend}`);
@@ -489,4 +489,27 @@ or
   return result || { valid: false, reason: 'Validation unavailable — try again shortly' };
 }
 
-module.exports = { analyzeHumanness, onNewMethod, onVote, consolidate, getWeights, validateDescription };
+// ── 6. validateFeedback ───────────────────────────────────────────────────────
+async function validateFeedback(feedback) {
+  const prompt = `You are moderating a vote comment submitted to a Proof of Human detection network.
+The comment explains why a voter thinks a detection method is or isn't valid for identifying humans.
+
+Comment to evaluate: "${feedback.slice(0, 400)}"
+
+Reject if: random characters, gibberish, profanity, spam (aaa, test, asdf), placeholder text, completely off-topic, or adds zero information about the method's validity.
+Accept if: it gives any reasoning about why the method does or doesn't indicate human activity — even a short but genuine opinion counts.
+
+Reply with ONLY this JSON:
+{"valid": true, "reason": "one sentence"}
+or
+{"valid": false, "reason": "one sentence explaining what's wrong"}`;
+
+  const result = await evaluatorChatJSON(
+    prompt,
+    ['valid', 'reason'],
+    { maxTokens: 80, timeLimit: 20000 }
+  );
+  return result || { valid: true, reason: 'Validation unavailable — skipped' };
+}
+
+module.exports = { analyzeHumanness, onNewMethod, onVote, consolidate, getWeights, validateDescription, validateFeedback };

@@ -228,38 +228,6 @@ Qvac path additionally sets `response_format: { type: "json_object" }` for nativ
 
 ---
 
-## Detection Methods (35 built-in)
-
-### EVM Chains
-| Chain | Methods |
-|---|---|
-| Ethereum (1) | ETH balance, tx count, USDC balance, AAVE deposit, Proof of Humanity |
-| Base (8453) | ETH balance, tx count, USDC balance, WETH balance |
-| Arbitrum (42161) | ETH balance, USDC balance |
-| Polygon (137) | Tx count, USDC balance |
-| BSC (56) | BNB balance, tx count, Assetux stake |
-| Berachain (80094) | BERA balance, tx count, BGT token, HONEY token, WBERA token |
-
-### Solana
-| Method | Signal |
-|---|---|
-| `getBalance` | SOL balance > 0.01 SOL |
-| `getTransactionCount` | Tx count > 5 |
-| `getTokenBalance` (USDC) | USDC SPL balance > 0 |
-
-### REST APIs
-| API | Signal |
-|---|---|
-| Alchemy NFT (ETH/Polygon/Base) | NFT ownership > 0 |
-| Farcaster | Has social profile |
-| ENS (ensdata.net) | Has reverse ENS name |
-| Etherscan | First tx > 90 days ago |
-| Assetux Stake (ETH/BSC/Polygon) | Active staker |
-| Lens Protocol | Has Lens profile |
-| Snapshot | Has governance voting power |
-
----
-
 ## Expression Sandbox
 
 Methods use expressions evaluated in a sandboxed VM. Available variables:
@@ -282,70 +250,13 @@ Supported languages: **JS · Go · Rust · PHP · Java** (all normalised to JS s
 
 ---
 
-## Environment Variables
-
-```env
-# Server
-PORT=3000
-
-# Solana
-SOLANA_RPC=https://mainnet.helius-rpc.com/?api-key=...
-POH_TOKEN_MINT=<SPL mint address>
-FEE_RECIPIENT=<Solana wallet address>
-
-# EVM
-ALCHEMY_KEY=<Alchemy API key>
-RPC_1=https://eth-mainnet.g.alchemy.com/v2/<key>
-RPC_56=...        # RPC_{chainId} for any additional EVM chain
-
-# Ollama — Learner + Compiler roles
-OLLAMA_URL=http://localhost:11434
-OLLAMA_MODEL=llama3.2
-
-# Brain role models
-LEARNER_MODEL=qwen2.5:1.5b
-COMPILER_MODEL=llama3.2
-
-# Evaluator role — Qvac / OpenAI-compatible server (optional, faster verdicts)
-# Leave QVAC_URL unset to fall back to Ollama for the Evaluator role.
-# Any OpenAI-compatible server works: llama.cpp, LM Studio, Ollama /v1, etc.
-# QVAC_URL=http://localhost:11435
-# QVAC_MODEL=deepseek-r1-distill-qwen-1.5b-q8_0
-EVALUATOR_MODEL=deepseek-r1:1.5b   # used by Ollama fallback
-
-# Cache
-REDIS_URL=redis://localhost:6379
-```
-
-Pulling the recommended models:
-```bash
-ollama pull deepseek-r1:1.5b
-ollama pull qwen2.5:1.5b
-ollama pull mixtral
-```
-
----
-
-## $POH Token
-
-Fair launch via bonding curve. No VC. No pre-mine.
-
-| Allocation | % | Notes |
-|---|---|---|
-| Community Reward Pool | 80% | Bonding curve · scan fees · staking rewards |
-| Team & Contributors | 20% | 1 month cliff · 6 month linear vesting |
-
-Token utility: scan fee payment · stake-weighted voting · method reward distribution · burn-per-scan deflation.
-
----
-
 ## Tech Stack
 
 | Layer | Tech |
 |---|---|
 | Backend | Node.js · Express · ethers.js v6 · @solana/web3.js |
 | Frontend | Vue 3 · Vite · Lucide icons |
-| AI (Evaluator) | Qvac / llama.cpp / LM Studio — any OpenAI-compatible server; falls back to Ollama |
+| AI (Evaluator) | Qvac |
 | AI (Learner · Compiler) | Ollama — local inference |
 | Cache | Redis (in-memory fallback) |
 | Scheduler | node-cron (hourly brain consolidation) |

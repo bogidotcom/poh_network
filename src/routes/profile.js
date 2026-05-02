@@ -90,7 +90,7 @@ router.get('/:address/votes', (req, res) => {
   const methods = getMethods();
   const detail = Object.entries(votes).map(([methodId, v]) => {
     const m = methods.find(x => x.id === methodId);
-    return { methodId, vote: v.vote, at: v.at, description: m?.description || '', type: m?.type || '' };
+    return { methodId, vote: v.vote, at: v.at, feedback: v.feedback || null, description: m?.description || '', type: m?.type || '' };
   }).sort((a, b) => new Date(b.at) - new Date(a.at));
   res.json({ votes: detail });
 });
@@ -178,5 +178,35 @@ function sanitize(p) {
   const { ips, ...rest } = p; // never expose IP list
   return rest;
 }
+
+// ── POST /profile/faucet — devnet only, send 10 000 POH to caller ─────────────
+const FAUCET_AMOUNT = 10_000 * 1_000_000; // 10 000 POH in 6-decimal units
+const faucetCooldowns = new Map();         // address → last claim timestamp (in-memory)
+const FAUCET_COOLDOWN_MS = 60 * 60 * 24 * 1000; // 24 hour between claims
+
+router.post('/faucet', async (req, res, next) => {
+  try {
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(403).json({ error: 'Faucet not available on mainnet' });
+    }
+    const { address } = req.body;
+    if (!address) return res.status(400).json({ error: 'address required' });
+
+    const last = faucetCooldowns.get(address) || 0;
+    const wait = FAUCET_COOLDOWN_MS - (Date.now() - last);
+    if (wait > 0) {
+      const h = Math.floor(wait / 3600000);
+      const m = Math.ceil((wait % 3600000) / 60000);
+      const timeStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
+      return res.status(429).json({ error: `Cooldown active — try again in ${timeStr}` });
+    }
+
+    const txHash = await sendPohTokens(address, FAUCET_AMOUNT);
+    faucetCooldowns.set(address, Date.now());
+    res.json({ status: 'sent', amount: 10000, txHash });
+  } catch (err) {
+    next(err);
+  }
+});
 
 module.exports = router;

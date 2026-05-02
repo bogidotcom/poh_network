@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useWallet } from '@solana/wallet-adapter-vue'
 import axios from 'axios'
 import BrainGraph from './BrainGraph.vue'
 import {
@@ -23,88 +24,59 @@ import {
   castVote as castVoteOnChain, claimStakerRewards,
 } from '../pohProgram.js'
 // ── Wallet State ─────────────────────────────────────────────────────────────
-const walletAddress = ref(null)      // string | null
-const walletProvider = ref(null)     // the raw provider object
+const {
+  publicKey,
+  connected,
+  connecting,
+  wallets,
+  select: adapterSelect,
+  connect: adapterConnect,
+  disconnect: adapterDisconnect,
+  signMessage: adapterSignMessage,
+  signTransaction: adapterSignTx,
+  signAllTransactions: adapterSignAllTxs,
+} = useWallet()
+
+const walletAddress = computed(() => publicKey.value?.toString() ?? null)
+const walletProvider = computed(() => {
+  if (!connected.value) return null
+  return {
+    signTransaction:    (tx)  => adapterSignTx.value(tx),
+    signAllTransactions:(txs) => adapterSignAllTxs.value(txs),
+  }
+})
 const showWalletModal = ref(false)
 const currentSection = ref('landing')
-
-const connected = computed(() => !!walletAddress.value)
 
 const shortAddress = computed(() => {
   if (!walletAddress.value) return ''
   return `${walletAddress.value.slice(0, 4)}...${walletAddress.value.slice(-4)}`
 })
 
-function getPhantomProvider() {
-  if ('phantom' in window && window.phantom?.solana?.isPhantom) {
-    return window.phantom.solana
-  }
-  return null
-}
-
-function getSolflareProvider() {
-  if ('solflare' in window && window.solflare?.isSolflare) {
-    return window.solflare
-  }
-  return null
-}
-
-async function connectWallet(type) {
+async function connectWallet(walletName, walletUrl) {
+  const w = wallets.value.find(x => x.adapter.name === walletName)
+  const ready = w?.readyState === 'Installed' || w?.readyState === 'Loadable'
+  if (!ready) { window.open(walletUrl, '_blank'); return }
   showWalletModal.value = false
   try {
-    let provider = null
-    if (type === 'phantom') {
-      provider = getPhantomProvider()
-      if (!provider) {
-        window.open('https://phantom.app/', '_blank')
-        return
-      }
-    } else if (type === 'solflare') {
-      provider = getSolflareProvider()
-      if (!provider) {
-        window.open('https://solflare.com/', '_blank')
-        return
-      }
-    }
-
-    const resp = await provider.connect()
-    const address = resp.publicKey.toString()
-    walletAddress.value = address
-    walletProvider.value = provider
-    console.log('[wallet] Connected:', address)
-
-    // Listen for disconnect
-    provider.on('disconnect', () => {
-      walletAddress.value = null
-      walletProvider.value = null
-      console.log('[wallet] Disconnected')
-    })
-    // Listen for account change (Phantom / Solflare)
-    const handleAccountChange = (pk) => {
-      if (pk) {
-        walletAddress.value = pk.toString()
-        loadProfile()
-        if (POH_MINT.value) loadPohBalance()
-      } else {
-        walletAddress.value = null
-        walletProvider.value = null
-      }
-    }
-    provider.on('accountChanged', handleAccountChange)
-    provider.on('connect', (pk) => pk && handleAccountChange(pk))
+    adapterSelect(walletName)
+    await adapterConnect()
   } catch (err) {
     error.value = `Connection failed: ${err.message}`
-    console.error(err)
   }
 }
 
 async function disconnectWallet() {
-  try {
-    await walletProvider.value?.disconnect()
-  } catch {}
-  walletAddress.value = null
-  walletProvider.value = null
+  try { await adapterDisconnect() } catch {}
 }
+
+watch(connected, (val) => {
+  if (val) {
+    loadProfile()
+    if (POH_MINT.value) loadPohBalance()
+    if (currentSection.value === 'votes') loadVoting()
+  }
+})
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const POH_MINT = ref('')
@@ -131,15 +103,14 @@ const showSection = (id) => { currentSection.value = id; mobileMenuOpen.value = 
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 async function signAndSendTransaction(transaction) {
-  if (!walletProvider.value) throw new Error('Wallet not connected')
-  const provider = walletProvider.value
+  if (!connected.value) throw new Error('Wallet not connected')
   const connection = new Connection(SOLANA_RPC.value, 'confirmed')
 
   const { blockhash } = await connection.getLatestBlockhash()
   transaction.recentBlockhash = blockhash
   transaction.feePayer = new PublicKey(walletAddress.value)
 
-  const signed = await provider.signTransaction(transaction)
+  const signed = await adapterSignTx.value(transaction)
   const txHash = await connection.sendRawTransaction(signed.serialize())
   await connection.confirmTransaction(txHash, 'confirmed')
   return txHash
@@ -152,6 +123,23 @@ const checkerResults = ref(null)
 const showEvidence   = ref(false)
 const brainVerdict = ref(null)
 const brainPolling = ref(false)
+const faucetLoading = ref(false)
+const faucetMsg = ref(null)
+
+const claimFaucet = async () => {
+  if (!walletAddress.value) { error.value = 'Connect wallet first'; return }
+  faucetLoading.value = true
+  faucetMsg.value = null
+  try {
+    const res = await axios.post('/profile/faucet', { address: walletAddress.value })
+    faucetMsg.value = { ok: true, text: `10 000 POH sent — tx: ${res.data.txHash?.slice(0, 16)}…` }
+  } catch (err) {
+    faucetMsg.value = { ok: false, text: err.response?.data?.error || 'Faucet failed' }
+  } finally {
+    faucetLoading.value = false
+  }
+}
+
 const batchFile = ref(null)
 const batchRowCount = ref(0)
 const batchRows = ref([])   // raw parsed rows from CSV
@@ -437,6 +425,7 @@ const votingList = ref([])
 const voteIndex = ref(0)
 const voteSubmitting = ref(false)
 const voteFeedback = ref('')
+const voteConfirmPending = ref(null)
 const currentVoteItem = computed(() => votingList.value[voteIndex.value] ?? null)
 
 const loadVoting = async () => {
@@ -455,17 +444,43 @@ const loadVoting = async () => {
   }
 }
 
+const feedbackValidating = ref(false)
+
 const castVote = async (voteVal) => {
   if (voteVal === 'skip') { voteIndex.value++; voteFeedback.value = ''; return }
   if (!connected.value) { error.value = 'Connect wallet to vote'; return }
-  if (!walletProvider.value) { error.value = 'Wallet provider not ready'; return }
+  if (!adapterSignMessage.value) { error.value = 'Wallet does not support message signing'; return }
+
+  const fb = voteFeedback.value.trim()
+  if (fb) {
+    feedbackValidating.value = true
+    try {
+      const res = await axios.post('/methods/verifyer/validate-feedback', { feedback: fb })
+      if (!res.data.valid) {
+        error.value = `Comment rejected: ${res.data.reason}`
+        feedbackValidating.value = false
+        return
+      }
+    } catch {
+      // validation down — proceed
+    } finally {
+      feedbackValidating.value = false
+    }
+  }
+
+  voteConfirmPending.value = voteVal
+}
+
+const confirmVote = async () => {
+  const voteVal = voteConfirmPending.value
+  voteConfirmPending.value = null
   voteSubmitting.value = true
   try {
     const type     = 'method'
     const methodId = currentVoteItem.value.id
     const message  = `poh-vote-v1:${methodId}:${voteVal}:${type}:${walletAddress.value}:${Date.now()}`
-    const { signature } = await walletProvider.value.signMessage(new TextEncoder().encode(message), 'utf8')
-    const sig58 = encodeBase58(signature)
+    const sig = await adapterSignMessage.value(new TextEncoder().encode(message))
+    const sig58 = encodeBase58(sig)
     await axios.post('/methods/verifyer/vote', {
       methodId, vote: voteVal, type,
       walletAddress: walletAddress.value,
@@ -473,7 +488,9 @@ const castVote = async (voteVal) => {
       feedback: voteFeedback.value.trim() || undefined,
     })
     voteFeedback.value = ''
-    voteIndex.value++
+    // Remove the voted method from the list so it never re-appears
+    votingList.value.splice(voteIndex.value, 1)
+    // voteIndex stays the same — next item shifts into the current slot
   } catch (err) {
     error.value = err.response?.data?.error || err.message || 'Vote failed'
   } finally {
@@ -590,14 +607,14 @@ async function loadProfile() {
 }
 
 async function signupProfile() {
-  if (!walletAddress.value || !walletProvider.value) { error.value = 'Connect wallet first'; return }
+  if (!walletAddress.value || !adapterSignMessage.value) { error.value = 'Connect wallet first'; return }
   signupLoading.value = true
   profileError.value = null
   try {
     const message = `poh-profile-v1:${walletAddress.value}:${Date.now()}`
     const messageBytes = new TextEncoder().encode(message)
-    const { signature } = await walletProvider.value.signMessage(messageBytes, 'utf8')
-    const bs58sig = encodeBase58(signature)
+    const sigBytes = await adapterSignMessage.value(messageBytes)
+    const bs58sig = encodeBase58(sigBytes)
     await axios.post('/profile/signup', { address: walletAddress.value, signature: bs58sig, message })
     await loadProfile()
   } catch (err) {
@@ -857,12 +874,49 @@ onUnmounted(() => {
       </div>
     </div>
 
+    <!-- Vote Confirmation Modal -->
+    <div v-if="voteConfirmPending !== null" class="modal-overlay" @click.self="voteConfirmPending = null">
+      <div class="glass-panel modal vote-confirm-modal">
+        <h3 class="modal-title">Confirm your vote</h3>
+        <p class="modal-desc">
+          You're voting
+          <strong :class="voteConfirmPending === true ? 'vote-confirm-human' : 'vote-confirm-bot'">
+            {{ voteConfirmPending === true ? '✓ Human' : '✗ Bot / AI' }}
+          </strong>
+          on <em>{{ currentVoteItem?.description }}</em>.
+        </p>
+        <p class="modal-desc vote-confirm-warn">This cannot be changed after submission.</p>
+        <div v-if="voteFeedback.trim()" class="vote-confirm-comment">
+          <span class="vote-confirm-comment-label">Your comment</span>
+          <span class="vote-confirm-comment-text">{{ voteFeedback.trim() }}</span>
+        </div>
+        <div class="modal-actions">
+          <button class="vcs-btn vcs-btn-yes" :disabled="voteSubmitting" @click="confirmVote">
+            {{ voteSubmitting ? 'Signing…' : 'Confirm & Sign' }}
+          </button>
+          <button class="modal-close" @click="voteConfirmPending = null">Cancel</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Wallet Selection Modal -->
     <div v-if="showWalletModal" class="modal-overlay" @click.self="showWalletModal = false">
-      <div class="glass-panel modal">
-        <h3 class="modal-title">Select Wallet</h3>
-        <button class="wallet-option" @click="connectWallet('phantom')">Phantom</button>
-        <button class="wallet-option" @click="connectWallet('solflare')">Solflare</button>
+      <div class="glass-panel modal wallet-select-modal">
+        <h3 class="modal-title">Connect Wallet</h3>
+        <div class="wallet-list">
+          <button
+            v-for="w in wallets"
+            :key="w.adapter.name"
+            class="wallet-option"
+            :class="{ 'wallet-option--detected': w.readyState === 'Installed' }"
+            @click="connectWallet(w.adapter.name, w.adapter.url)"
+          >
+            <img :src="w.adapter.icon" :alt="w.adapter.name" class="wallet-icon" />
+            <span class="wallet-name">{{ w.adapter.name }}</span>
+            <span v-if="w.readyState === 'Installed'" class="wallet-badge wallet-badge--detected">Detected</span>
+            <span v-else class="wallet-badge wallet-badge--install">Install</span>
+          </button>
+        </div>
         <button class="modal-close" @click="showWalletModal = false">Cancel</button>
       </div>
     </div>
@@ -913,7 +967,7 @@ onUnmounted(() => {
         </section> -->
 
         <!-- How it works -->
-        <section class="how-section">
+        <!-- <section class="how-section">
           <div class="network-label">HOW IT WORKS</div>
           <div class="how-grid">
             <div class="how-col">
@@ -935,9 +989,10 @@ onUnmounted(() => {
               </ul>
             </div>
           </div>
-        </section>
+        </section> -->
 
-        <div class="network-label">$POH TOKEN</div>
+        <!-- POH TOKEN -->
+        <!-- <div class="network-label">$POH TOKEN</div>
 
         <section class="landing-token">
           <p class="token-desc">Fair launch via bonding curve. No VC rounds. No pre-mine. Every scan flows 50% back to method contributors. Stake to govern signal quality.</p>
@@ -954,7 +1009,7 @@ onUnmounted(() => {
               <span class="split-label">Team &amp; Contributors</span>
               <span class="split-pct">20%</span>
             </div>
-            <div class="split-bar"><div class="split-fill" style="width:20%; background:#333"></div></div>
+            <div class="split-bar"><div class="split-fill" style="width:20%; background:#555"></div></div>
             <div class="split-note">1 month cliff · 6 month linear vesting</div>
           </div>
 
@@ -996,14 +1051,14 @@ onUnmounted(() => {
               <CreditCard class="icon" :size="24" /> Buy $POH
             </button>
           </div>
-        </section>
+        </section> -->
 
         <!-- ── Features (full-screen panels) ──────────────────────────────────────── -->
         <section class="feat-screen">
           <div class="feat-left">
             <div class="feat-tag">SCAN</div>
             <h2 class="feat-title">Verify any wallet<br>in seconds</h2>
-            <p class="feat-body">Paste an EVM address, Solana address, or ENS name. POH runs 120+ detection methods in parallel — contract calls, on-chain balances, identity graphs, real-world assets — and returns an AI verdict instantly.</p>
+            <p class="feat-body">Paste an EVM address, Solana address, or ENS name. AI returns verdict instantly.</p>
             <button class="feat-cta" @click="showSection('checker')">Try the Scanner →</button>
           </div>
           <div class="feat-right">
@@ -1012,7 +1067,7 @@ onUnmounted(() => {
               <rect x="10" y="10" width="400" height="300" rx="14" fill="#090909" stroke="#1a1a1a"/>
               <!-- Input bar -->
               <rect x="28" y="30" width="310" height="36" rx="7" fill="#111" stroke="#222"/>
-              <text x="42" y="53" fill="#333" font-size="11" font-family="monospace">0xd8dA6BF26964aF9D7eEd9e03E534...</text>
+              <text x="42" y="53" fill="#555" font-size="11" font-family="monospace">0xd8dA6BF26964aF9D7eEd9e03E534...</text>
               <rect x="346" y="30" width="52" height="36" rx="7" fill="#161616" stroke="#222"/>
               <text x="355" y="53" fill="#666" font-size="11" font-family="monospace">Scan</text>
               <!-- Divider -->
@@ -1021,7 +1076,7 @@ onUnmounted(() => {
               <g class="scan-row-1">
                 <rect x="28" y="90" width="364" height="28" rx="5" fill="#0d0d0d"/>
                 <circle cx="42" cy="104" r="4" fill="#22c55e"><animate attributeName="opacity" values="0;1" dur="0.3s" begin="0.4s" fill="freeze"/></circle>
-                <text x="54" y="108" fill="#555" font-size="10" font-family="monospace"><animate attributeName="opacity" values="0;1" dur="0.3s" begin="0.4s" fill="freeze"/>ETH balance &gt; 0.01</text>
+                <text x="54" y="108" fill="#555" font-size="10" font-family="monospace"><animate attributeName="opacity" values="0;1" dur="0.3s" begin="0.4s" fill="freeze"/>SOL balance &gt; 0.01</text>
                 <text x="346" y="108" fill="#22c55e" font-size="10" font-family="monospace"><animate attributeName="opacity" values="0;1" dur="0.3s" begin="0.4s" fill="freeze"/>✓</text>
               </g>
               <g class="scan-row-2">
@@ -1033,19 +1088,19 @@ onUnmounted(() => {
               <g>
                 <rect x="28" y="154" width="364" height="28" rx="5" fill="#0d0d0d"/>
                 <circle cx="42" cy="168" r="4" fill="#ef4444"><animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.05s" fill="freeze"/></circle>
-                <text x="54" y="172" fill="#555" font-size="10" font-family="monospace"><animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.05s" fill="freeze"/>Galxe identity</text>
+                <text x="54" y="172" fill="#555" font-size="10" font-family="monospace"><animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.05s" fill="freeze"/>Farcaster profile</text>
                 <text x="340" y="172" fill="#ef4444" font-size="10" font-family="monospace"><animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.05s" fill="freeze"/>✗</text>
               </g>
               <g>
                 <rect x="28" y="186" width="364" height="28" rx="5" fill="#0d0d0d"/>
                 <circle cx="42" cy="200" r="4" fill="#22c55e"><animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.35s" fill="freeze"/></circle>
-                <text x="54" y="204" fill="#555" font-size="10" font-family="monospace"><animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.35s" fill="freeze"/>Farcaster profile</text>
+                <text x="54" y="204" fill="#555" font-size="10" font-family="monospace"><animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.35s" fill="freeze"/>Galxe identity</text>
                 <text x="346" y="204" fill="#22c55e" font-size="10" font-family="monospace"><animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.35s" fill="freeze"/>✓</text>
               </g>
               <g>
                 <rect x="28" y="218" width="364" height="28" rx="5" fill="#0d0d0d"/>
                 <circle cx="42" cy="232" r="4" fill="#22c55e"><animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.6s" fill="freeze"/></circle>
-                <text x="54" y="236" fill="#555" font-size="10" font-family="monospace"><animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.6s" fill="freeze"/>Pax Gold (PAXG) holder</text>
+                <text x="54" y="236" fill="#555" font-size="10" font-family="monospace"><animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.6s" fill="freeze"/>Artrade tokenised real-world art marketplace...</text>
                 <text x="346" y="236" fill="#22c55e" font-size="10" font-family="monospace"><animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.6s" fill="freeze"/>✓</text>
               </g>
               <!-- Verdict badge -->
@@ -1062,147 +1117,36 @@ onUnmounted(() => {
         </section>
 
         <section class="feat-screen feat-screen--alt">
-          <div class="feat-right">
-            <svg class="feat-svg" viewBox="0 0 420 320" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <!-- Signal nodes orbiting a center brain -->
-              <!-- Center node -->
-              <circle cx="210" cy="160" r="32" fill="#0d0d0d" stroke="#222"/>
-              <text x="199" y="155" fill="#fff" font-size="9" font-family="monospace">AI</text>
-              <text x="193" y="167" fill="#555" font-size="8" font-family="monospace">BRAIN</text>
-              <!-- Pulsing ring -->
-              <circle cx="210" cy="160" r="32" fill="none" stroke="#22c55e" stroke-width="1" opacity="0.4">
-                <animate attributeName="r" values="32;48;32" dur="2.5s" repeatCount="indefinite"/>
-                <animate attributeName="opacity" values="0.4;0;0.4" dur="2.5s" repeatCount="indefinite"/>
-              </circle>
-              <!-- EVM node top-left -->
-              <circle cx="90" cy="80" r="22" fill="#0d0d0d" stroke="#1e1e1e"/>
-              <text x="78" y="84" fill="#3b82f6" font-size="8" font-family="monospace">EVM</text>
-              <line x1="110" y1="97" x2="182" y2="133" stroke="#1e1e1e" stroke-dasharray="4 3">
-                <animate attributeName="stroke-dashoffset" values="14;0" dur="1s" repeatCount="indefinite"/>
-              </line>
-              <circle r="3" fill="#3b82f6">
-                <animateMotion path="M110,97 L182,133" dur="1.2s" repeatCount="indefinite"/>
-              </circle>
-              <!-- Solana node top-right -->
-              <circle cx="330" cy="80" r="22" fill="#0d0d0d" stroke="#1e1e1e"/>
-              <text x="314" y="84" fill="#9945ff" font-size="8" font-family="monospace">SOL</text>
-              <line x1="310" y1="97" x2="238" y2="133" stroke="#1e1e1e" stroke-dasharray="4 3">
-                <animate attributeName="stroke-dashoffset" values="14;0" dur="0.9s" repeatCount="indefinite"/>
-              </line>
-              <circle r="3" fill="#9945ff">
-                <animateMotion path="M310,97 L238,133" dur="0.9s" repeatCount="indefinite"/>
-              </circle>
-              <!-- REST node left -->
-              <circle cx="60" cy="180" r="22" fill="#0d0d0d" stroke="#1e1e1e"/>
-              <text x="46" y="184" fill="#f59e0b" font-size="8" font-family="monospace">REST</text>
-              <line x1="82" y1="175" x2="178" y2="162" stroke="#1e1e1e" stroke-dasharray="4 3">
-                <animate attributeName="stroke-dashoffset" values="14;0" dur="1.4s" repeatCount="indefinite"/>
-              </line>
-              <circle r="3" fill="#f59e0b">
-                <animateMotion path="M82,175 L178,162" dur="1.4s" repeatCount="indefinite"/>
-              </circle>
-              <!-- Galxe node right -->
-              <circle cx="360" cy="180" r="22" fill="#0d0d0d" stroke="#1e1e1e"/>
-              <text x="344" y="184" fill="#ec4899" font-size="8" font-family="monospace">ID</text>
-              <line x1="338" y1="175" x2="242" y2="162" stroke="#1e1e1e" stroke-dasharray="4 3">
-                <animate attributeName="stroke-dashoffset" values="14;0" dur="1.1s" repeatCount="indefinite"/>
-              </line>
-              <circle r="3" fill="#ec4899">
-                <animateMotion path="M338,175 L242,162" dur="1.1s" repeatCount="indefinite"/>
-              </circle>
-              <!-- RWA node bottom-left -->
-              <circle cx="110" cy="260" r="22" fill="#0d0d0d" stroke="#1e1e1e"/>
-              <text x="99" y="264" fill="#22c55e" font-size="8" font-family="monospace">RWA</text>
-              <line x1="130" y1="245" x2="190" y2="190" stroke="#1e1e1e" stroke-dasharray="4 3">
-                <animate attributeName="stroke-dashoffset" values="14;0" dur="1.3s" repeatCount="indefinite"/>
-              </line>
-              <circle r="3" fill="#22c55e">
-                <animateMotion path="M130,245 L190,190" dur="1.3s" repeatCount="indefinite"/>
-              </circle>
-              <!-- Count label -->
-              <text x="175" y="310" fill="#333" font-size="10" font-family="monospace" text-anchor="middle">120+ active signals</text>
-            </svg>
+          <div class="feat-right display-block">
+            
+            <div>
+              <p class="net-subtitle">
+                {{ votingList.length || '—' }} active methods · signals flow to AI brain in real time
+              </p>
+
+            </div>
+
+            <BrainGraph :methods="votingList" />
+
+            <div class="net-legend">
+              <!-- <div class="net-legend-group">
+                <div class="nl-item"><span class="nl-dot nl-dot--evm"></span>EVM</div>
+                <div class="nl-item"><span class="nl-dot nl-dot--solana"></span>Solana</div>
+                <div class="nl-item"><span class="nl-dot nl-dot--rest"></span>REST</div>
+              </div> -->
+              <div class="nl-sep"></div>
+              <div class="net-legend-group">
+                <div class="nl-item"><span class="nl-dot nl-dot--eval"></span>Evaluator · Qvac</div>
+                <div class="nl-item"><span class="nl-dot nl-dot--learn"></span>Learner · Qwen 2.5</div>
+                <div class="nl-item"><span class="nl-dot nl-dot--comp"></span>Compiler · Llama 3.2</div>
+              </div>
+            </div>
           </div>
           <div class="feat-left">
             <div class="feat-tag">SIGNALS</div>
             <h2 class="feat-title">Evidence from<br>every layer</h2>
-            <p class="feat-body">EVM balances, Solana programs, REST identity APIs, real-world asset holdings, Galxe profiles, web3.bio social links, ZNS domains. Every signal runs in parallel. No single point of failure.</p>
+            <p class="feat-body">EVM balances, Solana programs, web3.bio social links, REST identity APIs, real-world asset holdings, social links, Web3 domains, Decentralised IDentities. Every signal runs in parallel. No single point of failure.</p>
             <button class="feat-cta" @click="showSection('votes'); loadVoting()">Browse Methods →</button>
-          </div>
-        </section>
-
-        <section class="feat-screen">
-          <div class="feat-left">
-            <div class="feat-tag">AI BRAIN</div>
-            <h2 class="feat-title">On-device AI,<br>zero cloud calls</h2>
-            <p class="feat-body">A local LLM reads every signal, weighs community-trained scores, and outputs a structured verdict with confidence and reasoning. Runs on Ollama or Qvac. Private by default — your scan data never leaves your server.</p>
-            <button class="feat-cta" @click="showSection('checker')">See a Verdict →</button>
-          </div>
-          <div class="feat-right">
-            <svg class="feat-svg" viewBox="0 0 420 320" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="10" y="10" width="400" height="300" rx="14" fill="#090909" stroke="#1a1a1a"/>
-              <!-- Signals in -->
-              <text x="28" y="42" fill="#333" font-size="9" font-family="monospace">SIGNALS</text>
-              <rect x="28" y="52" width="140" height="22" rx="4" fill="#0d1a0d" stroke="#1a3a1a"/>
-              <text x="36" y="67" fill="#22c55e" font-size="9" font-family="monospace">✓ ETH balance</text>
-              <rect x="28" y="78" width="140" height="22" rx="4" fill="#0d1a0d" stroke="#1a3a1a"/>
-              <text x="36" y="93" fill="#22c55e" font-size="9" font-family="monospace">✓ ENS registered</text>
-              <rect x="28" y="104" width="140" height="22" rx="4" fill="#1a0d0d" stroke="#3a1a1a"/>
-              <text x="36" y="119" fill="#ef4444" font-size="9" font-family="monospace">✗ Galxe profile</text>
-              <rect x="28" y="130" width="140" height="22" rx="4" fill="#0d1a0d" stroke="#1a3a1a"/>
-              <text x="36" y="145" fill="#22c55e" font-size="9" font-family="monospace">✓ PAXG holder</text>
-              <rect x="28" y="156" width="140" height="22" rx="4" fill="#0d1a0d" stroke="#1a3a1a"/>
-              <text x="36" y="171" fill="#22c55e" font-size="9" font-family="monospace">✓ Farcaster</text>
-              <!-- Arrow to AI -->
-              <path d="M168 130 Q210 130 210 130" stroke="#222" stroke-width="1.5" marker-end="url(#arr)"/>
-              <defs>
-                <marker id="arr" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-                  <path d="M0,0 L6,3 L0,6 Z" fill="#333"/>
-                </marker>
-              </defs>
-              <!-- AI node -->
-              <circle cx="210" cy="130" r="0" fill="#111" stroke="#222">
-                <animate attributeName="r" values="0;22" dur="0.4s" begin="0.5s" fill="freeze"/>
-              </circle>
-              <text x="204" y="126" fill="#fff" font-size="8" font-family="monospace" opacity="0">
-                <animate attributeName="opacity" values="0;1" dur="0.3s" begin="0.8s" fill="freeze"/>AI
-              </text>
-              <text x="199" y="138" fill="#555" font-size="7" font-family="monospace" opacity="0">
-                <animate attributeName="opacity" values="0;1" dur="0.3s" begin="0.8s" fill="freeze"/>thinking</text>
-              <!-- Thinking dots -->
-              <circle cx="202" cy="148" r="2" fill="#555" opacity="0">
-                <animate attributeName="opacity" values="0;0;1;0" dur="1.2s" begin="0.9s" repeatCount="indefinite"/>
-              </circle>
-              <circle cx="210" cy="148" r="2" fill="#555" opacity="0">
-                <animate attributeName="opacity" values="0;0;0;1;0" dur="1.2s" begin="0.9s" repeatCount="indefinite"/>
-              </circle>
-              <circle cx="218" cy="148" r="2" fill="#555" opacity="0">
-                <animate attributeName="opacity" values="0;0;0;0;1;0" dur="1.2s" begin="0.9s" repeatCount="indefinite"/>
-              </circle>
-              <!-- Verdict card -->
-              <rect x="250" y="72" width="148" height="120" rx="8" fill="#0f1f0f" stroke="#1a4a1a" opacity="0">
-                <animate attributeName="opacity" values="0;1" dur="0.4s" begin="2.2s" fill="freeze"/>
-              </rect>
-              <text x="264" y="96" fill="#22c55e" font-size="11" font-weight="600" font-family="monospace" opacity="0">
-                <animate attributeName="opacity" values="0;1" dur="0.3s" begin="2.4s" fill="freeze"/>HUMAN
-              </text>
-              <text x="264" y="114" fill="#444" font-size="8" font-family="monospace" opacity="0">
-                <animate attributeName="opacity" values="0;1" dur="0.3s" begin="2.5s" fill="freeze"/>confidence</text>
-              <!-- Confidence bar -->
-              <rect x="264" y="120" width="112" height="6" rx="3" fill="#111" opacity="0">
-                <animate attributeName="opacity" values="0;1" dur="0.1s" begin="2.6s" fill="freeze"/>
-              </rect>
-              <rect x="264" y="120" width="0" height="6" rx="3" fill="#22c55e" opacity="0">
-                <animate attributeName="opacity" values="0;1" dur="0.1s" begin="2.6s" fill="freeze"/>
-                <animate attributeName="width" values="0;87" dur="0.8s" begin="2.6s" fill="freeze"/>
-              </rect>
-              <text x="264" y="146" fill="#555" font-size="7.5" font-family="monospace" opacity="0">
-                <animate attributeName="opacity" values="0;1" dur="0.3s" begin="2.7s" fill="freeze"/>87% · 4/5 signals pass</text>
-              <text x="264" y="162" fill="#2a2a2a" font-size="7" font-family="monospace" opacity="0">
-                <animate attributeName="opacity" values="0;1" dur="0.3s" begin="2.8s" fill="freeze"/>PAXG holder is</text>
-              <text x="264" y="174" fill="#2a2a2a" font-size="7" font-family="monospace" opacity="0">
-                <animate attributeName="opacity" values="0;1" dur="0.3s" begin="2.8s" fill="freeze"/>strongest signal.</text>
-            </svg>
           </div>
         </section>
 
@@ -1213,8 +1157,8 @@ onUnmounted(() => {
               <!-- Method card -->
               <rect x="28" y="28" width="364" height="160" rx="9" fill="#0d0d0d" stroke="#1e1e1e"/>
               <text x="44" y="52" fill="#666" font-size="9" font-family="monospace">METHOD #47</text>
-              <text x="44" y="70" fill="#ddd" font-size="12" font-family="sans-serif">Pax Gold (PAXG) holder</text>
-              <text x="44" y="88" fill="#444" font-size="9" font-family="monospace">balanceOf(address) &gt; 0  ·  Ethereum</text>
+              <text x="44" y="70" fill="#ddd" font-size="12" font-family="sans-serif">Artrade tokenised real-world art marketplace on Solana</text>
+              <text x="44" y="88" fill="#555" font-size="9" font-family="monospace">balanceOf(address) &gt; 0  ·  Ethereum</text>
               <!-- Score bar -->
               <text x="44" y="112" fill="#555" font-size="8" font-family="monospace">community score</text>
               <rect x="44" y="118" width="220" height="5" rx="2" fill="#111"/>
@@ -1235,9 +1179,9 @@ onUnmounted(() => {
               </rect>
               <!-- Feedback textarea -->
               <rect x="28" y="202" width="364" height="50" rx="7" fill="#080808" stroke="#161616"/>
-              <text x="44" y="224" fill="#2a2a2a" font-size="9" font-family="monospace">Gold-backed asset requires real identity...</text>
+              <text x="44" y="224" fill="#555" font-size="9" font-family="monospace">Interest in the real world art marketplace...</text>
               <!-- Submit row -->
-              <text x="44" y="272" fill="#333" font-size="9" font-family="monospace">342 votes cast  ·  stake weight: 1.4×</text>
+              <text x="44" y="272" fill="#555" font-size="9" font-family="monospace">342 votes cast  ·  stake weight: 1.4×</text>
               <rect x="330" y="256" width="62" height="26" rx="6" fill="#161616" stroke="#222"/>
               <text x="341" y="273" fill="#888" font-size="9" font-family="monospace">Next →</text>
             </svg>
@@ -1252,9 +1196,84 @@ onUnmounted(() => {
 
         <section class="feat-screen">
           <div class="feat-left">
+            <div class="feat-tag">AI BRAIN</div>
+            <h2 class="feat-title">On-device AI,<br>zero cloud calls</h2>
+            <p class="feat-body">A local LLM reads every signal, weighs community-trained scores, and outputs a structured verdict with confidence and reasoning. <br>Runs on Qvac by Tether.</p>
+            <button class="feat-cta" @click="showSection('checker')">See a Verdict →</button>
+          </div>
+          <div class="feat-right">
+            <svg class="feat-svg" viewBox="0 0 420 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="10" y="10" width="400" height="230" rx="14" fill="#090909" stroke="#1a1a1a"/>
+              <!-- Signals in -->
+              <text x="28" y="42" fill="#555" font-size="9" font-family="monospace">SIGNALS</text>
+              <rect x="28" y="52" width="140" height="22" rx="4" fill="#0d1a0d" stroke="#1a3a1a"/>
+              <text x="36" y="67" fill="#22c55e" font-size="9" font-family="monospace">✓ ETH balance</text>
+              <rect x="28" y="78" width="140" height="22" rx="4" fill="#0d1a0d" stroke="#1a3a1a"/>
+              <text x="36" y="93" fill="#22c55e" font-size="9" font-family="monospace">✓ ENS registered</text>
+              <rect x="28" y="104" width="140" height="22" rx="4" fill="#1a0d0d" stroke="#3a1a1a"/>
+              <text x="36" y="119" fill="#ef4444" font-size="9" font-family="monospace">✗ Galxe profile</text>
+              <rect x="28" y="130" width="140" height="22" rx="4" fill="#0d1a0d" stroke="#1a3a1a"/>
+              <text x="36" y="145" fill="#22c55e" font-size="9" font-family="monospace">✓ PAXG holder</text>
+              <rect x="28" y="156" width="140" height="22" rx="4" fill="#0d1a0d" stroke="#1a3a1a"/>
+              <text x="36" y="171" fill="#22c55e" font-size="9" font-family="monospace">✓ Farcaster</text>
+              <!-- Arrow to AI -->
+              <path d="M168 130 Q210 130 210 130" stroke="#222" stroke-width="1.5" marker-end="url(#arr)"/>
+              <defs>
+                <marker id="arr" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+                  <path d="M0,0 L6,3 L0,6 Z" fill="#555"/>
+                </marker>
+              </defs>
+              <!-- AI node -->
+              <circle cx="215" cy="130" r="0" fill="#111" stroke="#222">
+                <animate attributeName="r" values="0;22" dur="0.4s" begin="0.5s" fill="freeze"/>
+              </circle>
+              <text x="210" y="126" fill="#fff" font-size="8" font-family="monospace" opacity="0">
+                <animate attributeName="opacity" values="0;1" dur="0.3s" begin="0.8s" fill="freeze"/>AI
+              </text>
+              <text x="199" y="138" fill="#555" font-size="7" font-family="monospace" opacity="0">
+                <animate attributeName="opacity" values="0;1" dur="0.3s" begin="0.8s" fill="freeze"/>thinking</text>
+              <!-- Thinking dots -->
+              <!-- <circle cx="202" cy="148" r="2" fill="#555" opacity="0">
+                <animate attributeName="opacity" values="0;0;1;0" dur="1.2s" begin="0.9s" repeatCount="indefinite"/>
+              </circle>
+              <circle cx="210" cy="148" r="2" fill="#555" opacity="0">
+                <animate attributeName="opacity" values="0;0;0;1;0" dur="1.2s" begin="0.9s" repeatCount="indefinite"/>
+              </circle>
+              <circle cx="218" cy="148" r="2" fill="#555" opacity="0">
+                <animate attributeName="opacity" values="0;0;0;0;1;0" dur="1.2s" begin="0.9s" repeatCount="indefinite"/>
+              </circle> -->
+              <!-- Verdict card -->
+              <rect x="250" y="72" width="148" height="120" rx="8" fill="#0f1f0f" stroke="#1a4a1a" opacity="0">
+                <animate attributeName="opacity" values="0;1" dur="0.4s" begin="2.2s" fill="freeze"/>
+              </rect>
+              <text x="264" y="96" fill="#22c55e" font-size="11" font-weight="600" font-family="monospace" opacity="0">
+                <animate attributeName="opacity" values="0;1" dur="0.3s" begin="2.4s" fill="freeze"/>HUMAN
+              </text>
+              <text x="264" y="114" fill="#555" font-size="8" font-family="monospace" opacity="0">
+                <animate attributeName="opacity" values="0;1" dur="0.3s" begin="2.5s" fill="freeze"/>confidence</text>
+              <!-- Confidence bar -->
+              <rect x="264" y="120" width="112" height="6" rx="3" fill="#111" opacity="0">
+                <animate attributeName="opacity" values="0;1" dur="0.1s" begin="2.6s" fill="freeze"/>
+              </rect>
+              <rect x="264" y="120" width="0" height="6" rx="3" fill="#22c55e" opacity="0">
+                <animate attributeName="opacity" values="0;1" dur="0.1s" begin="2.6s" fill="freeze"/>
+                <animate attributeName="width" values="0;87" dur="0.8s" begin="2.6s" fill="freeze"/>
+              </rect>
+              <text x="264" y="146" fill="#fff" font-size="7.5" font-family="monospace" opacity="0">
+                <animate attributeName="opacity" values="0;1" dur="0.3s" begin="2.7s" fill="freeze"/>87% · 4/5 signals pass</text>
+              <text x="264" y="162" fill="#555" font-size="7" font-family="monospace" opacity="0">
+                <animate attributeName="opacity" values="0;1" dur="0.3s" begin="2.8s" fill="freeze"/>PAXG holder is</text>
+              <text x="264" y="174" fill="#555" font-size="7" font-family="monospace" opacity="0">
+                <animate attributeName="opacity" values="0;1" dur="0.3s" begin="2.8s" fill="freeze"/>strongest signal.</text>
+            </svg>
+          </div>
+        </section>
+
+        <section class="feat-screen">
+          <div class="feat-left">
             <div class="feat-tag">API</div>
             <h2 class="feat-title">One call.<br>Instant answer.</h2>
-            <p class="feat-body">Drop-in HTTP API for any app. Single wallet returns a synchronous result. Upload a CSV of 1,000 addresses and get a job ID to poll. First 100 scans free per wallet, no token required.</p>
+            <p class="feat-body">Drop-in HTTP API for any app. First 100 scans free.</p>
             <button class="feat-cta" @click="showSection('api')">API Reference →</button>
           </div>
           <div class="feat-right">
@@ -1263,17 +1282,17 @@ onUnmounted(() => {
               <!-- Terminal bar -->
               <rect x="10" y="10" width="400" height="28" rx="14" fill="#111" stroke="#1a1a1a"/>
               <rect x="10" y="24" width="400" height="14" fill="#111"/>
-              <circle cx="32" cy="24" r="5" fill="#333"/>
-              <circle cx="50" cy="24" r="5" fill="#333"/>
-              <circle cx="68" cy="24" r="5" fill="#333"/>
+              <circle cx="32" cy="24" r="5" fill="#555"/>
+              <circle cx="50" cy="24" r="5" fill="#555"/>
+              <circle cx="68" cy="24" r="5" fill="#555"/>
               <!-- Request lines -->
               <text x="28" y="60" fill="#555" font-size="9" font-family="monospace">POST /checker</text>
-              <text x="28" y="76" fill="#1e3a1e" font-size="9" font-family="monospace">{</text>
-              <text x="28" y="90" fill="#2a2a2a" font-size="9" font-family="monospace">  "input": "0xd8dA6BF26964..."</text>
-              <text x="28" y="104" fill="#2a2a2a" font-size="9" font-family="monospace">  "apiKey": "pk_live_xxx"</text>
-              <text x="28" y="118" fill="#1e3a1e" font-size="9" font-family="monospace">}</text>
+              <text x="28" y="76" fill="#1e3a1e" font-size="9" font-family="monospace">&#123;</text>
+              <text x="28" y="90" fill="#555" font-size="9" font-family="monospace">  "input": "0xd8dA6BF26964..."</text>
+              <text x="28" y="104" fill="#555" font-size="9" font-family="monospace">  "apiKey": "pk_live_xxx"</text>
+              <text x="28" y="118" fill="#1e3a1e" font-size="9" font-family="monospace">&#125;</text>
               <!-- Blinking cursor -->
-              <rect x="46" y="108" width="6" height="10" fill="#333">
+              <rect x="46" y="108" width="6" height="10" fill="#555">
                 <animate attributeName="opacity" values="1;0;1" dur="1s" repeatCount="indefinite"/>
               </rect>
               <!-- Divider -->
@@ -1282,19 +1301,19 @@ onUnmounted(() => {
               <text x="28" y="152" fill="#555" font-size="9" font-family="monospace" opacity="0">
                 <animate attributeName="opacity" values="0;1" dur="0.3s" begin="1s" fill="freeze"/>200 OK  · 340ms</text>
               <text x="28" y="168" fill="#1a3a1a" font-size="9" font-family="monospace" opacity="0">
-                <animate attributeName="opacity" values="0;1" dur="0.2s" begin="1.2s" fill="freeze">{</text>
+                <animate attributeName="opacity" values="0;1" dur="0.2s" begin="1.2s" fill="freeze"/>&#123;</text>
               <text x="28" y="182" fill="#2a3a2a" font-size="9" font-family="monospace" opacity="0">
-                <animate attributeName="opacity" values="0;1" dur="0.2s" begin="1.35s" fill="freeze">  "verdict": "HUMAN",</text>
+                <animate attributeName="opacity" values="0;1" dur="0.2s" begin="1.35s" fill="freeze"/>  "verdict": "HUMAN",</text>
               <text x="28" y="196" fill="#2a3a2a" font-size="9" font-family="monospace" opacity="0">
-                <animate attributeName="opacity" values="0;1" dur="0.2s" begin="1.5s" fill="freeze">  "confidence": 0.87,</text>
+                <animate attributeName="opacity" values="0;1" dur="0.2s" begin="1.5s" fill="freeze"/>  "confidence": 0.87,</text>
               <text x="28" y="210" fill="#2a3a2a" font-size="9" font-family="monospace" opacity="0">
-                <animate attributeName="opacity" values="0;1" dur="0.2s" begin="1.65s" fill="freeze">  "passed": 4,</text>
+                <animate attributeName="opacity" values="0;1" dur="0.2s" begin="1.65s" fill="freeze"/>  "passed": 4,</text>
               <text x="28" y="224" fill="#2a3a2a" font-size="9" font-family="monospace" opacity="0">
-                <animate attributeName="opacity" values="0;1" dur="0.2s" begin="1.8s" fill="freeze">  "total": 5,</text>
+                <animate attributeName="opacity" values="0;1" dur="0.2s" begin="1.8s" fill="freeze"/>  "total": 5,</text>
               <text x="28" y="238" fill="#2a3a2a" font-size="9" font-family="monospace" opacity="0">
-                <animate attributeName="opacity" values="0;1" dur="0.2s" begin="1.95s" fill="freeze">  "freeScansLeft": 96</text>
+                <animate attributeName="opacity" values="0;1" dur="0.2s" begin="1.95s" fill="freeze"/>  "freeScansLeft": 96</text>
               <text x="28" y="252" fill="#1a3a1a" font-size="9" font-family="monospace" opacity="0">
-                <animate attributeName="opacity" values="0;1" dur="0.2s" begin="2.1s" fill="freeze">}</text>
+                <animate attributeName="opacity" values="0;1" dur="0.2s" begin="2.1s" fill="freeze"/>&#125;</text>
               <!-- Highlight verdict value -->
               <rect x="100" y="174" width="52" height="14" rx="3" fill="#0f2a0f" opacity="0">
                 <animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.4s" fill="freeze"/>
@@ -1304,7 +1323,7 @@ onUnmounted(() => {
         </section>
 
         <!-- Network visualization -->
-        <section class="net-section">
+        <!-- <section class="net-section">
           <div style="margin-top: 10rem;" class="network-label">DETECTION NETWORK</div>
           <p class="net-subtitle">
             {{ votingList.length || '—' }} active methods · signals flow to AI brain in real time
@@ -1325,7 +1344,7 @@ onUnmounted(() => {
               <div class="nl-item"><span class="nl-dot nl-dot--comp"></span>Compiler · Mixtral</div>
             </div>
           </div>
-        </section>
+        </section> -->
 
         <!-- Roadmap -->
         <section class="roadmap-section">
@@ -1334,10 +1353,10 @@ onUnmounted(() => {
             <div class="roadmap-item roadmap-active">
               <div class="roadmap-dot"></div>
               <div class="roadmap-content">
-                <div class="roadmap-date">Apr-May 2026</div>
-                <div class="roadmap-desc">Devnet public launch</div>
-                <div class="roadmap-desc">Colosseum Hackathon submission</div>
-                <div class="roadmap-desc">Data providers onboarding</div>
+                <div class="roadmap-date" style="color: #fff">Apr-May 2026</div>
+                <div class="roadmap-desc" style="color: #fff">Devnet public launch</div>
+                <div class="roadmap-desc" style="color: #fff">Colosseum Hackathon submission</div>
+                <div class="roadmap-desc" style="color: #fff">Data providers onboarding</div>
               </div>
             </div>
             <div class="roadmap-item">
@@ -1392,6 +1411,21 @@ onUnmounted(() => {
           <p class="scan-sub">Run all registered detection methods simultaneously and get an AI verdict.</p>
         </div>
 
+        <!-- Devnet faucet -->
+        <div class="scan-box">
+          <div >Devnet only · not real tokens · for testing purposes</div>
+          <br>
+          <a href="https://faucet.solana.com/" target="_blank" style="color: #fff;">Claim Devnet SOL here</a>
+          <div style="margin-top: 0.5rem;">
+            <span style="margin-top: 0.5rem;" v-if="faucetMsg" :class="['faucet-msg', faucetMsg.ok ? 'faucet-msg--ok' : 'faucet-msg--err']">
+              {{ faucetMsg.text }}
+            </span>
+            <button style="margin-top: 0.5rem;" class="submit-listing-btn" :disabled="faucetLoading" @click="claimFaucet">
+              {{ faucetLoading ? 'Sending…' : 'Claim 10 000 POH' }}
+            </button>
+          </div>
+        </div>
+
         <div class="scan-box">
           <div class="scan-input-row">
             <input
@@ -1424,22 +1458,6 @@ onUnmounted(() => {
           </button>
         </div>
 
-        <div v-if="brainPolling && !brainVerdict" class="brain-card brain-pending">
-          <span class="brain-label">AI Analysis</span>
-          <span class="brain-analyzing">processing evidence...</span>
-        </div>
-
-        <div v-if="brainVerdict && brainVerdict.status !== 'not_found'" class="brain-card" :class="brainVerdict.verdict === 'HUMAN' ? 'brain-human' : 'brain-bot'">
-          <div class="brain-row">
-            <span class="brain-label">AI Verdict</span>
-            <span :class="['status-badge', brainVerdict.verdict === 'HUMAN' ? 'human' : 'ai']">
-              {{ brainVerdict.verdict === 'HUMAN' ? 'VERIFIED HUMAN' : 'SUSPECTED BOT' }}
-            </span>
-          </div>
-          <p class="brain-reasoning">{{ brainVerdict.reasoning }}</p>
-          <div class="brain-conf">Confidence: {{ Math.round((brainVerdict.confidence || 0) * 100) }}%</div>
-        </div>
-
         <div v-if="checkerResults" class="results-accordion">
           <button class="results-accordion-header" @click="showEvidence = !showEvidence">
             <div class="accordion-left">
@@ -1461,6 +1479,22 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
+
+        <div v-if="brainPolling && !brainVerdict" class="brain-card brain-pending">
+          <span class="brain-label">AI Analysis</span>
+          <span class="brain-analyzing">processing evidence...</span>
+        </div>
+
+        <div v-if="brainVerdict && brainVerdict.status !== 'not_found'" class="brain-card" :class="brainVerdict.verdict === 'HUMAN' ? 'brain-human' : 'brain-bot'">
+          <div class="brain-row">
+            <span class="brain-label">AI Verdict</span>
+            <span :class="['status-badge', brainVerdict.verdict === 'HUMAN' ? 'human' : 'ai']">
+              {{ brainVerdict.verdict === 'HUMAN' ? 'VERIFIED HUMAN' : 'SUSPECTED BOT' }}
+            </span>
+          </div>
+          <p class="brain-reasoning">{{ brainVerdict.reasoning }}</p>
+          <div class="brain-conf">Confidence: {{ Math.round((brainVerdict.confidence || 0) * 100) }}%</div>
+        </div>
       </div>
 
       <!-- Listing -->
@@ -1468,7 +1502,7 @@ onUnmounted(() => {
         <div class="listing-header">
           <div class="scan-tag">METHOD LISTING</div>
           <h2 class="scan-title">Submit a detection method</h2>
-          <p class="scan-sub">Define an on-chain check and pay 1000 POH to register it. 500 POH goes to stakers immediately, 500 to the protocol. Earn rewards when your method is used in scans.</p>
+          <p class="scan-sub">Define a signal and pay 1000 POH to register it. 500 POH goes to stakers immediately, 500 to the protocol. Earn rewards when your method is used in scans.</p>
         </div>
         <div class="form-section">
           <div class="form-label-row">
@@ -1718,13 +1752,13 @@ onUnmounted(() => {
             ></textarea>
 
             <div class="vcs-actions">
-              <button class="vcs-btn vcs-btn-yes" :disabled="voteSubmitting" @click="castVote(true)">
-                {{ voteSubmitting ? '...' : '✓ Human' }}
+              <button class="vcs-btn vcs-btn-yes" :disabled="voteSubmitting || feedbackValidating" @click="castVote(true)">
+                {{ feedbackValidating ? 'Checking…' : voteSubmitting ? '…' : '✓ Human' }}
               </button>
-              <button class="vcs-btn vcs-btn-no" :disabled="voteSubmitting" @click="castVote(false)">
-                ✗ Robot
+              <button class="vcs-btn vcs-btn-no" :disabled="voteSubmitting || feedbackValidating" @click="castVote(false)">
+                {{ feedbackValidating ? 'Checking…' : '✗ Robot' }}
               </button>
-              <button class="vcs-btn vcs-btn-skip" @click="castVote('skip')">
+              <button class="vcs-btn vcs-btn-skip" :disabled="feedbackValidating" @click="castVote('skip')">
                 Skip →
               </button>
             </div>
@@ -1770,7 +1804,7 @@ onUnmounted(() => {
               </div>
               <div class="pstat-card deposit-stat" @click="showDepositModal = true" title="Click to deposit POH">
                 <div class="pstat-val">{{ ((profileData.profile?.balance ?? 0) / 1e6).toFixed(2) }}</div>
-                <div class="pstat-label">Balance (POH) <br><span class="pstat-deposit-hint">Tap to Deposit</span></div>
+                <div class="pstat-label">Account Balance (POH) <br><span class="pstat-deposit-hint">Tap to Deposit</span></div>
               </div>
               <div class="pstat-card">
                 <div class="pstat-val">{{ profileData.earned ? (profileData.earned / 1e6).toFixed(2) : '0.00' }}</div>
@@ -1843,6 +1877,7 @@ onUnmounted(() => {
                     <span class="mlist-type">{{ v.type?.toUpperCase() }}</span>
                     <span class="mlist-desc">{{ v.description }}</span>
                   </div>
+                  <div v-if="v.feedback" class="mlist-feedback">"{{ v.feedback }}"</div>
                   <div class="mlist-meta">
                     <span :class="['vote-badge', v.vote ? 'vote-human' : 'vote-bot']">
                       {{ v.vote ? '✓ Human' : '✗ Bot' }}
@@ -1907,7 +1942,7 @@ onUnmounted(() => {
             </div>
             <div class="code-block">
               <div class="code-lang">curl — single</div>
-              <pre class="code-pre">curl -X POST https://poh.assetux.com/checker \
+              <pre class="code-pre">curl -X POST https://proofofhuman.ge/checker \
   -H "Content-Type: application/json" \
   -d '{
     "input": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
@@ -1917,7 +1952,7 @@ onUnmounted(() => {
             </div>
             <div class="code-block">
               <div class="code-lang">curl — bulk (CSV)</div>
-              <pre class="code-pre">curl -X POST https://poh.assetux.com/checker \
+              <pre class="code-pre">curl -X POST https://proofofhuman.ge/checker \
   -F "csv=@wallets.csv" \
   -F "apiKey=your-api-key-here" \
   -F "txHash=your-payment-tx"
@@ -1974,7 +2009,7 @@ const results = await pollJob(jobId)</pre>
             <div class="api-desc">Poll for the async AI verdict after a scan. <code>brainKey</code> is returned by POST /checker. Returns <code>status: "pending" | "done" | "error"</code>.</div>
             <div class="code-block">
               <div class="code-lang">curl</div>
-              <pre class="code-pre">curl https://poh.assetux.com/checker/brain/0xabc123...</pre>
+              <pre class="code-pre">curl https://proofofhuman.ge/checker/brain/0xabc123...</pre>
             </div>
             <div class="api-params">
               <div class="param-row"><code>verdict</code><span>HUMAN | AI | UNCERTAIN | UNKNOWN</span></div>
@@ -1990,7 +2025,7 @@ const results = await pollJob(jobId)</pre>
             <div class="api-desc">Returns cost breakdown for a given batch size before committing.</div>
             <div class="code-block">
               <div class="code-lang">curl</div>
-              <pre class="code-pre">curl "https://poh.assetux.com/checker/pricing?count=100"
+              <pre class="code-pre">curl "https://proofofhuman.ge/checker/pricing?count=100"
 # → { count: 100, perAddress: 0.55, total: 55000000, tiers: [...] }</pre>
             </div>
           </div>
@@ -2002,7 +2037,7 @@ const results = await pollJob(jobId)</pre>
             <div class="api-desc">Returns profile stats, submitted methods, and reward totals for a wallet address.</div>
             <div class="code-block">
               <div class="code-lang">curl</div>
-              <pre class="code-pre">curl https://poh.assetux.com/profile/YourSolanaWalletAddressHere</pre>
+              <pre class="code-pre">curl https://proofofhuman.ge/profile/YourSolanaWalletAddressHere</pre>
             </div>
           </div>
         </div>
@@ -2108,7 +2143,7 @@ const results = await pollJob(jobId)</pre>
 
             <div v-if="stakeMessage" class="stake-message">{{ stakeMessage }}</div>
             <p class="profile-hint" style="margin-top:0.75rem">
-              Contract: <code>{{ STAKING_CONTRACT?.slice(0, 20) }}…</code>
+              Contract: <code>{{ STAKING_CONTRACT }}</code>
             </p>
           </template>
         </div>
@@ -2164,7 +2199,7 @@ const results = await pollJob(jobId)</pre>
 }
 .problem-inner { max-width: 680px; text-align: center; }
 .problem-tag {
-  font-size: 0.7rem; letter-spacing: 0.18em; color: #333;
+  font-size: 0.7rem; letter-spacing: 0.18em; color: #555;
   font-family: 'JetBrains Mono', monospace; margin-bottom: 2rem;
 }
 .problem-title {
@@ -2176,8 +2211,8 @@ const results = await pollJob(jobId)</pre>
   border-left: 2px solid #222; margin: 0 0 2rem; padding: 1rem 1.5rem;
   text-align: left; color: #555; font-style: italic; font-size: 1.25rem; line-height: 1.6;
 }
-.problem-quote cite { display: block; margin-top: 0.5rem; font-style: normal; color: #333; font-size: 0.82rem; }
-.problem-desc { color: #444; font-size: 1.25rem; line-height: 1.7; margin-bottom: 2.5rem; }
+.problem-quote cite { display: block; margin-top: 0.5rem; font-style: normal; color: #555; font-size: 0.82rem; }
+.problem-desc { color: #555; font-size: 1.25rem; line-height: 1.7; margin-bottom: 2.5rem; }
 
 /* ── Roadmap ──────────────────────────────────────────────────────────────── */
 .roadmap-section { padding: 5rem 0 6rem; border-top: 1px solid #111; }
@@ -2191,13 +2226,13 @@ const results = await pollJob(jobId)</pre>
   width: 1px; background: #1a1a1a;
 }
 .roadmap-dot {
-  width: 11px; height: 11px; border-radius: 50%; border: 1px solid #2a2a2a;
+  width: 11px; height: 11px; border-radius: 50%; border: 1px solid #555;
   background: #0d0d0d; flex-shrink: 0; margin-top: 3px;
 }
-.roadmap-active .roadmap-dot { border-color: #555; background: #1a1a1a; box-shadow: 0 0 6px #333; }
-.roadmap-date { font-size: 2rem; color: #444; font-family: 'JetBrains Mono', monospace; margin-bottom: 0.2rem; }
+.roadmap-active .roadmap-dot { border-color: #555; background: #1a1a1a; box-shadow: 0 0 6px #555; }
+.roadmap-date { font-size: 2rem; color: #555; font-family: 'JetBrains Mono', monospace; margin-bottom: 0.2rem; }
 .roadmap-active .roadmap-date { color: #888; }
-.roadmap-desc { font-size: 1.25rem; color: #333; padding: 5px 0px; }
+.roadmap-desc { font-size: 1.25rem; color: #555; padding: 5px 0px; }
 .roadmap-active .roadmap-desc { color: #666; }
 
 .landing-hero {
@@ -2209,7 +2244,7 @@ const results = await pollJob(jobId)</pre>
   font-size: 1.25rem;
   font-weight: 700;
   letter-spacing: 0.2em;
-  color: #444;
+  color: #555;
   text-transform: uppercase;
   margin-bottom: 1.5rem;
 }
@@ -2270,11 +2305,12 @@ const results = await pollJob(jobId)</pre>
   align-items: center;
   justify-content: center;
 }
+.display-block { display: block; }
 
 .feat-tag {
   font-size: 0.7rem;
   letter-spacing: 0.18em;
-  color: #333;
+  color: #555;
   font-weight: 600;
 }
 .feat-title {
@@ -2286,7 +2322,7 @@ const results = await pollJob(jobId)</pre>
   margin: 0;
 }
 .feat-body {
-  font-size: 1.05rem;
+  font-size: 1.25rem;
   color: #555;
   line-height: 1.7;
   margin: 0;
@@ -2305,7 +2341,7 @@ const results = await pollJob(jobId)</pre>
 
 .feat-svg {
   width: 100%;
-  max-width: 420px;
+  max-width: 768px;
   height: auto;
   overflow: visible;
 }
@@ -2362,7 +2398,7 @@ const results = await pollJob(jobId)</pre>
   font-size: 1.25rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: #444;
+  color: #555;
 }
 
 .token-desc {
@@ -2424,7 +2460,7 @@ const results = await pollJob(jobId)</pre>
   font-size: 0.81rem;
   font-weight: 700;
   letter-spacing: 0.2em;
-  color: #333;
+  color: #555;
   text-transform: uppercase;
   margin-bottom: 2rem;
   text-align: center;
@@ -2477,7 +2513,7 @@ const results = await pollJob(jobId)</pre>
   content: '—';
   position: absolute;
   left: 0;
-  color: #2a2a2a;
+  color: #555;
 }
 
 .how-tag {
@@ -2486,7 +2522,7 @@ const results = await pollJob(jobId)</pre>
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #444;
+  color: #555;
   border: 1px solid #1a1a1a;
   border-radius: 3px;
   padding: 0.1rem 0.35rem;
@@ -2534,7 +2570,7 @@ const results = await pollJob(jobId)</pre>
   stroke-dasharray: 3 11;
   animation: net-flow 2s linear infinite;
 }
-.net-edge--evm    { stroke: #2a2a2a; }
+.net-edge--evm    { stroke: #555; }
 .net-edge--rest   { stroke: #222; }
 .net-edge--solana { stroke: #2a1a44; }
 
@@ -2543,7 +2579,7 @@ const results = await pollJob(jobId)</pre>
   animation-duration: 0.45s !important;
 }
 .net-edge--active.net-edge--evm    { stroke: #555; }
-.net-edge--active.net-edge--rest   { stroke: #444; }
+.net-edge--active.net-edge--rest   { stroke: #555; }
 .net-edge--active.net-edge--solana { stroke: #9945ff88; }
 
 @keyframes net-flow {
@@ -2565,13 +2601,13 @@ const results = await pollJob(jobId)</pre>
   stroke-width: 1.5;
   transition: fill 0.25s, filter 0.25s;
 }
-.net-ngroup--evm    circle { stroke: #2a2a2a; }
+.net-ngroup--evm    circle { stroke: #555; }
 .net-ngroup--rest   circle { stroke: #1e1e1e; }
 .net-ngroup--solana circle { stroke: #4a2a7a; }
 
 .net-ngroup--active circle { fill: #111; }
 .net-ngroup--active.net-ngroup--evm    circle { stroke: #666;      filter: drop-shadow(0 0 5px #555); }
-.net-ngroup--active.net-ngroup--rest   circle { stroke: #555;      filter: drop-shadow(0 0 5px #444); }
+.net-ngroup--active.net-ngroup--rest   circle { stroke: #555;      filter: drop-shadow(0 0 5px #555); }
 .net-ngroup--active.net-ngroup--solana circle { stroke: #9945ff;   filter: drop-shadow(0 0 6px #9945ff88); }
 
 .net-nlabel {
@@ -2654,7 +2690,7 @@ const results = await pollJob(jobId)</pre>
   pointer-events: none;
 }
 .net-verdict--human + .net-verdict-lbl,
-.net-verdict-lbl { fill: #444; }
+.net-verdict-lbl { fill: #555; }
 
 /* ── Legend ── */
 .net-legend {
@@ -2692,7 +2728,7 @@ const results = await pollJob(jobId)</pre>
   flex-shrink: 0;
   border: 1px solid transparent;
 }
-.nl-dot--evm    { background: #1a1a1a; border-color: #333; }
+.nl-dot--evm    { background: #1a1a1a; border-color: #555; }
 .nl-dot--solana { background: #0d0019; border-color: #4a2a7a; }
 .nl-dot--rest   { background: #0d0d0d; border-color: #222; }
 .nl-dot--eval   { background: #0a1a0a; border-color: #1a4a1a; }
@@ -2741,7 +2777,7 @@ const results = await pollJob(jobId)</pre>
   font-size: 0.68rem;
 }
 
-.field-hint { font-size: 0.72rem; color: #444; margin-top: 0.3rem; }
+.field-hint { font-size: 0.72rem; color: #555; margin-top: 0.3rem; }
 .field-hint--warn { color: #666; }
 
 .type-tabs {
@@ -2753,7 +2789,7 @@ const results = await pollJob(jobId)</pre>
 .type-tab {
   background: none;
   border: 1px solid #1a1a1a;
-  color: #444;
+  color: #555;
   padding: 0.4rem 1rem;
   border-radius: 6px;
   font-size: 0.8rem;
@@ -2763,7 +2799,7 @@ const results = await pollJob(jobId)</pre>
   white-space: nowrap;
 }
 
-.type-tab:hover { border-color: #2a2a2a; color: #aaa; }
+.type-tab:hover { border-color: #555; color: #aaa; }
 .type-tab.active { background: #fff; color: #000; border-color: #fff; font-weight: 600; }
 
 .form-row {
@@ -2790,7 +2826,7 @@ const results = await pollJob(jobId)</pre>
   padding: 0.9rem 1.5rem;
   border-radius: 8px;
   font-weight: 700;
-  font-size: 0.9rem;
+  font-size: 1.2rem;
   cursor: pointer;
   transition: opacity 0.15s;
   letter-spacing: 0.02em;
@@ -2816,7 +2852,7 @@ const results = await pollJob(jobId)</pre>
   font-size: 0.81rem;
   font-weight: 700;
   letter-spacing: 0.2em;
-  color: #444;
+  color: #555;
   text-transform: uppercase;
   margin-bottom: 0.75rem;
 }
@@ -2852,7 +2888,7 @@ const results = await pollJob(jobId)</pre>
   transition: border-color 0.15s;
 }
 
-.scan-input-row:focus-within { border-color: #444; }
+.scan-input-row:focus-within { border-color: #555; }
 
 .scan-input {
   flex: 1;
@@ -2864,7 +2900,7 @@ const results = await pollJob(jobId)</pre>
   font-size: 1.12rem;
 }
 
-.scan-input::placeholder { color: #333; }
+.scan-input::placeholder { color: #555; }
 
 .scan-upload {
   display: flex;
@@ -2873,7 +2909,7 @@ const results = await pollJob(jobId)</pre>
   width: 44px;
   border-left: 1px solid #1a1a1a;
   cursor: pointer;
-  color: #444;
+  color: #555;
   transition: color 0.15s;
   flex-shrink: 0;
 }
@@ -2904,7 +2940,7 @@ const results = await pollJob(jobId)</pre>
   border-left: 3px solid #222;
 }
 
-.brain-pending { border-left-color: #333; }
+.brain-pending { border-left-color: #555; }
 .brain-human   { border-left-color: var(--green); }
 .brain-bot     { border-left-color: var(--red); }
 
@@ -2915,7 +2951,7 @@ const results = await pollJob(jobId)</pre>
   margin-bottom: 0.5rem;
 }
 
-.brain-conf { font-size: 1.25rem; color: #444; margin-top: 0.5rem; }
+.brain-conf { font-size: 1.25rem; color: #555; margin-top: 0.5rem; }
 
 .results-accordion {
   border: 1px solid #1a1a1a;
@@ -2965,7 +3001,7 @@ const results = await pollJob(jobId)</pre>
 
 .accordion-chevron {
   font-size: 1.1rem;
-  color: #333;
+  color: #555;
   transform: rotate(0deg);
   transition: transform 0.2s;
   flex-shrink: 0;
@@ -2995,7 +3031,7 @@ const results = await pollJob(jobId)</pre>
 }
 
 .result-dot.pass { background: var(--green); }
-.result-dot.fail { background: #2a2a2a; }
+.result-dot.fail { background: #555; }
 
 .result-desc {
   flex: 1;
@@ -3041,7 +3077,7 @@ const results = await pollJob(jobId)</pre>
 
 .vote-progress-label {
   font-size: 1.25rem;
-  color: #444;
+  color: #555;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
@@ -3064,7 +3100,7 @@ const results = await pollJob(jobId)</pre>
 
 .vcs-chain {
   font-size: 1.25rem;
-  color: #333;
+  color: #555;
   letter-spacing: 0.05em;
 }
 
@@ -3072,7 +3108,7 @@ const results = await pollJob(jobId)</pre>
   font-size: 1.25rem;
   font-weight: 700;
   letter-spacing: 0.1em;
-  color: #444;
+  color: #555;
   border: 1px solid #1a1a1a;
   padding: 0.15rem 0.45rem;
   border-radius: 3px;
@@ -3080,7 +3116,7 @@ const results = await pollJob(jobId)</pre>
 
 .vmc-score {
   font-size: 1.25rem;
-  color: #444;
+  color: #555;
   font-variant-numeric: tabular-nums;
   margin-left: auto;
 }
@@ -3100,7 +3136,7 @@ const results = await pollJob(jobId)</pre>
 
 .vcs-detail-label {
   font-size: 1.25rem;
-  color: #333;
+  color: #555;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   white-space: nowrap;
@@ -3134,7 +3170,7 @@ const results = await pollJob(jobId)</pre>
 
 .vcs-score-fill {
   height: 100%;
-  background: #2a2a2a;
+  background: #555;
   border-radius: 1px;
 }
 
@@ -3145,7 +3181,7 @@ const results = await pollJob(jobId)</pre>
   border: 1px solid #1e1e1e;
   border-radius: 6px;
   color: #888;
-  font-size: 0.78rem;
+  font-size: 1rem;
   font-family: inherit;
   padding: 0.5rem 0.65rem;
   resize: none;
@@ -3154,8 +3190,8 @@ const results = await pollJob(jobId)</pre>
   box-sizing: border-box;
   transition: border-color 0.2s;
 }
-.vcs-feedback::placeholder { color: #333; }
-.vcs-feedback:focus { border-color: #333; color: #aaa; }
+.vcs-feedback::placeholder { color: #555; }
+.vcs-feedback:focus { border-color: #555; color: #aaa; }
 
 .vcs-actions {
   display: flex;
@@ -3197,10 +3233,10 @@ const results = await pollJob(jobId)</pre>
 }
 
 .vcs-btn-skip {
-  color: #444;
+  color: #555;
   padding: 0.65rem 1.1rem;
 }
-.vcs-btn-skip:hover { color: #888; border-color: #2a2a2a; }
+.vcs-btn-skip:hover { color: #888; border-color: #555; }
 
 /* ── Layout ──────────────────────────────────────────────────────────────── */
 .app-container {
@@ -3308,7 +3344,7 @@ const results = await pollJob(jobId)</pre>
 .disconnect-link {
   background: none;
   border: none;
-  color: #444;
+  color: #555;
   font-size: 1.25rem;
   cursor: pointer;
   padding: 0;
@@ -3330,7 +3366,7 @@ const results = await pollJob(jobId)</pre>
 
 .modal {
   width: 90%;
-  max-width: 360px;
+  max-width: 512px;
   padding: 1.75rem;
   background: #0c0c0c;
   border: 1px solid #1e1e1e;
@@ -3347,27 +3383,51 @@ const results = await pollJob(jobId)</pre>
   font-size: 1.25rem;
 }
 
+.wallet-select-modal { max-width: 380px; }
+.wallet-list { display: flex; flex-direction: column; gap: 0.5rem; margin: 0.5rem 0 1rem; }
+
 .wallet-option {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 0.9rem 1rem;
-  background: #111;
+  gap: 0.85rem;
+  padding: 0.75rem 1rem;
+  background: #0e0e0e;
   border: 1px solid #1e1e1e;
-  border-radius: 7px;
-  color: #fff;
-  font-size: 1.12rem;
+  border-radius: 10px;
+  color: #ccc;
+  font-size: 0.95rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-  margin-bottom: 0.6rem;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  text-align: left;
 }
-
+.wallet-option--detected {
+  border-color: #1e3a1e;
+  color: #fff;
+}
 .wallet-option:hover {
-  background: #1a1a1a;
-  border-color: #2a2a2a;
+  background: #161616;
+  border-color: #444;
+  color: #fff;
 }
+.wallet-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.wallet-name { flex: 1; }
+.wallet-badge {
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+.wallet-badge--detected { background: #0f2a0f; color: #22c55e; }
+.wallet-badge--install  { background: #1a1a1a; color: #555; }
 
 .modal-close {
   width: 100%;
@@ -3382,7 +3442,48 @@ const results = await pollJob(jobId)</pre>
   transition: color 0.15s, border-color 0.15s;
 }
 
-.modal-close:hover { color: #aaa; border-color: #2a2a2a; }
+.modal-close:hover { color: #aaa; border-color: #555; }
+
+.modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin-top: 1.5rem;
+}
+.modal-actions > * { flex: 1; text-align: center; }
+.vote-confirm-modal .modal-desc { margin: 0.4rem 0; }
+.vote-confirm-warn { color: rgba(239, 68, 68, 0.75) !important; font-size: 0.82rem !important; }
+.vote-confirm-human { color: #22c55e; }
+.vote-confirm-bot   { color: #ef4444; }
+.vote-confirm-comment {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  background: #0d0d0d;
+  border: 1px solid #1e1e1e;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.vote-confirm-comment-label {
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  color: #555;
+  text-transform: uppercase;
+}
+.vote-confirm-comment-text {
+  font-size: 1.2rem;
+  color: #555;
+  font-style: italic;
+  line-height: 1.5;
+}
+.mlist-feedback {
+  font-size: 0.8rem;
+  color: #555;
+  font-style: italic;
+  padding: 0.2rem 0 0.1rem;
+  line-height: 1.4;
+}
 
 /* ── Hero ────────────────────────────────────────────────────────────────── */
 .hero {
@@ -3467,13 +3568,13 @@ const results = await pollJob(jobId)</pre>
 }
 
 .premium-input::placeholder,
-.premium-textarea::placeholder { color: #2a2a2a; }
+.premium-textarea::placeholder { color: #555; }
 
 .premium-input:focus,
 .premium-select:focus,
 .premium-textarea:focus {
   outline: none;
-  border-color: #2a2a2a;
+  border-color: #555;
   background: #0c0c0c;
 }
 
@@ -3500,11 +3601,11 @@ const results = await pollJob(jobId)</pre>
   border: 1px solid #1e1e1e;
   border-radius: 7px;
   cursor: pointer;
-  color: #444;
+  color: #555;
   transition: color 0.15s, border-color 0.15s;
 }
 
-.file-label:hover { color: #aaa; border-color: #2a2a2a; }
+.file-label:hover { color: #aaa; border-color: #555; }
 .hidden-input { display: none; }
 
 .file-info {
@@ -3571,7 +3672,7 @@ const results = await pollJob(jobId)</pre>
   align-self: flex-end;
 }
 
-.mini-btn:hover { color: #aaa; border-color: #2a2a2a; }
+.mini-btn:hover { color: #aaa; border-color: #555; }
 .mini-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
 /* ── ABI picker ──────────────────────────────────────────────────────────── */
@@ -3595,10 +3696,10 @@ const results = await pollJob(jobId)</pre>
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: #444;
+  color: #555;
 }
 
-.abi-picker-count { font-size: 0.72rem; color: #333; }
+.abi-picker-count { font-size: 0.72rem; color: #555; }
 
 .abi-picker-list { max-height: 10rem; overflow-y: auto; }
 
@@ -3705,7 +3806,7 @@ const results = await pollJob(jobId)</pre>
   text-transform: uppercase;
   letter-spacing: 0.12em;
   font-weight: 700;
-  color: #444;
+  color: #555;
   margin-right: 10px;
 }
 
@@ -3717,7 +3818,7 @@ const results = await pollJob(jobId)</pre>
 
 .brain-analyzing {
   font-size: 1.25rem;
-  color: #444;
+  color: #555;
   animation: pulse 2s ease-in-out infinite;
 }
 
@@ -3751,7 +3852,7 @@ const results = await pollJob(jobId)</pre>
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  color: #2a2a2a;
+  color: #555;
   font-size: 1.25rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -3771,7 +3872,7 @@ const results = await pollJob(jobId)</pre>
   font-size: 1.25rem;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: #333;
+  color: #555;
   font-weight: 700;
   margin-bottom: 1.5rem;
 }
@@ -3793,7 +3894,7 @@ const results = await pollJob(jobId)</pre>
   margin-bottom: 0.5rem;
 }
 
-.vote-score-label { font-size: 1.25rem; color: #444; }
+.vote-score-label { font-size: 1.25rem; color: #555; }
 .vote-score-value { font-size: 1.25rem; color: #666; font-variant-numeric: tabular-nums; }
 
 .vote-actions {
@@ -3808,7 +3909,7 @@ const results = await pollJob(jobId)</pre>
   align-items: center;
   gap: 1rem;
   padding: 5rem 0;
-  color: #2a2a2a;
+  color: #555;
   font-size: 1.56rem;
 }
 
@@ -3943,7 +4044,7 @@ const results = await pollJob(jobId)</pre>
 
 .outline-btn {
   background: transparent;
-  border: 1px solid #333;
+  border: 1px solid #555;
   color: #888;
   padding: 1rem 2rem;
   border-radius: 6px;
@@ -4017,8 +4118,8 @@ const results = await pollJob(jobId)</pre>
   text-align: center;
 }
 .pstat-card.deposit-stat { cursor: pointer; transition: border-color 0.2s; }
-.pstat-card.deposit-stat:hover { border-color: #333; }
-.pstat-deposit-hint { font-size: 0.7rem; color: #444; margin-left: 0.35rem; }
+.pstat-card.deposit-stat:hover { border-color: #555; }
+.pstat-deposit-hint { font-size: 0.7rem; color: #555; margin-left: 0.35rem; }
 .pstat-val { font-size: 1.75rem; font-weight: 700; color: #fff; }
 .pstat-label { font-size: 0.8125rem; color: #555; margin-top: 0.25rem; }
 
@@ -4026,7 +4127,7 @@ const results = await pollJob(jobId)</pre>
 .vote-human { color: #2aaa2a; background: #0a1a0a; }
 .vote-bot   { color: #aa2a2a; background: #1a0a0a; }
 
-.modal-desc { font-size: 0.9rem; color: #555; margin: 0.5rem 0 0; line-height: 1.5; }
+.modal-desc { font-size: 1.2rem; color: #555; margin: 0.5rem 0 0; line-height: 1.5; }
 .deposit-msg { font-size: 1rem; padding: 0.5rem; border-radius: 4px; margin-bottom: 0.75rem; }
 .deposit-ok  { color: #2aaa2a; background: #0a1a0a; }
 .deposit-err { color: #aa4444; background: #1a0a0a; }
@@ -4056,7 +4157,9 @@ const results = await pollJob(jobId)</pre>
   padding: 0.15rem 0.5rem;
   border-radius: 20px;
 }
-
+.faucet-bar {
+  margin: 25px 0px;
+}
 .apikey-row {
   display: flex;
   align-items: center;
@@ -4074,10 +4177,10 @@ const results = await pollJob(jobId)</pre>
   color: #888;
   word-break: break-all;
 }
-.profile-hint { font-size: 0.8125rem; color: #444; margin-top: 0.5rem; }
+.profile-hint { font-size: 0.8125rem; color: #555; margin-top: 0.5rem; }
 .profile-hint code { background: #111; padding: 0.1rem 0.3rem; border-radius: 3px; color: #888; }
 
-.profile-empty { color: #444; font-size: 1.3rem; display: flex; gap: 0.5rem; align-items: center; }
+.profile-empty { color: #555; font-size: 1.3rem; display: flex; gap: 0.5rem; align-items: center; }
 
 .method-list-profile { display: flex; flex-direction: column; gap: 0.5rem; }
 .mlist-row {
@@ -4133,7 +4236,7 @@ const results = await pollJob(jobId)</pre>
 }
 .api-desc code { background: #111; padding: 0.1rem 0.3rem; border-radius: 3px; color: #888; font-size: 1rem; }
 .api-params { padding: 0.75rem 1.25rem; border-bottom: 1px solid #111; display: flex; flex-direction: column; gap: 0.4rem; }
-.param-row { display: flex; align-items: baseline; gap: 0.75rem; font-size: 0.9rem; }
+.param-row { display: flex; align-items: baseline; gap: 0.75rem; font-size: 1.2rem; }
 .param-row code { color: #fff; font-size: 1rem; background: #0c0c0c; border: 1px solid #1e1e1e; padding: 0.1rem 0.35rem; border-radius: 3px; white-space: nowrap; }
 .param-row span { color: #555; }
 
@@ -4141,7 +4244,7 @@ const results = await pollJob(jobId)</pre>
 .code-lang {
   padding: 0.35rem 1.25rem;
   font-size: 0.75rem;
-  color: #444;
+  color: #555;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -4173,7 +4276,7 @@ const results = await pollJob(jobId)</pre>
   gap: 1rem;
 }
 .pt-row:last-child { border-bottom: none; }
-.pt-head { font-size: 0.8125rem; font-weight: 600; color: #444; text-transform: uppercase; letter-spacing: 0.05em; background: #050505; }
+.pt-head { font-size: 0.8125rem; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.05em; background: #050505; }
 .pt-free { background: #0a0f0a; color: #5a8a5a; }
 .pt-row span:nth-child(2) { color: #aaa; }
 .pt-row span:nth-child(3) { color: #555; }
@@ -4247,7 +4350,7 @@ const results = await pollJob(jobId)</pre>
   white-space: nowrap;
   transition: border-color 0.15s, color 0.15s;
 }
-.max-btn:hover { border-color: #444; color: #aaa; }
+.max-btn:hover { border-color: #555; color: #aaa; }
 
 .stake-claim-row {
   display: flex;

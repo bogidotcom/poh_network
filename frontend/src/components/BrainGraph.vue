@@ -54,7 +54,7 @@ function nodeRadius(m) {
 }
 
 function layoutScale() {
-  return Math.min(1, Math.min(W, H + 60) / 520)
+  return Math.min(1.3, Math.min(W, H + 60) / 520)
 }
 
 function buildGraph() {
@@ -70,7 +70,12 @@ function buildGraph() {
     score: m.score || 0,
   }))
 
-  nodes = [brainNode, humanNode, botNode, ...mNodes]
+  nodes = [
+    brainNode,
+    humanNode,
+    botNode,
+    ...mNodes
+  ]
 
   links = [
     ...mNodes.map(n => ({ source: n.id, target: '__brain__', mtype: n.type })),
@@ -297,7 +302,7 @@ function resize() {
   if (!wrap || !canvasRef.value) return
   const prevW = W
   W = wrap.clientWidth
-  H = Math.max(300, Math.min(600, W * 0.75))
+  H = Math.max(420, Math.min(800, W * 0.95))
   canvasRef.value.width  = W
   canvasRef.value.height = H
   canvasRef.value.style.width  = W + 'px'

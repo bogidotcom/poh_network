@@ -146,10 +146,10 @@ function recordIp(address, ip) {
 
 // ── Vote tracking ─────────────────────────────────────────────────────────────
 
-function recordVote(address, methodId, vote) {
+function recordVote(address, methodId, vote, feedback) {
   const p = getProfile(address) || {};
   const votes = p.votes || {};
-  votes[methodId] = { vote, at: new Date().toISOString() };
+  votes[methodId] = { vote, at: new Date().toISOString(), ...(feedback ? { feedback } : {}) };
   upsertProfile(address, { votes });
 }
 

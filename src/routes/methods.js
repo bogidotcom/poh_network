@@ -50,6 +50,19 @@ router.post('/listing/validate-description', async (req, res, next) => {
 });
 
 /**
+ * POST /verifyer/validate-feedback
+ * Pre-vote LLM check that the feedback comment is meaningful.
+ */
+router.post('/verifyer/validate-feedback', async (req, res, next) => {
+  try {
+    const { feedback } = req.body;
+    if (!feedback?.trim()) return res.json({ valid: true, reason: 'No comment' });
+    const result = await brain.validateFeedback(feedback);
+    res.json(result);
+  } catch (err) { next(err); }
+});
+
+/**
  * POST /listing
  * Register a new method.
  */
@@ -190,7 +203,7 @@ router.post('/verifyer/vote', async (req, res, next) => {
     saveMethods(methods);
 
     recordTx(signature, { action: 'vote', wallet: walletAddress, methodId });
-    recordVote(walletAddress, methodId, vote);
+    recordVote(walletAddress, methodId, vote, feedback || null);
 
     appendToDataset({
       instruction: `Voter assessment for method: ${method.description}`,
