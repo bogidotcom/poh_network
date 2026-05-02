@@ -232,11 +232,29 @@ import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import BrainGraph from './BrainGraph.vue'
 
-const methods = ref([])
+const DEMO_METHODS = [
+  { id: '1', description: 'ETH Balance > 0.01',     type: 'evm'    },
+  { id: '2', description: 'ENS Name Registered',    type: 'evm'    },
+  { id: '3', description: 'SOL Balance > 0.05',     type: 'solana' },
+  { id: '4', description: 'Farcaster Profile',      type: 'rest'   },
+  { id: '5', description: 'Galxe Identity',         type: 'rest'   },
+  { id: '6', description: 'PAXG Holder',            type: 'evm'    },
+  { id: '7', description: 'web3.bio Social Graph',  type: 'rest'   },
+  { id: '8', description: 'Parcl LP Position',      type: 'solana' },
+  { id: '9', description: 'Ondo USDY Holder',       type: 'evm'    },
+  { id: '10', description: 'NFT Collection Owner',  type: 'evm'    },
+  { id: '11', description: 'Helium Hotspot Owner',  type: 'solana' },
+  { id: '12', description: 'Goldfinch Borrower',    type: 'evm'    },
+  { id: '13', description: 'Twitter Linked',        type: 'rest'   },
+  { id: '14', description: 'GitHub Connected',      type: 'rest'   },
+  { id: '15', description: 'Backed bIB01 Holder',   type: 'evm'    },
+]
+
+const methods = ref(DEMO_METHODS)
 onMounted(async () => {
   try {
     const res = await axios.get('/methods/verifyer')
-    methods.value = res.data
+    if (res.data?.length) methods.value = res.data
   } catch {}
 })
 </script>
