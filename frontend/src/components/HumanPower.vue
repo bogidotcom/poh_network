@@ -1,504 +1,87 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useWallet } from '@solana/wallet-adapter-vue'
 import axios from 'axios'
 import BrainGraph from './BrainGraph.vue'
+import ScannerSection from './ScannerSection.vue'
+import ListingSection from './ListingSection.vue'
+import VoteQueueSection from './VoteQueueSection.vue'
+import ProfileSection from './ProfileSection.vue'
+import ApiDocsSection from './ApiDocsSection.vue'
 import {
-  Search, PlusSquare, Vote, Code,
-  Activity, Trash2, FileUp, SquareArrowDown, PersonStanding, FolderCode, CreditCard, Bitcoin
+  Search, PlusSquare, Vote,
+  Activity, SquareArrowDown, PersonStanding, FolderCode, CreditCard, Bitcoin
 } from 'lucide-vue-next'
 import {
-  Connection,
-  PublicKey,
   Transaction,
-  SystemProgram,
 } from '@solana/web3.js'
-import {
-  getAssociatedTokenAddress,
-  createTransferInstruction,
-  TOKEN_PROGRAM_ID,
-} from '@solana/spl-token'
+import { useWalletConnect } from '../composables/useWalletConnect.js'
+import { useConfig } from '../composables/useConfig.js'
+import { useChecker } from '../composables/useChecker.js'
+import { useVoting } from '../composables/useVoting.js'
+import { useListing } from '../composables/useListing.js'
+import { useProfile } from '../composables/useProfile.js'
 import {
   getPohBalance, getStakeInfo, getGlobalState,
-  stakeTokens, unstakeTokens, registerMethod,
+  stakeTokens, unstakeTokens,
   castVote as castVoteOnChain, claimStakerRewards,
 } from '../pohProgram.js'
-// ── Wallet State ─────────────────────────────────────────────────────────────
+
+// ── UI State ──────────────────────────────────────────────────────────────────
+const currentSection = ref('landing')
+const mobileMenuOpen = ref(false)
+const loading = ref(false)
+const error = ref(null)
+const showSection = (id) => { currentSection.value = id; mobileMenuOpen.value = false }
+
+// ── Config ────────────────────────────────────────────────────────────────────
+const { POH_MINT, FEE_RECIPIENT, SOLANA_RPC, STAKING_CONTRACT, fetchConfig } = useConfig()
+
+// ── Wallet ────────────────────────────────────────────────────────────────────
 const {
   publicKey,
   connected,
   connecting,
   wallets,
-  select: adapterSelect,
-  connect: adapterConnect,
-  disconnect: adapterDisconnect,
-  signMessage: adapterSignMessage,
-  signTransaction: adapterSignTx,
-  signAllTransactions: adapterSignAllTxs,
-} = useWallet()
-
-const walletAddress = computed(() => publicKey.value?.toString() ?? null)
-const walletProvider = computed(() => {
-  if (!connected.value) return null
-  return {
-    signTransaction:    (tx)  => adapterSignTx.value(tx),
-    signAllTransactions:(txs) => adapterSignAllTxs.value(txs),
-  }
-})
-const showWalletModal = ref(false)
-const currentSection = ref('landing')
-
-const shortAddress = computed(() => {
-  if (!walletAddress.value) return ''
-  return `${walletAddress.value.slice(0, 4)}...${walletAddress.value.slice(-4)}`
-})
-
-async function connectWallet(walletName, walletUrl) {
-  const w = wallets.value.find(x => x.adapter.name === walletName)
-  const ready = w?.readyState === 'Installed' || w?.readyState === 'Loadable'
-  if (!ready) { window.open(walletUrl, '_blank'); return }
-  showWalletModal.value = false
-  try {
-    adapterSelect(walletName)
-    await adapterConnect()
-  } catch (err) {
-    error.value = `Connection failed: ${err.message}`
-  }
-}
-
-async function disconnectWallet() {
-  try { await adapterDisconnect() } catch {}
-}
-
-watch(connected, (val) => {
-  if (val) {
+  adapterSignMessage,
+  walletAddress,
+  walletProvider,
+  showWalletModal,
+  shortAddress,
+  connectWallet,
+  disconnectWallet,
+  signAndSendTransaction,
+} = useWalletConnect({
+  SOLANA_RPC,
+  onConnect: () => {
     loadProfile()
     if (POH_MINT.value) loadPohBalance()
     if (currentSection.value === 'votes') loadVoting()
-  }
+  },
 })
 
-// ── Config ────────────────────────────────────────────────────────────────────
-const POH_MINT = ref('')
-const FEE_RECIPIENT = ref('')
-const SOLANA_RPC = ref('https://api.devnet.solana.com')
+// ── Checker ───────────────────────────────────────────────────────────────────
+const checker = useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, SOLANA_RPC, signAndSendTransaction })
+const {
+  scanInput, resolvedInputDisplay, checkerResults, showEvidence,
+  brainVerdict, brainPolling, batchFile, batchRowCount, batchRows,
+  isResolving, detectedChain, faucetLoading, faucetMsg,
+  runCheck, handleFileSelect, claimFaucet,
+} = checker
 
-const fetchConfig = async () => {
-  try {
-    const res = await axios.get('/config')
-    POH_MINT.value = res.data.POH_MINT
-    FEE_RECIPIENT.value = res.data.FEE_RECIPIENT
-    SOLANA_RPC.value = res.data.SOLANA_RPC
-    STAKING_CONTRACT.value = res.data.STAKING_CONTRACT || ''
-  } catch (err) {
-    console.error('Failed to fetch config', err)
-  }
-}
+// Proxy error from checker to top-level error ref
+watch(checker.error, val => { if (val) error.value = val })
 
-// ── UI State ──────────────────────────────────────────────────────────────────
-const loading = ref(false)
-const error = ref(null)
-const mobileMenuOpen = ref(false)
-const showSection = (id) => { currentSection.value = id; mobileMenuOpen.value = false }
+// ── Voting ────────────────────────────────────────────────────────────────────
+const voting = useVoting({ walletAddress, connected, adapterSignMessage })
+const {
+  votingList, voteIndex, voteSubmitting, voteFeedback,
+  voteConfirmPending, feedbackValidating, currentVoteItem, myVotesData,
+  loadVoting, castVote, confirmVote, loadMyVotes, fetchMethodsForGraph,
+} = voting
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-async function signAndSendTransaction(transaction) {
-  if (!connected.value) throw new Error('Wallet not connected')
-  const connection = new Connection(SOLANA_RPC.value, 'confirmed')
+watch(voting.error, val => { if (val) error.value = val })
 
-  const { blockhash } = await connection.getLatestBlockhash()
-  transaction.recentBlockhash = blockhash
-  transaction.feePayer = new PublicKey(walletAddress.value)
-
-  const signed = await adapterSignTx.value(transaction)
-  const txHash = await connection.sendRawTransaction(signed.serialize())
-  await connection.confirmTransaction(txHash, 'confirmed')
-  return txHash
-}
-
-// ── 1. Checker ────────────────────────────────────────────────────────────────
-const scanInput = ref('')
-const resolvedInputDisplay = ref('')
-const checkerResults = ref(null)
-const showEvidence   = ref(false)
-const brainVerdict = ref(null)
-const brainPolling = ref(false)
-const faucetLoading = ref(false)
-const faucetMsg = ref(null)
-
-const claimFaucet = async () => {
-  if (!walletAddress.value) { error.value = 'Connect wallet first'; return }
-  faucetLoading.value = true
-  faucetMsg.value = null
-  try {
-    const res = await axios.post('/profile/faucet', { address: walletAddress.value })
-    faucetMsg.value = { ok: true, text: `10 000 POH sent — tx: ${res.data.txHash?.slice(0, 16)}…` }
-  } catch (err) {
-    faucetMsg.value = { ok: false, text: err.response?.data?.error || 'Faucet failed' }
-  } finally {
-    faucetLoading.value = false
-  }
-}
-
-const batchFile = ref(null)
-const batchRowCount = ref(0)
-const batchRows = ref([])   // raw parsed rows from CSV
-const isResolving = ref(false)
-
-function isWalletAddress(input) {
-  if (!input) return false
-  if (/^0x[0-9a-fA-F]{40}$/.test(input)) return true          // EVM
-  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(input)) return true // Solana base58
-  return false
-}
-
-const detectedChain = computed(() => {
-  const v = scanInput.value?.trim()
-  if (!v) return null
-  if (/^0x[0-9a-fA-F]{40}$/.test(v)) return 'evm'
-  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(v)) return 'solana'
-  return null
-})
-
-async function resolveToAddress(input) {
-  const trimmed = input.trim()
-  if (isWalletAddress(trimmed)) return trimmed
-
-  // .sol domain → Bonfida SNS
-  if (trimmed.endsWith('.sol')) {
-    const domain = trimmed.slice(0, -4)
-    const res = await axios.get(`https://sns-sdk-proxy.bonfida.workers.dev/resolve/${domain}`)
-    if (res.data?.result) return res.data.result
-    throw new Error(`Could not resolve "${trimmed}" — SNS domain not found`)
-  }
-
-  // ENS / Space ID domains
-  try {
-    const res = await axios.get('https://nameapi.space.id/getAddress', { params: { domain: trimmed } })
-    if (res.data?.code === 0 && res.data.address) return res.data.address
-  } catch { /* fall through to ZNS */ }
-
-  // ZNS domains — API requires chain + domain params
-  const ZNS_TLD_CHAIN = {
-    ink: 57073, bnb: 56, base: 8453, blast: 81457, polygon: 137,
-    zora: 7777777, scroll: 534352, taiko: 167000, bera: 80094,
-    sonic: 146, kaia: 8217, abstract: 2741, defi: 130, unichain: 1301,
-    soneium: 1868, plume: 98865, hemi: 43111, xrpl: 1440002,
-  }
-  const tld = trimmed.split('.').pop()?.toLowerCase()
-  const onlyDomain = trimmed.split('.').slice(0, -1).join('.')
-
-  const znsChains = ZNS_TLD_CHAIN[tld] ? [ZNS_TLD_CHAIN[tld]] : Object.values(ZNS_TLD_CHAIN)
-  for (const chain of znsChains) {
-    try {
-      const res = await axios.get('https://zns.bio/api/resolveDomain', { params: { chain, domain: onlyDomain } })
-      if (res.data?.code === 200 && isWalletAddress(res.data.address)) return res.data.address
-    } catch { /* try next chain */ }
-  }
-
-  throw new Error(`Could not resolve "${trimmed}" — not a valid address or domain`)
-}
-
-const handleFileSelect = (event) => {
-  const file = event.target.files[0]
-  if (file) {
-    batchFile.value = file
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const lines = e.target.result.split('\n').filter(r => r.trim())
-      const rows = lines.slice(1) // skip header
-      batchRows.value = rows.map(r => r.split(',')[0].trim().replace(/^"(.*)"$/, '$1'))
-      batchRowCount.value = rows.length
-    }
-    reader.readAsText(file)
-  }
-}
-
-const runCheck = async () => {
-  if (!connected.value) { error.value = 'Please connect your wallet first'; return }
-  loading.value = true
-  isResolving.value = true
-  error.value = null
-  resolvedInputDisplay.value = ''
-  try {
-    // ── Resolve addresses (Space ID support) ──────────────────────────────
-    let resolvedInputs = []
-    if (batchFile.value) {
-      resolvedInputs = await Promise.all(batchRows.value.map(resolveToAddress))
-    } else {
-      const resolved = await resolveToAddress(scanInput.value)
-      if (resolved !== scanInput.value.trim()) {
-        resolvedInputDisplay.value = resolved
-      }
-      resolvedInputs = [resolved]
-    }
-    isResolving.value = false
-
-    // ── Charge POH for scan ───────────────────────────────────────────────
-    let txHash = null
-    const { data: pricingData } = await axios.get(`/checker/pricing?count=${resolvedInputs.length}`)
-    const freeScanData = await axios.get('/profile/' + walletAddress.value).catch(() => null)
-    const freeScansLeft = freeScanData?.data?.profile?.freeScansLeft ?? 100
-
-    if (freeScansLeft < resolvedInputs.length && POH_MINT.value && !POH_MINT.value.startsWith('YOUR_')) {
-      const costRaw = pricingData.total // 6-decimal units
-      const connection = new Connection(SOLANA_RPC.value, 'confirmed')
-      const mintPubkey = new PublicKey(POH_MINT.value)
-      const walletPubkey = new PublicKey(walletAddress.value)
-      const recipientPubkey = new PublicKey(FEE_RECIPIENT.value)
-      const fromAta = await getAssociatedTokenAddress(mintPubkey, walletPubkey)
-      const toAta = await getAssociatedTokenAddress(mintPubkey, recipientPubkey)
-      const payTx = new Transaction().add(
-        createTransferInstruction(fromAta, toAta, walletPubkey, BigInt(costRaw))
-      )
-      txHash = await signAndSendTransaction(payTx)
-    }
-
-    // ── Build form data with resolved addresses ───────────────────────────
-    const formData = new FormData()
-    if (batchFile.value) {
-      const header = 'address\n'
-      const csvContent = header + resolvedInputs.join('\n')
-      const blob = new Blob([csvContent], { type: 'text/csv' })
-      formData.append('csv', blob, 'resolved.csv')
-    } else {
-      formData.append('input', resolvedInputs[0])
-    }
-    formData.append('walletAddress', walletAddress.value)
-    if (txHash) formData.append('txHash', txHash)
-
-    const res = await axios.post('/checker', formData)
-    checkerResults.value = res.data.result
-    brainVerdict.value = null
-    showEvidence.value = false
-
-    // Poll for brain verdict in background
-    const brainKey = res.data.brainKey
-    if (brainKey) {
-      brainPolling.value = true
-      const poll = setInterval(async () => {
-        try {
-          const b = await axios.get(`/checker/brain/${encodeURIComponent(brainKey)}`)
-          if (b.data.status === 'done' || b.data.status === 'error') {
-            brainVerdict.value = b.data
-            brainPolling.value = false
-            clearInterval(poll)
-          }
-        } catch { clearInterval(poll); brainPolling.value = false }
-      }, 4000)
-      // Stop polling after 3 minutes regardless
-      setTimeout(() => { clearInterval(poll); brainPolling.value = false }, 180000)
-    }
-  } catch (err) {
-    console.log(err.data, err.message, err.response)
-    error.value = err.response?.data?.error || err.message || 'Scan failed' 
-    isResolving.value = false
-  } finally {
-    loading.value = false
-  }
-}
-
-// ── 2. Listing ────────────────────────────────────────────────────────────────
-const listing = ref({ type: 'evm', chainId: 1, address: '', method: '', abiTypes: '', returnTypes: '', decimals: '', expression: '', lang: 'js', description: '', body: '', httpMethod: 'GET' })
-const headers = ref([{ key: '', value: '' }])
-const addHeader = () => headers.value.push({ key: '', value: '' })
-const removeHeader = (i) => headers.value.splice(i, 1)
-
-// ABI / IDL picker
-const abiFns = ref([])        // [{name, abiTypes, returnTypes, inputs, outputs}]
-const abiLoading = ref(false)
-const abiError = ref(null)
-
-async function fetchAbi() {
-  const addr = listing.value.address?.trim()
-  if (!addr || listing.value.type === 'rest') return
-  abiLoading.value = true
-  abiError.value = null
-  abiFns.value = []
-  try {
-    if (listing.value.type === 'evm') {
-      const res = await axios.get(`/abi/evm?address=${addr}&chainId=${listing.value.chainId}`)
-      abiFns.value = res.data.abi || []
-      if (!abiFns.value.length) abiError.value = 'No functions found in ABI'
-    } else if (listing.value.type === 'solana') {
-      const res = await axios.get(`/abi/solana?programId=${addr}`)
-      // Map instructions to picker format
-      abiFns.value = (res.data.instructions || []).map(ix => ({
-        name: ix.name,
-        abiTypes: JSON.stringify(ix.args?.map(a => a.type) || []),
-        returnTypes: '[]',
-        inputs: ix.args || [],
-        outputs: [],
-        isInstruction: true
-      }))
-      if (!abiFns.value.length) abiError.value = res.data.note || 'No IDL found for this program'
-    }
-  } catch (err) {
-    abiError.value = err.response?.data?.error || 'Could not fetch ABI'
-  } finally {
-    abiLoading.value = false
-  }
-}
-
-function pickMethod(fn) {
-  listing.value.method = fn.name
-  listing.value.abiTypes = fn.abiTypes
-  listing.value.returnTypes = fn.returnTypes
-  // Build expression hint
-  if (!fn.isInstruction) {
-    const returns = JSON.parse(fn.returnTypes || '[]')
-    if (returns[0] === 'uint256' || returns[0] === 'uint128') {
-      listing.value.expression = 'result[0] > 0n'
-    } else if (returns[0] === 'bool') {
-      listing.value.expression = 'result[0] === true'
-    } else if (returns[0] === 'address') {
-      listing.value.expression = 'result[0] !== "0x0000000000000000000000000000000000000000"'
-    } else {
-      listing.value.expression = 'result[0] > 0n'
-    }
-  }
-}
-
-const LISTING_FEE_POH = 1000 // 1000 POH
-
-const submitListing = async () => {
-  if (!connected.value) { error.value = 'Please connect your wallet'; return }
-  if (pohBalance.value < LISTING_FEE_POH) {
-    error.value = `Insufficient POH — need ${LISTING_FEE_POH} POH, you have ${pohBalance.value.toFixed(2)}`
-    return
-  }
-  if (!listing.value.description?.trim()) { error.value = 'Description is required'; return }
-
-  // Validate description with LLM before paying
-  loading.value = true
-  try {
-    const validation = await axios.post('/methods/listing/validate-description', { description: listing.value.description })
-    if (!validation.data.valid) {
-      error.value = `Description rejected: ${validation.data.reason}`
-      loading.value = false
-      return
-    }
-  } catch {
-    // If validation service is down, proceed (don't block on LLM availability)
-  }
-
-  try {
-    // Generate deterministic method ID for on-chain registration
-    const methodId = crypto.randomUUID().replace(/-/g, '')
-
-    // Get current total_methods index for PDA derivation
-    const global = await getGlobalState(SOLANA_RPC.value)
-    const methodIndex = global?.totalMethods ?? 0
-
-    // Register on-chain: pays 1000 POH, splits 50/50 deployer/stakers
-    const txHash = await registerMethod(
-      walletProvider.value, walletAddress.value, POH_MINT.value, SOLANA_RPC.value,
-      methodId, methodIndex
-    )
-
-    // Register in backend with the on-chain txHash + methodId
-    const headerObj = headers.value.reduce((a, h) => { if (h.key) a[h.key] = h.value; return a }, {})
-    const payload = {
-      ...listing.value,
-      headers: JSON.stringify(headerObj),
-      txHash,
-      walletAddress: walletAddress.value,
-      onChainMethodId: methodId,
-      onChainIndex: methodIndex,
-    }
-    if (listing.value.type === 'rest') payload.method = listing.value.httpMethod
-    await axios.post('/methods/listing', payload)
-
-    await loadPohBalance()
-    alert(`Method registered! Paid ${LISTING_FEE_POH} POH — 500 to deployer, 500 distributed to stakers.`)
-    listing.value = { type: 'evm', chainId: 1, address: '', method: '', abiTypes: '', returnTypes: '', decimals: '', expression: '', lang: 'js', description: '', body: '', httpMethod: 'GET' }
-    headers.value = [{ key: '', value: '' }]
-  } catch (err) {
-    error.value = err.message || 'Registration failed'
-  } finally {
-    loading.value = false
-  }
-}
-
-// ── 3. Votes ──────────────────────────────────────────────────────────────────
-const votingList = ref([])
-const voteIndex = ref(0)
-const voteSubmitting = ref(false)
-const voteFeedback = ref('')
-const voteConfirmPending = ref(null)
-const currentVoteItem = computed(() => votingList.value[voteIndex.value] ?? null)
-
-const loadVoting = async () => {
-  loading.value = true
-  try {
-    const params = walletAddress.value ? { address: walletAddress.value } : {}
-    const res = await axios.get('/methods/verifyer', { params })
-    // Server returns least-voted first, random within same score.
-    // Hide methods the wallet already voted on.
-    votingList.value = res.data.filter(m => !m.myVoted)
-    voteIndex.value = 0
-  } catch (err) {
-    error.value = 'Failed to load voting queue'
-  } finally {
-    loading.value = false
-  }
-}
-
-const feedbackValidating = ref(false)
-
-const castVote = async (voteVal) => {
-  if (voteVal === 'skip') { voteIndex.value++; voteFeedback.value = ''; return }
-  if (!connected.value) { error.value = 'Connect wallet to vote'; return }
-  if (!adapterSignMessage.value) { error.value = 'Wallet does not support message signing'; return }
-
-  const fb = voteFeedback.value.trim()
-  if (fb) {
-    feedbackValidating.value = true
-    try {
-      const res = await axios.post('/methods/verifyer/validate-feedback', { feedback: fb })
-      if (!res.data.valid) {
-        error.value = `Comment rejected: ${res.data.reason}`
-        feedbackValidating.value = false
-        return
-      }
-    } catch {
-      // validation down — proceed
-    } finally {
-      feedbackValidating.value = false
-    }
-  }
-
-  voteConfirmPending.value = voteVal
-}
-
-const confirmVote = async () => {
-  const voteVal = voteConfirmPending.value
-  voteConfirmPending.value = null
-  voteSubmitting.value = true
-  try {
-    const type     = 'method'
-    const methodId = currentVoteItem.value.id
-    const message  = `poh-vote-v1:${methodId}:${voteVal}:${type}:${walletAddress.value}:${Date.now()}`
-    const sig = await adapterSignMessage.value(new TextEncoder().encode(message))
-    const sig58 = encodeBase58(sig)
-    await axios.post('/methods/verifyer/vote', {
-      methodId, vote: voteVal, type,
-      walletAddress: walletAddress.value,
-      signature: sig58, message,
-      feedback: voteFeedback.value.trim() || undefined,
-    })
-    voteFeedback.value = ''
-    // Remove the voted method from the list so it never re-appears
-    votingList.value.splice(voteIndex.value, 1)
-    // voteIndex stays the same — next item shifts into the current slot
-  } catch (err) {
-    error.value = err.response?.data?.error || err.message || 'Vote failed'
-  } finally {
-    voteSubmitting.value = false
-  }
-}
-
-// ── Network visualization ─────────────────────────────────────────────────
+// ── Network visualization ─────────────────────────────────────────────────────
 const NET_CX = 400, NET_CY = 210
 
 function netShortLabel(desc = '') {
@@ -507,7 +90,6 @@ function netShortLabel(desc = '') {
   return words.length > 13 ? words.slice(0, 12) + '…' : words
 }
 
-// Varied animation durations per node (deterministic from id chars)
 function netDuration(id) {
   const h = String(id).split('').reduce((a, c) => a + c.charCodeAt(0), 0)
   return (1.4 + (h % 8) * 0.2).toFixed(1) + 's'
@@ -519,7 +101,6 @@ const netNodes = computed(() => {
   const rest = all.filter(m => m.type === 'rest').slice(0, 5)
   const sol  = all.filter(m => m.type === 'solana').slice(0, 4)
 
-  // Static fallback shown before methods load
   if (!all.length) return [
     { id:'s0', type:'evm',    label:'ETH Balance',  x:192, y:100 },
     { id:'s1', type:'evm',    label:'TX Count',     x:148, y:210 },
@@ -546,8 +127,7 @@ const netNodes = computed(() => {
   return nodes
 })
 
-// Pulsing animation state
-const netActiveId  = ref(null)
+const netActiveId   = ref(null)
 const netBrainPulse = ref(false)
 let _netTimer = null
 
@@ -561,120 +141,7 @@ function startNetAnim() {
   }, 1700)
 }
 
-// Fetch methods silently for the graph (no loading spinner)
-async function fetchMethodsForGraph() {
-  try {
-    const res = await axios.get('/methods/verifyer')
-    votingList.value = res.data.sort((a, b) => (a.score || 0) - (b.score || 0))
-  } catch {}
-}
-
-// ── 4. Profile ────────────────────────────────────────────────────────────────
-const profileData    = ref(null)
-const profileLoading = ref(false)
-const profileError   = ref(null)
-const signupLoading  = ref(false)
-const STAKING_CONTRACT = ref('')
-
-const myVotesData    = ref([])
-const showDepositModal = ref(false)
-const depositAmount  = ref('')
-const depositLoading = ref(false)
-const depositMsg     = ref(null)
-
-const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
-function encodeBase58(bytes) {
-  let n = BigInt('0x' + Array.from(bytes, b => b.toString(16).padStart(2, '0')).join(''))
-  let result = ''
-  while (n > 0n) { result = BASE58_ALPHABET[Number(n % 58n)] + result; n /= 58n }
-  for (const b of bytes) { if (b !== 0) break; result = '1' + result }
-  return result
-}
-
-async function loadProfile() {
-  if (!walletAddress.value) return
-  profileLoading.value = true
-  profileError.value = null
-  try {
-    const res = await axios.get(`/profile/${walletAddress.value}`)
-    profileData.value = res.data
-  } catch (err) {
-    if (err.response?.status === 404) profileData.value = null
-    else profileError.value = err.response?.data?.error || 'Failed to load profile'
-  } finally {
-    profileLoading.value = false
-  }
-}
-
-async function signupProfile() {
-  if (!walletAddress.value || !adapterSignMessage.value) { error.value = 'Connect wallet first'; return }
-  signupLoading.value = true
-  profileError.value = null
-  try {
-    const message = `poh-profile-v1:${walletAddress.value}:${Date.now()}`
-    const messageBytes = new TextEncoder().encode(message)
-    const sigBytes = await adapterSignMessage.value(messageBytes)
-    const bs58sig = encodeBase58(sigBytes)
-    await axios.post('/profile/signup', { address: walletAddress.value, signature: bs58sig, message })
-    await loadProfile()
-  } catch (err) {
-    profileError.value = err.response?.data?.error || err.message || 'Signup failed'
-  } finally {
-    signupLoading.value = false
-  }
-}
-
-async function rotateApiKey() {
-  if (!walletAddress.value) return
-  try {
-    const res = await axios.post('/profile/apikey/rotate', { address: walletAddress.value })
-    if (profileData.value?.profile) profileData.value.profile.apiKey = res.data.apiKey
-  } catch (err) {
-    profileError.value = err.response?.data?.error || 'Rotate failed'
-  }
-}
-
-async function loadMyVotes() {
-  if (!walletAddress.value) return
-  try {
-    const res = await axios.get(`/profile/${walletAddress.value}/votes`)
-    myVotesData.value = res.data.votes || []
-  } catch { myVotesData.value = [] }
-}
-
-async function submitDeposit() {
-  if (!connected.value || !depositAmount.value) return
-  const amount = parseFloat(depositAmount.value)
-  if (!amount || amount <= 0) { depositMsg.value = 'Enter a valid amount'; return }
-  depositLoading.value = true
-  depositMsg.value = null
-  try {
-    const connection = new Connection(SOLANA_RPC.value, 'confirmed')
-    const mintPubkey = new PublicKey(POH_MINT.value)
-    const walletPubkey = new PublicKey(walletAddress.value)
-    const recipientPubkey = new PublicKey(FEE_RECIPIENT.value)
-    const fromAta = await getAssociatedTokenAddress(mintPubkey, walletPubkey)
-    const toAta = await getAssociatedTokenAddress(mintPubkey, recipientPubkey)
-    const tx = new Transaction().add(
-      createTransferInstruction(fromAta, toAta, walletPubkey, BigInt(Math.floor(amount * 1_000_000)))
-    )
-    const txHash = await signAndSendTransaction(tx)
-    const res = await axios.post('/profile/deposit', { address: walletAddress.value, txHash, amount })
-    depositMsg.value = `Deposited ${amount} POH ✓`
-    if (profileData.value?.profile) profileData.value.profile.balance = res.data.balance
-    depositAmount.value = ''
-  } catch (err) {
-    depositMsg.value = err.response?.data?.error || err.message || 'Deposit failed'
-  } finally {
-    depositLoading.value = false
-  }
-}
-
-function copyText(text) {
-  navigator.clipboard.writeText(text).catch(() => {})
-}
-
-// ── 5. Staking ────────────────────────────────────────────────────────────────
+// ── Staking ───────────────────────────────────────────────────────────────────
 const stakeAmount    = ref('')
 const unstakeAmount  = ref('')
 const stakeLoading   = ref(false)
@@ -755,27 +222,41 @@ async function claimRewards() {
   }
 }
 
-const offchainClaimLoading = ref(false)
+// ── Profile ───────────────────────────────────────────────────────────────────
+const profile = useProfile({
+  walletAddress, connected, adapterSignMessage,
+  POH_MINT, FEE_RECIPIENT, SOLANA_RPC, signAndSendTransaction,
+  loadPohBalance,
+})
+const {
+  profileData, profileLoading, profileError, signupLoading,
+  showDepositModal, depositAmount, depositLoading, depositMsg,
+  offchainClaimLoading,
+  loadProfile, signupProfile, rotateApiKey, submitDeposit, claimOffchainBalance,
+} = profile
 
-async function claimOffchainBalance() {
-  if (!connected.value) { error.value = 'Connect wallet to claim'; return }
-  offchainClaimLoading.value = true
-  stakeMessage.value = null
-  try {
-    const res = await axios.post('/profile/claim', { address: walletAddress.value })
-    const poh = (res.data.claimed / 1e6).toFixed(2)
-    stakeMessage.value = `Claimed ${poh} POH off-chain rewards ✓`
-    await loadProfile()
-    await loadPohBalance()
-  } catch (err) {
-    const msg = err.response?.data?.error || err.message || 'Claim failed'
-    stakeMessage.value = msg
-  } finally {
-    offchainClaimLoading.value = false
-  }
+// stakeMessage from profile composable merged with local stakeMessage
+watch(profile.stakeMessage, val => { if (val) stakeMessage.value = val })
+
+// ── Listing ───────────────────────────────────────────────────────────────────
+const listingComposable = useListing({
+  walletAddress, walletProvider, connected, POH_MINT, SOLANA_RPC,
+  pohBalance, loadPohBalance,
+})
+const {
+  listing, headers, abiFns, abiLoading, abiError,
+  LISTING_FEE_POH,
+  addHeader, removeHeader, fetchAbi, pickMethod, submitListing,
+} = listingComposable
+
+watch(listingComposable.error, val => { if (val) error.value = val })
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function copyText(text) {
+  navigator.clipboard.writeText(text).catch(() => {})
 }
 
-function goTo (url) {
+function goTo(url) {
   window.open(url, '_blank')
 }
 
@@ -785,6 +266,7 @@ function autoExpand(e) {
   el.style.height = el.scrollHeight + 'px'
 }
 
+// ── Watchers ──────────────────────────────────────────────────────────────────
 watch(walletAddress, (addr) => {
   if (addr && POH_MINT.value) loadPohBalance()
   if (addr) loadProfile()
