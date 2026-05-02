@@ -2199,7 +2199,7 @@ const results = await pollJob(jobId)</pre>
 }
 .problem-inner { max-width: 680px; text-align: center; }
 .problem-tag {
-  font-size: 0.7rem; letter-spacing: 0.18em; color: #555;
+  font-size: 1.25rem; letter-spacing: 0.18em; color: #555;
   font-family: 'JetBrains Mono', monospace; margin-bottom: 2rem;
 }
 .problem-title {
@@ -2211,7 +2211,7 @@ const results = await pollJob(jobId)</pre>
   border-left: 2px solid #222; margin: 0 0 2rem; padding: 1rem 1.5rem;
   text-align: left; color: #555; font-style: italic; font-size: 1.25rem; line-height: 1.6;
 }
-.problem-quote cite { display: block; margin-top: 0.5rem; font-style: normal; color: #555; font-size: 0.82rem; }
+.problem-quote cite { display: block; margin-top: 0.5rem; font-style: normal; color: #555; font-size: 1.1rem; }
 .problem-desc { color: #555; font-size: 1.25rem; line-height: 1.7; margin-bottom: 2.5rem; }
 
 /* ── Roadmap ──────────────────────────────────────────────────────────────── */
@@ -2308,7 +2308,7 @@ const results = await pollJob(jobId)</pre>
 .display-block { display: block; }
 
 .feat-tag {
-  font-size: 0.7rem;
+  font-size: 1.2rem;
   letter-spacing: 0.18em;
   color: #555;
   font-weight: 600;
@@ -2332,7 +2332,7 @@ const results = await pollJob(jobId)</pre>
   background: none;
   border: none;
   color: #666;
-  font-size: 0.95rem;
+  font-size: 1.1rem;
   cursor: pointer;
   padding: 0;
   transition: color 0.15s;
@@ -2457,7 +2457,7 @@ const results = await pollJob(jobId)</pre>
 .how-section { margin: 0 0 10rem; }
 
 .how-label {
-  font-size: 0.81rem;
+  font-size: 1.25rem;
   font-weight: 700;
   letter-spacing: 0.2em;
   color: #555;
@@ -2485,7 +2485,7 @@ const results = await pollJob(jobId)</pre>
 }
 
 .how-step-title {
-  font-size: 0.94rem;
+  font-size: 1.25rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -2518,7 +2518,7 @@ const results = await pollJob(jobId)</pre>
 
 .how-tag {
   display: inline-block;
-  font-size: 0.78rem;
+  font-size: 1.1rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -2754,7 +2754,7 @@ const results = await pollJob(jobId)</pre>
 }
 
 .form-section-label {
-  font-size: 0.65rem;
+  font-size: 1.05rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.16em;
@@ -2763,7 +2763,7 @@ const results = await pollJob(jobId)</pre>
 
 .field-label {
   display: block;
-  font-size: 0.72rem;
+  font-size: 1.25rem;
   font-weight: 500;
   color: #555;
   margin-bottom: 0.4rem;
@@ -2774,10 +2774,10 @@ const results = await pollJob(jobId)</pre>
   color: #2e2e2e;
   font-weight: 400;
   margin-left: 0.3rem;
-  font-size: 0.68rem;
+  font-size: 1.1rem;
 }
 
-.field-hint { font-size: 0.72rem; color: #555; margin-top: 0.3rem; }
+.field-hint { font-size: 1.25rem; color: #555; margin-top: 0.3rem; }
 .field-hint--warn { color: #666; }
 
 .type-tabs {
@@ -2792,7 +2792,7 @@ const results = await pollJob(jobId)</pre>
   color: #555;
   padding: 0.4rem 1rem;
   border-radius: 6px;
-  font-size: 0.8rem;
+  font-size: 1.1rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s;
@@ -2849,7 +2849,7 @@ const results = await pollJob(jobId)</pre>
 }
 
 .scan-tag {
-  font-size: 0.81rem;
+  font-size: 1.1rem;
   font-weight: 700;
   letter-spacing: 0.2em;
   color: #555;
@@ -3145,14 +3145,14 @@ const results = await pollJob(jobId)</pre>
 }
 
 .vcs-detail-val {
-  font-size: 0.94rem;
+  font-size: 1.1rem;
   color: #555;
   font-family: 'JetBrains Mono', monospace;
   word-break: break-all;
 }
 
 .vcs-code {
-  font-size: 0.94rem;
+  font-size: 1.1rem;
   color: #666;
   font-family: 'JetBrains Mono', monospace;
   background: #080808;
@@ -3396,7 +3396,7 @@ const results = await pollJob(jobId)</pre>
   border: 1px solid #1e1e1e;
   border-radius: 10px;
   color: #ccc;
-  font-size: 0.95rem;
+  font-size: 1.1rem;
   font-weight: 500;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
@@ -3419,7 +3419,7 @@ const results = await pollJob(jobId)</pre>
 }
 .wallet-name { flex: 1; }
 .wallet-badge {
-  font-size: 0.65rem;
+  font-size: 1.1rem;
   letter-spacing: 0.08em;
   font-weight: 600;
   padding: 0.15rem 0.5rem;
@@ -3452,7 +3452,7 @@ const results = await pollJob(jobId)</pre>
 }
 .modal-actions > * { flex: 1; text-align: center; }
 .vote-confirm-modal .modal-desc { margin: 0.4rem 0; }
-.vote-confirm-warn { color: rgba(239, 68, 68, 0.75) !important; font-size: 0.82rem !important; }
+.vote-confirm-warn { color: rgba(239, 68, 68, 0.75) !important; font-size: 1.1rem !important; }
 .vote-confirm-human { color: #22c55e; }
 .vote-confirm-bot   { color: #ef4444; }
 .vote-confirm-comment {
@@ -3466,7 +3466,7 @@ const results = await pollJob(jobId)</pre>
   gap: 0.3rem;
 }
 .vote-confirm-comment-label {
-  font-size: 0.7rem;
+  font-size: 1.1rem;
   letter-spacing: 0.1em;
   color: #555;
   text-transform: uppercase;
@@ -3478,7 +3478,7 @@ const results = await pollJob(jobId)</pre>
   line-height: 1.5;
 }
 .mlist-feedback {
-  font-size: 0.8rem;
+  font-size: 1.1rem;
   color: #555;
   font-style: italic;
   padding: 0.2rem 0 0.1rem;
@@ -3626,7 +3626,7 @@ const results = await pollJob(jobId)</pre>
 
 .chain-pill {
   display: inline-block;
-  font-size: 0.7rem;
+  font-size: 1.1rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   padding: 0.2rem 0.6rem;
@@ -3666,7 +3666,7 @@ const results = await pollJob(jobId)</pre>
   border-radius: 6px;
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
-  font-size: 0.8rem;
+  font-size: 1.1rem;
   white-space: nowrap;
   flex-shrink: 0;
   align-self: flex-end;
@@ -3692,14 +3692,14 @@ const results = await pollJob(jobId)</pre>
 }
 
 .abi-picker-label {
-  font-size: 0.65rem;
+  font-size: 1.1rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: #555;
 }
 
-.abi-picker-count { font-size: 0.72rem; color: #555; }
+.abi-picker-count { font-size: 1.1rem; color: #555; }
 
 .abi-picker-list { max-height: 10rem; overflow-y: auto; }
 
@@ -3711,7 +3711,7 @@ const results = await pollJob(jobId)</pre>
   border: none;
   border-bottom: 1px solid #111;
   color: #777;
-  font-size: 0.8rem;
+  font-size: 1.1rem;
   font-family: 'JetBrains Mono', monospace;
   cursor: pointer;
   transition: background 0.1s, color 0.1s;
@@ -4119,11 +4119,11 @@ const results = await pollJob(jobId)</pre>
 }
 .pstat-card.deposit-stat { cursor: pointer; transition: border-color 0.2s; }
 .pstat-card.deposit-stat:hover { border-color: #555; }
-.pstat-deposit-hint { font-size: 0.7rem; color: #555; margin-left: 0.35rem; }
+.pstat-deposit-hint { font-size: 1.1rem; color: #555; margin-left: 0.35rem; }
 .pstat-val { font-size: 1.75rem; font-weight: 700; color: #fff; }
-.pstat-label { font-size: 0.8125rem; color: #555; margin-top: 0.25rem; }
+.pstat-label { font-size: 1.1rem; color: #555; margin-top: 0.25rem; }
 
-.vote-badge { font-size: 0.75rem; font-weight: 600; padding: 0.2rem 0.5rem; border-radius: 4px; }
+.vote-badge { font-size: 1.1rem; font-weight: 600; padding: 0.2rem 0.5rem; border-radius: 4px; }
 .vote-human { color: #2aaa2a; background: #0a1a0a; }
 .vote-bot   { color: #aa2a2a; background: #1a0a0a; }
 
@@ -4153,7 +4153,7 @@ const results = await pollJob(jobId)</pre>
   background: #111;
   border: 1px solid #222;
   color: #666;
-  font-size: 0.8125rem;
+  font-size: 1.1rem;
   padding: 0.15rem 0.5rem;
   border-radius: 20px;
 }
@@ -4177,7 +4177,7 @@ const results = await pollJob(jobId)</pre>
   color: #888;
   word-break: break-all;
 }
-.profile-hint { font-size: 0.8125rem; color: #555; margin-top: 0.5rem; }
+.profile-hint { font-size: 1.1rem; color: #555; margin-top: 0.5rem; }
 .profile-hint code { background: #111; padding: 0.1rem 0.3rem; border-radius: 3px; color: #888; }
 
 .profile-empty { color: #555; font-size: 1.3rem; display: flex; gap: 0.5rem; align-items: center; }
@@ -4195,7 +4195,7 @@ const results = await pollJob(jobId)</pre>
 }
 .mlist-main { display: flex; align-items: center; gap: 0.5rem; flex: 1; min-width: 0; }
 .mlist-type {
-  font-size: 0.6875rem;
+  font-size: 1.1rem;
   font-weight: 700;
   color: #555;
   background: #0c0c0c;
@@ -4206,8 +4206,8 @@ const results = await pollJob(jobId)</pre>
 }
 .mlist-desc { font-size: 1.3rem; color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mlist-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 0.2rem; white-space: nowrap; }
-.mlist-score { font-size: 0.8125rem; color: #555; }
-.mlist-earned { font-size: 0.8125rem; color: #888; }
+.mlist-score { font-size: 1.1rem; color: #555; }
+.mlist-earned { font-size: 1.1rem; color: #888; }
 
 /* ── API page ────────────────────────────────────────────────────────────── */
 .api-page { max-width: 900px; margin: 0 auto; padding: 2rem 1rem 4rem; }
@@ -4243,7 +4243,7 @@ const results = await pollJob(jobId)</pre>
 .code-block { border-top: 1px solid #111; }
 .code-lang {
   padding: 0.35rem 1.25rem;
-  font-size: 0.75rem;
+  font-size: 1.1rem;
   color: #555;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -4276,7 +4276,7 @@ const results = await pollJob(jobId)</pre>
   gap: 1rem;
 }
 .pt-row:last-child { border-bottom: none; }
-.pt-head { font-size: 0.8125rem; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.05em; background: #050505; }
+.pt-head { font-size: 1.1rem; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.05em; background: #050505; }
 .pt-free { background: #0a0f0a; color: #5a8a5a; }
 .pt-row span:nth-child(2) { color: #aaa; }
 .pt-row span:nth-child(3) { color: #555; }
@@ -4329,7 +4329,7 @@ const results = await pollJob(jobId)</pre>
   text-align: center;
 }
 .sbal-val { font-size: 1.25rem; font-weight: 700; color: #fff; }
-.sbal-label { font-size: 0.75rem; color: #555; margin-top: 0.2rem; }
+.sbal-label { font-size: 1.1rem; color: #555; margin-top: 0.2rem; }
 .sbal-claimable .sbal-val { color: #5a8a5a; }
 
 .stake-action-row {
@@ -4342,7 +4342,7 @@ const results = await pollJob(jobId)</pre>
   background: none;
   border: 1px solid #222;
   color: #555;
-  font-size: 0.75rem;
+  font-size: 1.1rem;
   font-weight: 700;
   padding: 0.4rem 0.6rem;
   border-radius: 4px;

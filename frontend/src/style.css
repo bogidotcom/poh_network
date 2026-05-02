@@ -48,7 +48,7 @@ body, html {
   font-weight: 600;
   cursor: pointer;
   transition: opacity 0.15s;
-  font-size: 0.875rem;
+  font-size: 1.25rem;
 }
 
 .network-label {
@@ -73,8 +73,8 @@ h1, h2, h3 { font-weight: 600; letter-spacing: -0.03em; }
 .text-center { text-align: center; }
 .w-full { width: 100%; }
 .text-left { text-align: left; }
-.text-xs { font-size: 0.75rem; }
-.text-sm { font-size: 0.875rem; }
+.text-xs { font-size: 1.25rem; }
+.text-sm { font-size: 1.25rem; }
 .text-lg { font-size: 1.125rem; }
 .text-2xl { font-size: 1.5rem; font-weight: 600; }
 .font-bold { font-weight: 700; }
