@@ -254,7 +254,7 @@ const methods = ref(DEMO_METHODS)
 onMounted(async () => {
   try {
     const res = await axios.get('/methods/verifyer')
-    if (res.data?.length) methods.value = res.data
+    if (Array.isArray(res.data) && res.data.length) methods.value = res.data
   } catch {}
 })
 </script>
