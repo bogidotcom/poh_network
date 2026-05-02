@@ -27,10 +27,11 @@ const BRAIN_COLOR = '#e8e8ff'
 const HUMAN_COLOR = '#22c55e'
 const BOT_COLOR   = '#ef4444'
 
+const safeMethods = computed(() => Array.isArray(props.methods) ? props.methods : [])
 const counts = computed(() => ({
-  evm:    props.methods.filter(m => m.type === 'evm').length,
-  rest:   props.methods.filter(m => m.type === 'rest').length,
-  solana: props.methods.filter(m => m.type === 'solana').length,
+  evm:    safeMethods.value.filter(m => m.type === 'evm').length,
+  rest:   safeMethods.value.filter(m => m.type === 'rest').length,
+  solana: safeMethods.value.filter(m => m.type === 'solana').length,
 }))
 
 // ── Graph state ───────────────────────────────────────────────────────────────
@@ -63,7 +64,7 @@ function buildGraph() {
   const humanNode = { id: '__human__', kind: 'verdict', label: 'HUMAN',    r: 22, fx: Math.round(-150 * s), fy: Math.round(190 * s) }
   const botNode   = { id: '__bot__',   kind: 'verdict', label: 'BOT / AI', r: 22, fx:  Math.round(150 * s), fy: Math.round(190 * s) }
 
-  const mNodes = props.methods.map(m => ({
+  const mNodes = safeMethods.value.map(m => ({
     id: m.id, kind: 'method', type: m.type,
     label: shortLabel(m.description),
     r: nodeRadius(m),
@@ -325,7 +326,7 @@ function onMouseMove(e) {
   })
 
   if (hit) {
-    const m = props.methods.find(x => x.id === hit.id)
+    const m = safeMethods.value.find(x => x.id === hit.id)
     tooltip.value = {
       x: e.clientX - rect.left + 10,
       y: e.clientY - rect.top  - 10,
@@ -343,9 +344,9 @@ function rebuild() {
 }
 
 watch(() => props.methods, (next, prev) => {
-  if (!next?.length) return
+  if (!Array.isArray(next) || !next.length) return
   // Add only new nodes rather than full rebuild to preserve stable layout
-  const prevIds = new Set(prev?.map(m => m.id) || [])
+  const prevIds = new Set(Array.isArray(prev) ? prev.map(m => m.id) : [])
   const newMethods = next.filter(m => !prevIds.has(m.id))
   if (newMethods.length === 0) return
   rebuild()

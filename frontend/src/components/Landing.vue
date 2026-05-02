@@ -228,7 +228,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { shallowRef, onMounted } from 'vue'
 import axios from 'axios'
 import BrainGraph from './BrainGraph.vue'
 
@@ -250,7 +250,7 @@ const DEMO_METHODS = [
   { id: '15', description: 'Backed bIB01 Holder',   type: 'evm'    },
 ]
 
-const methods = ref(DEMO_METHODS)
+const methods = shallowRef(DEMO_METHODS)
 onMounted(async () => {
   try {
     const res = await axios.get('/methods/verifyer')
