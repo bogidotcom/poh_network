@@ -4,9 +4,7 @@
     <!-- NAV -->
     <header class="top-nav">
       <div class="nav-brand">
-        <span class="brand-dot"></span>
-        <span class="brand-name">POH</span>
-        <span class="brand-sub">Proof of Human</span>
+        <img src="/poh-icon.png" alt="POH" class="nav-logo" />
       </div>
       <nav class="nav-links">
         <a href="#scan" class="nav-link">Scanner</a>
@@ -14,7 +12,7 @@
         <a href="#community" class="nav-link">Community</a>
         <a href="https://t.me/poh_network_group" target="_blank" class="nav-link">Telegram</a>
       </nav>
-      <a href="https://proofofhuman.ge" class="nav-cta">Launch App →</a>
+      <!-- <a href="https://proofofhuman.ge" class="nav-cta">Launch App →</a> -->
     </header>
 
     <!-- PROBLEM SCREEN -->
@@ -27,7 +25,7 @@
           <cite>— Jensen Huang, CEO of NVIDIA</cite>
         </blockquote>
         <p class="problem-desc">Wallets, votes, and on-chain identities can no longer be trusted at face value.<br>POH verifies humanity through evidence — not promises.</p>
-        <a href="https://proofofhuman.ge" class="neon-btn">Scan a Wallet →</a>
+        <a href="#scan" class="neon-btn">Scan a Wallet →</a>
       </div>
     </section>
 
@@ -37,7 +35,7 @@
         <div class="feat-tag">SCAN</div>
         <h2 class="feat-title">Verify any wallet<br>in seconds</h2>
         <p class="feat-body">Paste an EVM address, Solana address, or ENS name. POH runs all registered detection methods in parallel and returns an AI verdict.</p>
-        <a href="https://proofofhuman.ge" class="feat-cta">Try the Scanner →</a>
+        <!-- <a href="https://proofofhuman.ge" class="feat-cta">Try the Scanner →</a> -->
       </div>
       <div class="feat-right">
         <svg class="feat-svg" viewBox="0 0 420 320" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -92,7 +90,7 @@
         <div class="feat-tag">SIGNALS</div>
         <h2 class="feat-title">Evidence from<br>every layer</h2>
         <p class="feat-body">EVM balances, Solana programs, REST identity APIs, real-world asset holdings, Galxe profiles, web3.bio social links, Web3 domains. Every signal runs in parallel.</p>
-        <a href="https://proofofhuman.ge" class="feat-cta">Browse Methods →</a>
+        <!-- <a href="https://proofofhuman.ge" class="feat-cta">Browse Methods →</a> -->
       </div>
     </section>
 
@@ -102,7 +100,7 @@
         <div class="feat-tag">AI BRAIN</div>
         <h2 class="feat-title">On-device AI,<br>zero cloud calls</h2>
         <p class="feat-body">A local LLM reads every signal, weighs community-trained scores, and outputs a structured verdict with confidence and reasoning. Runs on Qvac. Private by default.</p>
-        <a href="https://proofofhuman.ge" class="feat-cta">See a Verdict →</a>
+        <!-- <a href="https://proofofhuman.ge" class="feat-cta">See a Verdict →</a> -->
       </div>
       <div class="feat-right">
         <svg class="feat-svg" viewBox="0 0 420 320" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -177,7 +175,7 @@
         <div class="feat-tag">COMMUNITY</div>
         <h2 class="feat-title">You decide what<br>counts as human</h2>
         <p class="feat-body">Vote on detection methods. Stake POH to amplify your signal. The community continuously trains the AI — no central authority decides what's human.</p>
-        <a href="https://proofofhuman.ge" class="feat-cta">Open Vote Queue →</a>
+        <!-- <a href="https://proofofhuman.ge" class="feat-cta">Open Vote Queue →</a> -->
       </div>
     </section>
 
@@ -187,7 +185,7 @@
         <div class="feat-tag">API</div>
         <h2 class="feat-title">One call.<br>Instant answer.</h2>
         <p class="feat-body">Integrate POH into any dApp, bot filter, or airdrop tool. REST API with API key auth, bulk CSV scanning, async job queue, and 100 free scans per wallet.</p>
-        <a href="https://proofofhuman.ge" class="feat-cta">View API Docs →</a>
+        <!-- <a href="https://proofofhuman.ge" class="feat-cta">View API Docs →</a> -->
       </div>
       <div class="feat-right">
         <svg class="feat-svg" viewBox="0 0 420 320" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -261,10 +259,8 @@ onMounted(async () => {
   border-bottom: 1px solid #111;
   margin-bottom: 0;
 }
-.nav-brand { display: flex; align-items: center; gap: 0.6rem; margin-right: auto; }
-.brand-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px #22c55e; }
-.brand-name { font-size: 1rem; font-weight: 700; color: #fff; letter-spacing: 0.05em; }
-.brand-sub { font-size: 0.72rem; color: #444; letter-spacing: 0.08em; }
+.nav-brand { display: flex; align-items: center; margin-right: auto; }
+.nav-logo { height: 64px; opacity: 0.9; }
 .nav-links { display: flex; gap: 1.5rem; }
 .nav-link { color: #555; font-size: 0.85rem; text-decoration: none; transition: color 0.15s; }
 .nav-link:hover { color: #fff; }
@@ -330,7 +326,7 @@ onMounted(async () => {
 .feat-body { font-size: 1.05rem; color: #555; line-height: 1.7; margin: 0; }
 .feat-cta { align-self: flex-start; background: none; border: none; color: #666; font-size: 0.95rem; cursor: pointer; padding: 0; transition: color 0.15s; text-decoration: none; }
 .feat-cta:hover { color: #fff; }
-.feat-svg { width: 100%; max-width: 420px; height: auto; overflow: visible; }
+.feat-svg { width: 100%; max-width: 768px; height: auto; overflow: visible; }
 
 @media (max-width: 768px) {
   .feat-screen { flex-direction: column !important; min-height: auto; padding: 4rem 0; gap: 2.5rem; }
