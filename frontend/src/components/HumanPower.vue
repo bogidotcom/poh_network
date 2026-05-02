@@ -2183,7 +2183,7 @@ const results = await pollJob(jobId)</pre>
 }
 
 .landing {
-  max-width: 1280px;
+  max-width: 1400px;
   margin: 0 auto 0;
   padding: 0 0 2rem;
 }
@@ -3240,7 +3240,7 @@ const results = await pollJob(jobId)</pre>
 
 /* ── Layout ──────────────────────────────────────────────────────────────── */
 .app-container {
-  max-width: 1280px;
+  max-width: 1400px;
   width: 100%;
   margin: 0 auto;
   min-height: 100vh;

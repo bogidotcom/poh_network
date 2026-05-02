@@ -263,7 +263,7 @@ onMounted(async () => {
 * { box-sizing: border-box; }
 
 .app-wrap {
-  max-width: 1100px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 0 2rem;
 }
