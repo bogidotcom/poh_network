@@ -224,6 +224,58 @@
       </div>
     </section>
 
+    <!-- Roadmap -->
+    <section class="roadmap-section">
+      <div class="network-label">ROADMAP</div>
+      <div class="roadmap-list">
+        <div class="roadmap-item roadmap-active">
+          <div class="roadmap-dot"></div>
+          <div class="roadmap-content">
+            <div class="roadmap-date" style="color: #fff">Apr-May 2026</div>
+            <div class="roadmap-desc" style="color: #fff">Devnet public launch</div>
+            <div class="roadmap-desc" style="color: #fff">Colosseum Hackathon submission</div>
+            <div class="roadmap-desc" style="color: #fff">Data providers onboarding</div>
+          </div>
+        </div>
+        <div class="roadmap-item">
+          <div class="roadmap-dot"></div>
+          <div class="roadmap-content">
+            <div class="roadmap-date">May-Jun 2026</div>
+            <div class="roadmap-desc">Human-verified proof with fully private evidence and quantum-resistant encryption</div>
+            <div class="roadmap-desc">POH token launch (date TBA)</div>
+          </div>
+        </div>
+        <div class="roadmap-item">
+          <div class="roadmap-dot"></div>
+          <div class="roadmap-content">
+            <div class="roadmap-date">Jun-Jul 2026</div>
+            <div class="roadmap-desc">Multi-chain support across Bitcoin, Litecoin, and Tron</div>
+          </div>
+        </div>
+        <div class="roadmap-item">
+          <div class="roadmap-dot"></div>
+          <div class="roadmap-content">
+            <div class="roadmap-date">Jul-Aug 2026</div>
+            <div class="roadmap-desc">Trading pair analysis to identify fake liquidity and real market activity</div>
+          </div>
+        </div>
+        <div class="roadmap-item">
+          <div class="roadmap-dot"></div>
+          <div class="roadmap-content">
+            <div class="roadmap-date">Aug-Sep 2026</div>
+            <div class="roadmap-desc">Visual analytics powered by charts & behavioral data mapping</div>
+          </div>
+        </div>
+        <div class="roadmap-item">
+          <div class="roadmap-dot"></div>
+          <div class="roadmap-content">
+            <div class="roadmap-date">Q4 2026</div>
+            <div class="roadmap-desc">TBA</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
   </div>
 </template>
 
@@ -352,4 +404,32 @@ onMounted(async () => {
   .feat-svg { max-width: 100%; }
   .nav-links { display: none; }
 }
+
+/* ── Roadmap ─────────────────────────────────────────────────────────────── */
+.network-label {
+  font-size: 3rem;
+  color: #888;
+  display: block;
+  text-align: center;
+  margin: 3.5rem 0;
+}
+.roadmap-section { padding: 5rem 0 6rem; border-top: 1px solid #111; }
+.roadmap-list { max-width: 520px; margin: 2.5rem auto 0; display: flex; flex-direction: column; gap: 0; }
+.roadmap-item {
+  display: flex; gap: 1.25rem; align-items: flex-start;
+  padding: 1.1rem 0; position: relative;
+}
+.roadmap-item:not(:last-child)::after {
+  content: ''; position: absolute; left: 5px; top: 2.2rem; bottom: -1rem;
+  width: 1px; background: #1a1a1a;
+}
+.roadmap-dot {
+  width: 11px; height: 11px; border-radius: 50%; border: 1px solid #555;
+  background: #0d0d0d; flex-shrink: 0; margin-top: 3px;
+}
+.roadmap-active .roadmap-dot { border-color: #555; background: #1a1a1a; box-shadow: 0 0 6px #555; }
+.roadmap-date { font-size: 2rem; color: #555; font-family: 'JetBrains Mono', monospace; margin-bottom: 0.2rem; }
+.roadmap-active .roadmap-date { color: #888; }
+.roadmap-desc { font-size: 1.25rem; color: #555; padding: 5px 0px; }
+.roadmap-active .roadmap-desc { color: #666; }
 </style>
