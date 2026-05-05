@@ -1,53 +1,117 @@
-import { ref, computed, watch } from 'vue'
-import { useWallet } from '@solana/wallet-adapter-vue'
+import { ref, computed, shallowRef } from 'vue'
 import { Connection, PublicKey } from '@solana/web3.js'
+import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom'
+import { SolflareWalletAdapter } from '@solana/wallet-adapter-solflare'
+import { CoinbaseWalletAdapter } from '@solana/wallet-adapter-coinbase'
+import { TrustWalletAdapter } from '@solana/wallet-adapter-trust'
+import { LedgerWalletAdapter } from '@solana/wallet-adapter-ledger'
+import { TorusWalletAdapter } from '@solana/wallet-adapter-torus'
+import { NightlyWalletAdapter } from '@solana/wallet-adapter-nightly'
 
-export function useWalletConnect({ SOLANA_RPC, onConnect }) {
-  const {
-    publicKey,
-    connected,
-    connecting,
-    wallets,
-    select: adapterSelect,
-    connect: adapterConnect,
-    disconnect: adapterDisconnect,
-    signMessage: adapterSignMessage,
-    signTransaction: adapterSignTx,
-    signAllTransactions: adapterSignAllTxs,
-  } = useWallet()
+// Module-level singletons — created once, never re-instantiated
+const _adapters = [
+  new PhantomWalletAdapter(),
+  new SolflareWalletAdapter(),
+  new CoinbaseWalletAdapter(),
+  new TrustWalletAdapter(),
+  new LedgerWalletAdapter(),
+  new TorusWalletAdapter(),
+  new NightlyWalletAdapter(),
+]
 
+const wallets    = shallowRef([..._adapters])
+const publicKey  = ref(null)
+const connected  = ref(false)
+const connecting = ref(false)
+const showWalletModal = ref(false)
+const _active    = shallowRef(null)   // currently connected adapter
+const _signMsg   = ref(null)
+const _signTx    = ref(null)
+const _signAllTx = ref(null)
+
+// Re-render wallet list when any adapter's readyState changes
+_adapters.forEach(a => a.on('readyStateChange', () => { wallets.value = [..._adapters] }))
+
+function _reset() {
+  publicKey.value = null
+  connected.value = false
+  _active.value   = null
+  _signMsg.value  = null
+  _signTx.value   = null
+  _signAllTx.value = null
+}
+
+// Auto-reconnect last wallet on page load
+;(async () => {
+  try {
+    const saved = localStorage.getItem('walletName')
+    if (!saved) return
+    const name = JSON.parse(saved)
+    const adapter = _adapters.find(a => a.name === name)
+    if (!adapter) return
+    // Wait briefly for extension detection
+    await new Promise(r => setTimeout(r, 500))
+    if (adapter.readyState !== 'Installed') return
+    await adapter.connect()
+    publicKey.value  = adapter.publicKey
+    connected.value  = true
+    _active.value    = adapter
+    _signMsg.value   = 'signMessage'          in adapter ? msg  => adapter.signMessage(msg)          : null
+    _signTx.value    = 'signTransaction'      in adapter ? tx   => adapter.signTransaction(tx)       : null
+    _signAllTx.value = 'signAllTransactions'  in adapter ? txs  => adapter.signAllTransactions(txs)  : null
+    adapter.on('disconnect', _reset)
+    adapter.on('accountChanged', pk => { publicKey.value = pk ?? null; if (!pk) _reset() })
+  } catch {}
+})()
+
+export function useWalletConnect({ SOLANA_RPC, onConnect } = {}) {
   const walletAddress = computed(() => publicKey.value?.toString() ?? null)
-
-  const walletProvider = computed(() => {
-    if (!connected.value) return null
-    return {
-      signTransaction:     (tx)  => adapterSignTx.value(tx),
-      signAllTransactions: (txs) => adapterSignAllTxs.value(txs),
-    }
-  })
-
-  const showWalletModal = ref(false)
 
   const shortAddress = computed(() => {
     if (!walletAddress.value) return ''
     return `${walletAddress.value.slice(0, 4)}...${walletAddress.value.slice(-4)}`
   })
 
+  const adapterSignMessage = computed(() => _signMsg.value)
+
+  const walletProvider = computed(() => {
+    if (!connected.value || !_active.value) return null
+    return {
+      signTransaction:     tx  => _signTx.value?.(tx),
+      signAllTransactions: txs => _signAllTx.value?.(txs),
+    }
+  })
+
   async function connectWallet(walletName, walletUrl) {
-    const w = wallets.value.find(x => x.adapter.name === walletName)
-    const ready = w?.readyState === 'Installed' || w?.readyState === 'Loadable'
-    if (!ready) { window.open(walletUrl, '_blank'); return }
+    const adapter = _adapters.find(a => a.name === walletName)
+    const ready   = adapter?.readyState === 'Installed' || adapter?.readyState === 'Loadable'
+    if (!adapter || !ready) { window.open(walletUrl || 'https://phantom.app', '_blank'); return }
     showWalletModal.value = false
     try {
-      adapterSelect(walletName)
-      await adapterConnect()
+      connecting.value = true
+      await adapter.connect()
+      publicKey.value  = adapter.publicKey
+      connected.value  = true
+      _active.value    = adapter
+      _signMsg.value   = 'signMessage'          in adapter ? msg  => adapter.signMessage(msg)          : null
+      _signTx.value    = 'signTransaction'      in adapter ? tx   => adapter.signTransaction(tx)       : null
+      _signAllTx.value = 'signAllTransactions'  in adapter ? txs  => adapter.signAllTransactions(txs)  : null
+      adapter.on('disconnect', _reset)
+      adapter.on('accountChanged', pk => { publicKey.value = pk ?? null; if (!pk) _reset() })
+      try { localStorage.setItem('walletName', JSON.stringify(walletName)) } catch {}
+      if (onConnect) onConnect()
     } catch (err) {
       console.error('Wallet connection failed:', err.message)
+      _reset()
+    } finally {
+      connecting.value = false
     }
   }
 
   async function disconnectWallet() {
-    try { await adapterDisconnect() } catch {}
+    try { await _active.value?.disconnect() } catch {}
+    _reset()
+    try { localStorage.removeItem('walletName') } catch {}
   }
 
   async function signAndSendTransaction(transaction) {
@@ -55,16 +119,12 @@ export function useWalletConnect({ SOLANA_RPC, onConnect }) {
     const connection = new Connection(SOLANA_RPC.value, 'confirmed')
     const { blockhash } = await connection.getLatestBlockhash()
     transaction.recentBlockhash = blockhash
-    transaction.feePayer = new PublicKey(walletAddress.value)
-    const signed = await adapterSignTx.value(transaction)
-    const txHash = await connection.sendRawTransaction(signed.serialize())
+    transaction.feePayer        = new PublicKey(walletAddress.value)
+    const signed  = await _signTx.value(transaction)
+    const txHash  = await connection.sendRawTransaction(signed.serialize())
     await connection.confirmTransaction(txHash, 'confirmed')
     return txHash
   }
-
-  watch(connected, (val) => {
-    if (val && onConnect) onConnect()
-  })
 
   return {
     publicKey,

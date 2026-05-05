@@ -388,13 +388,13 @@ onUnmounted(() => {
         <div class="wallet-list">
           <button
             v-for="w in wallets"
-            :key="w.adapter.name"
+            :key="w.name"
             class="wallet-option"
             :class="{ 'wallet-option--detected': w.readyState === 'Installed' }"
-            @click="connectWallet(w.adapter.name, w.adapter.url)"
+            @click="connectWallet(w.name, w.url)"
           >
-            <img :src="w.adapter.icon" :alt="w.adapter.name" class="wallet-icon" />
-            <span class="wallet-name">{{ w.adapter.name }}</span>
+            <img :src="w.icon" :alt="w.name" class="wallet-icon" />
+            <span class="wallet-name">{{ w.name }}</span>
             <span v-if="w.readyState === 'Installed'" class="wallet-badge wallet-badge--detected">Detected</span>
             <span v-else class="wallet-badge wallet-badge--install">Install</span>
           </button>
