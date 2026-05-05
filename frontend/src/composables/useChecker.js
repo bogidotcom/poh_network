@@ -104,7 +104,7 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
   }
 
   const runCheck = async () => {
-    if (!connected.value) { error.value = 'Please connect your wallet first'; return }
+    if (!connected.value) return
     loading.value = true
     isResolving.value = true
     error.value = null
