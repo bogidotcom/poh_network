@@ -39,21 +39,6 @@ const emit = defineEmits([
       <p class="scan-sub">Run all registered detection methods simultaneously and get an AI verdict.</p>
     </div>
 
-    <!-- Devnet faucet -->
-    <div class="scan-box">
-      <div>Devnet only · not real tokens · for testing purposes</div>
-      <br>
-      <a href="https://faucet.solana.com/" target="_blank" style="color: #fff;">Claim Devnet SOL here</a>
-      <div style="margin-top: 0.5rem;">
-        <span style="margin-top: 0.5rem;" v-if="faucetMsg" :class="['faucet-msg', faucetMsg.ok ? 'faucet-msg--ok' : 'faucet-msg--err']">
-          {{ faucetMsg.text }}
-        </span>
-        <button style="margin-top: 0.5rem;" class="submit-listing-btn" :disabled="faucetLoading" @click="emit('claim-faucet')">
-          {{ faucetLoading ? 'Sending…' : 'Claim 10 000 POH' }}
-        </button>
-      </div>
-    </div>
-
     <div class="scan-box">
       <div class="scan-input-row">
         <input

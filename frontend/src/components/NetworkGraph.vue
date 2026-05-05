@@ -180,7 +180,7 @@ onUnmounted(() => clearInterval(_timer))
 .net-subtitle {
   text-align: center;
   font-size: 1.1rem;
-  color: #555;
+  color: #808080;
   margin: -2rem 0 2.5rem;
   letter-spacing: 0.03em;
 }
@@ -206,7 +206,7 @@ onUnmounted(() => clearInterval(_timer))
 .net-edge--rest   { stroke: #222; }
 .net-edge--solana { stroke: #2a1a44; }
 .net-edge--active { stroke-width: 1.8; animation-duration: 0.45s !important; }
-.net-edge--active.net-edge--evm    { stroke: #555; }
+.net-edge--active.net-edge--evm    { stroke: #808080; }
 .net-edge--active.net-edge--rest   { stroke: #444; }
 .net-edge--active.net-edge--solana { stroke: #9945ff88; }
 
@@ -223,8 +223,8 @@ onUnmounted(() => clearInterval(_timer))
 .net-ngroup--rest   circle { stroke: #1e1e1e; }
 .net-ngroup--solana circle { stroke: #4a2a7a; }
 .net-ngroup--active circle { fill: #111; }
-.net-ngroup--active.net-ngroup--evm    circle { stroke: #666;    filter: drop-shadow(0 0 5px #555); }
-.net-ngroup--active.net-ngroup--rest   circle { stroke: #555;    filter: drop-shadow(0 0 5px #444); }
+.net-ngroup--active.net-ngroup--evm    circle { stroke: #666;    filter: drop-shadow(0 0 5px #808080); }
+.net-ngroup--active.net-ngroup--rest   circle { stroke: #808080;    filter: drop-shadow(0 0 5px #444); }
 .net-ngroup--active.net-ngroup--solana circle { stroke: #9945ff; filter: drop-shadow(0 0 6px #9945ff88); }
 
 .net-nlabel {
@@ -267,7 +267,7 @@ onUnmounted(() => clearInterval(_timer))
 .net-brain-g--pulse .net-role--learn { stroke: #2a8a5a; filter: drop-shadow(0 0 4px #2a8a5a88); }
 .net-brain-g--pulse .net-role--comp  { stroke: #2a4aaa; filter: drop-shadow(0 0 4px #2a4aaa88); }
 .net-role-lbl {
-  font-size: 7px; font-weight: 700; fill: #555;
+  font-size: 7px; font-weight: 700; fill: #808080;
   font-family: -apple-system, monospace; pointer-events: none;
 }
 .net-brain-g--pulse .net-role-lbl { fill: #aaa; }

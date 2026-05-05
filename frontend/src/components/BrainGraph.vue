@@ -403,7 +403,7 @@ onUnmounted(() => {
   gap: 1.8rem;
   padding: 0.6rem 0 0.2rem;
   font-size: 11px;
-  color: #555;
+  color: #808080;
   letter-spacing: 0.06em;
   font-family: monospace;
 }
