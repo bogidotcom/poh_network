@@ -1779,20 +1779,18 @@ const results = await pollJob(jobId)</pre>
           <div class="staking-info-card">
             <div class="si-title">How staking works</div>
             <ul class="si-list">
-              <li>Stake POH tokens to increase your voting power in the method scoring queue</li>
-              <li>Vote weight = base 1 + stake-weighted multiplier</li>
-              <li>AI Learner uses community vote weights when updating per-method signal weights</li>
-              <li>Top stakers gain outsized influence over which detection methods rank highest</li>
-              <li>Unstake at any time — no lockup period in v1</li>
+              <li>Stake POH → get more voting power on which detection methods are best</li>
+              <li>The more you stake, the more your votes count</li>
+              <li>Unstake any time — no lockup</li>
             </ul>
           </div>
 
           <div class="staking-info-card">
-            <div class="si-title">Reward flow</div>
+            <div class="si-title">How rewards work</div>
             <ul class="si-list">
-              <li>Every paid scan distributes 50% of POH cost to method owners</li>
-              <li>Distribution is weighted by method score × AI weight</li>
-              <li>Your stake improves method scores → more rewards to method owners you back</li>
+              <li>Every scan fee is split — 50% goes to method owners</li>
+              <li>Your votes boost a method's score → that method earns more</li>
+              <li>Back good methods, earn more rewards</li>
             </ul>
           </div>
         </div>
