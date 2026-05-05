@@ -81,11 +81,11 @@ for i in $(seq 1 20); do
 done
 
 log "Pulling Ollama models (background — this takes a while)"
-# Roles: Learner → qwen2.5:1.5b  |  Compiler → deepseek-r1:1.5b  |  fallback → mixtral
+# Roles: Learner → qwen2.5:1.5b  |  Compiler + fallback → llama3.2  |  Evaluator → deepseek-r1:1.5b (Qvac primary)
 (
   ollama pull qwen2.5:1.5b       2>&1 | tail -1 && echo "[setup] ✓ qwen2.5:1.5b ready"     || echo "[setup] ⚠ qwen2.5:1.5b failed"
   ollama pull deepseek-r1:1.5b   2>&1 | tail -1 && echo "[setup] ✓ deepseek-r1:1.5b ready" || echo "[setup] ⚠ deepseek-r1:1.5b failed"
-  ollama pull mixtral             2>&1 | tail -1 && echo "[setup] ✓ mixtral ready"           || echo "[setup] ⚠ mixtral failed"
+  ollama pull llama3.2           2>&1 | tail -1 && echo "[setup] ✓ llama3.2 ready"          || echo "[setup] ⚠ llama3.2 failed"
   echo "[setup] All Ollama models done"
 ) &
 disown
