@@ -46,6 +46,7 @@ const {
   connected,
   connecting,
   wallets,
+  walletName,
   adapterSignMessage,
   walletAddress,
   walletProvider,
@@ -65,24 +66,63 @@ const {
 })
 
 // ── Devnet network suggestion ─────────────────────────────────────────────────
-const networkSuggestion = ref(null) // null | 'switching' | 'manual'
+// null = hidden  |  'manual' = show banner  |  'switching' = trying API
+const networkSuggestion = ref(null)
+const networkSwitchMsg   = ref(null) // feedback after auto-switch attempt
+
+// Devnet genesis hash — used as chain ID by Phantom's wallet_switchSolanaChain
+const DEVNET_GENESIS = 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaXggjvHo1'
+
+// Per-wallet manual instructions shown in the banner
+const networkInstructions = computed(() => {
+  const name = walletName.value
+  if (name === 'Phantom')  return 'Phantom → Settings → Developer Settings → Testnet Mode → Devnet'
+  if (name === 'Solflare') return 'Solflare → Settings → Network → Devnet'
+  if (name === 'Backpack') return 'Backpack → Settings → Preferences → Network → Devnet'
+  return 'Wallet settings → Network → switch to Devnet'
+})
 
 async function suggestDevnetNetwork() {
-  networkSuggestion.value = null
+  networkSuggestion.value = 'manual'
+  networkSwitchMsg.value  = null
+  // Try Phantom's programmatic switch (v22+) — other wallets will throw
   try {
-    // Phantom and most Solana wallets expose a provider on window.solana or window.phantom.solana
     const provider = window.phantom?.solana ?? window.solana
-    if (!provider) { networkSuggestion.value = 'manual'; return }
-    // wallet_switchSolanaCluster is supported by Phantom (and ignored/rejected by others)
-    await provider.request({ method: 'wallet_switchSolanaCluster', params: { cluster: 'devnet' } })
-    // success — wallet switched silently, no banner needed
-  } catch {
-    // wallet rejected or doesn't support the method → show manual instructions
+    if (!provider?.request) return
+    networkSuggestion.value = 'switching'
+    await provider.request({
+      method: 'wallet_switchSolanaChain',
+      params:  { solana_chain_id: DEVNET_GENESIS },
+    })
+    // Phantom switched — hide banner
+    networkSuggestion.value = null
+  } catch (e) {
+    // 4001 = user rejected; anything else = not supported
     networkSuggestion.value = 'manual'
+    networkSwitchMsg.value  = e?.code === 4001 ? 'Rejected — switch manually below' : 'Auto-switch not supported — switch manually'
   }
 }
 
-function dismissNetworkSuggestion() { networkSuggestion.value = null }
+async function retryNetworkSwitch() {
+  networkSwitchMsg.value = null
+  networkSuggestion.value = 'switching'
+  try {
+    const provider = window.phantom?.solana ?? window.solana
+    await provider.request({
+      method: 'wallet_switchSolanaChain',
+      params:  { solana_chain_id: DEVNET_GENESIS },
+    })
+    networkSuggestion.value = null
+  } catch (e) {
+    networkSuggestion.value = 'manual'
+    networkSwitchMsg.value  = e?.code === 4001 ? 'Rejected — switch manually' : 'Not supported — switch manually in wallet settings'
+  }
+}
+
+function dismissNetworkSuggestion() {
+  networkSuggestion.value = null
+  networkSwitchMsg.value  = null
+}
 
 // ── Checker ───────────────────────────────────────────────────────────────────
 const checker = useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, SOLANA_RPC, signAndSendTransaction })
@@ -319,7 +359,7 @@ onUnmounted(() => {
     <div class="devnet-bar">
       <span class="devnet-label">DEVNET</span>
       <span class="devnet-sep">·</span>
-      <span class="devnet-hint">Test environment — tokens have no real value</span>
+      <span class="devnet-hint">Test environment — Not priced by markets. Valued by people.</span>
       <a href="https://faucet.solana.com/"
          target="_blank"
          style="
@@ -340,14 +380,24 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Network suggestion banner (shown when wallet is not on devnet) -->
+    <!-- Network suggestion banner -->
     <Transition name="net-suggest">
-      <div v-if="networkSuggestion === 'manual'" class="net-suggest-bar">
-        <span class="net-suggest-icon">⚠</span>
+      <div v-if="networkSuggestion" class="net-suggest-bar">
+        <span :class="['net-suggest-icon', { 'net-suggest-spinning': networkSuggestion === 'switching' }]">{{ networkSuggestion === 'switching' ? '↻' : '⚠' }}</span>
         <span class="net-suggest-text">
-          Switch your wallet to <strong>Devnet</strong> — go to wallet settings → Network → Devnet
+          <template v-if="networkSuggestion === 'switching'">
+            Requesting Devnet switch in your wallet…
+          </template>
+          <template v-else>
+            <span v-if="networkSwitchMsg" class="net-suggest-feedback">{{ networkSwitchMsg }} · </span>
+            Switch to <strong>Devnet</strong>: {{ networkInstructions }}
+          </template>
         </span>
-        <button class="net-suggest-retry" @click="suggestDevnetNetwork">Try auto-switch</button>
+        <button
+          v-if="networkSuggestion !== 'switching'"
+          class="net-suggest-retry"
+          @click="retryNetworkSwitch"
+        >Try auto-switch</button>
         <button class="net-suggest-dismiss" @click="dismissNetworkSuggestion">✕</button>
       </div>
     </Transition>
@@ -3037,6 +3087,9 @@ const results = await pollJob(jobId)</pre>
   cursor: pointer; padding: 0 0.25rem; line-height: 1; flex-shrink: 0;
 }
 .net-suggest-dismiss:hover { color: #fbbf24; }
+.net-suggest-feedback { color: #f87171; font-style: italic; }
+@keyframes net-spin { to { transform: rotate(360deg); } }
+.net-suggest-spinning { display: inline-block; animation: net-spin 0.8s linear infinite; }
 .net-suggest-enter-active, .net-suggest-leave-active { transition: max-height 0.25s ease, opacity 0.2s; overflow: hidden; }
 .net-suggest-enter-from, .net-suggest-leave-to { max-height: 0; opacity: 0; }
 .net-suggest-enter-to, .net-suggest-leave-from { max-height: 60px; opacity: 1; }

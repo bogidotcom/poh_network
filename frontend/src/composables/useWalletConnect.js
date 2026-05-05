@@ -126,11 +126,14 @@ export function useWalletConnect({ SOLANA_RPC, onConnect } = {}) {
     return txHash
   }
 
+  const walletName = computed(() => _active.value?.name ?? null)
+
   return {
     publicKey,
     connected,
     connecting,
     wallets,
+    walletName,
     adapterSignMessage,
     walletAddress,
     walletProvider,
