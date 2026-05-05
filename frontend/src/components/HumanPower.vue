@@ -467,113 +467,18 @@ onUnmounted(() => {
                 </div>
               </div>
             </blockquote>
-            <p class="problem-desc">Wallets, votes, and on-chain identities can no longer be trusted at face value. <br>POH verifies humanity through evidence — not promises.</p>
             <button class="neon-btn" @click="showSection('checker')">Scan a Wallet →</button>
           </div>
         </section>
-
-        <!-- <section class="landing-hero">
-          <div class="landing-tag">PROOF OF HUMAN</div>
-          <h1 class="landing-title">Decentralized<br>Human Verification</h1>
-          <div class="landing-cta-row">
-            <button class="neon-btn landing-cta" @click="showSection('checker')">Start Scanning →</button>
-            <button class="outline-btn landing-cta" @click="showSection('api')">View API Docs</button>
-          </div>
-        </section> -->
-
-        <!-- How it works -->
-        <!-- <section class="how-section">
-          <div class="network-label">HOW IT WORKS</div>
-          <div class="how-grid">
-            <div class="how-col">
-              <div class="how-step-title">Detection</div>
-              <ul class="how-list">
-                <li>Community submits methods — EVM contract calls, Solana programs, or REST APIs</li>
-                <li>Each method runs a sandboxed expression against live on-chain data</li>
-                <li>Methods are independently scored and weighted by community consensus</li>
-                <li>All methods execute in parallel per scan</li>
-              </ul>
-            </div>
-            <div class="how-col">
-              <div class="how-step-title">AI Brain</div>
-              <ul class="how-list">
-                <li>Multi-role Ollama pipeline — Evaluator, Learner, Compiler on separate models</li>
-                <li>Evaluator scores signals weighted by community stake, runs a second verification pass, learns from voter natural-language feedback</li>
-                <li>Learner updates weights after every community vote (±0.05 max drift)</li>
-                <li>Compiler rewrites a compact brain state hourly — no hallucination, stats only</li>
-              </ul>
-            </div>
-          </div>
-        </section> -->
-
-        <!-- POH TOKEN -->
-        <!-- <div class="network-label">$POH TOKEN</div>
-
-        <section class="landing-token">
-          <p class="token-desc">Fair launch via bonding curve. No VC rounds. No pre-mine. Every scan flows 50% back to method contributors. Stake to govern signal quality.</p>
-
-          <div class="token-split">
-            <div class="split-row">
-              <span class="split-label">Community Reward Pool</span>
-              <span class="split-pct">80%</span>
-            </div>
-            <div class="split-bar"><div class="split-fill" style="width:80%"></div></div>
-            <div class="split-note">Method owner rewards, staking APY, bonding curve</div>
-
-            <div class="split-row" style="margin-top:1.25rem">
-              <span class="split-label">Team &amp; Contributors</span>
-              <span class="split-pct">20%</span>
-            </div>
-            <div class="split-bar"><div class="split-fill" style="width:20%; background:#ffffff80"></div></div>
-            <div class="split-note">1 month cliff · 6 month linear vesting</div>
-          </div>
-
-          <div class="token-economics">
-            <div class="econ-row">
-              <span class="econ-label">Per scan cost</span>
-              <span class="econ-val">1 POH (bulk discounts up to 60%)</span>
-            </div>
-            <div class="econ-row">
-              <span class="econ-label">Method owner share</span>
-              <span class="econ-val">50% of each paid scan, weighted by stake</span>
-            </div>
-            <div class="econ-row">
-              <span class="econ-label">Free tier</span>
-              <span class="econ-val">100 scans per wallet, no token required</span>
-            </div>
-            <div class="econ-row">
-              <span class="econ-label">Stake utility</span>
-              <span class="econ-val">Amplifies vote weight in method scoring consensus</span>
-            </div>
-          </div>
-
-          <div class="token-features">
-            <div class="token-feat">Bonding Curve Fair Launch</div>
-            <div class="token-feat">Scan Fee → Method Rewards</div>
-            <div class="token-feat">Stake-Weighted Voting</div>
-            <div class="token-feat">100 Free Scans / Wallet</div>
-          </div>
-
-          <div class="landing-cta-row">
-            <button class="outline-btn landing-cta" @click="goTo('https://cyreneai.com/projects/poh')">
-              <Bitcoin class="icon" :size="24" /> Trade $POH
-            </button>
-            <button
-             class="neon-btn landing-cta"
-             style="font-size: 1.0625rem;" 
-             @click="goTo('https://exchange.assetux.com/?fromChain=SOL&toChain=SOL&fromToken=SOL&toToken=POH&amount=1')"
-             >
-              <CreditCard class="icon" :size="24" /> Buy $POH
-            </button>
-          </div>
-        </section> -->
+        
+        <h2 class="problem-title" style="margin-top:10rem">Wallets and on-chain identities can no longer be trusted.</h2>
 
         <!-- ── Features (full-screen panels) ──────────────────────────────────────── -->
         <section class="feat-screen">
           <div class="feat-left">
             <div class="feat-tag">SCAN</div>
             <h2 class="feat-title">Verify any wallet<br>in seconds</h2>
-            <p class="feat-body">Paste an EVM address, Solana address, or ENS name. AI returns verdict instantly.</p>
+            <p class="feat-body">Paste an EVM address, Solana address, or SNS name. AI returns verdict instantly.</p>
             <button class="feat-cta" @click="showSection('checker')">Try the Scanner →</button>
           </div>
           <div class="feat-right">
@@ -582,7 +487,7 @@ onUnmounted(() => {
               <rect x="10" y="10" width="400" height="300" rx="14" fill="#090909" stroke="#1a1a1a"/>
               <!-- Input bar -->
               <rect x="28" y="30" width="310" height="36" rx="7" fill="#111" stroke="#222"/>
-              <text x="42" y="53" fill="#ffffff80" font-size="11" font-family="monospace">0xd8dA6BF26964aF9D7eEd9e03E534...</text>
+              <text x="42" y="53" fill="#ffffff80" font-size="11" font-family="monospace">6bvB3PTz48wozyPJeuTB77axexWu9MfU...</text>
               <rect x="346" y="30" width="52" height="36" rx="7" fill="#161616" stroke="#222"/>
               <text x="355" y="53" fill="#666" font-size="11" font-family="monospace">Scan</text>
               <!-- Divider -->
@@ -597,7 +502,7 @@ onUnmounted(() => {
               <g class="scan-row-2">
                 <rect x="28" y="122" width="364" height="28" rx="5" fill="#0d0d0d"/>
                 <circle cx="42" cy="136" r="4" fill="#22c55e"><animate attributeName="opacity" values="0;1" dur="0.3s" begin="0.75s" fill="freeze"/></circle>
-                <text x="54" y="140" fill="#ffffff80" font-size="10" font-family="monospace"><animate attributeName="opacity" values="0;1" dur="0.3s" begin="0.75s" fill="freeze"/>ENS name registered</text>
+                <text x="54" y="140" fill="#ffffff80" font-size="10" font-family="monospace"><animate attributeName="opacity" values="0;1" dur="0.3s" begin="0.75s" fill="freeze"/>SNS name registered</text>
                 <text x="346" y="140" fill="#22c55e" font-size="10" font-family="monospace"><animate attributeName="opacity" values="0;1" dur="0.3s" begin="0.75s" fill="freeze"/>✓</text>
               </g>
               <g>
@@ -631,6 +536,8 @@ onUnmounted(() => {
           </div>
         </section>
 
+        <h2 class="problem-title">POH verifies humanity through evidence<br> — not promises.</h2>
+
         <section class="feat-screen feat-screen--alt">
           <div class="feat-right display-block">
             
@@ -660,7 +567,7 @@ onUnmounted(() => {
           <div class="feat-left">
             <div class="feat-tag">SIGNALS</div>
             <h2 class="feat-title">Evidence from<br>every layer</h2>
-            <p class="feat-body">EVM balances, Solana programs, web3.bio social links, REST identity APIs, real-world asset holdings, social links, Web3 domains, Decentralised IDentities. Every signal runs in parallel. No single point of failure.</p>
+            <p class="feat-body">Every signal runs in parallel. No single point of failure.</p>
             <button class="feat-cta" @click="showSection('votes'); loadVoting()">Browse Methods →</button>
           </div>
         </section>
@@ -704,7 +611,7 @@ onUnmounted(() => {
           <div class="feat-left">
             <div class="feat-tag">COMMUNITY</div>
             <h2 class="feat-title">You decide what<br>counts as human</h2>
-            <p class="feat-body">Every detection method goes through community consensus. Sign a message with your wallet to vote. Your staked POH amplifies your influence. Leave feedback — the AI Learner reads it and adjusts signal weights.</p>
+            <p class="feat-body">Every detection method goes through community consensus.</p>
             <button class="feat-cta" @click="showSection('votes'); loadVoting()">Open Vote Queue →</button>
           </div>
         </section>
@@ -713,7 +620,7 @@ onUnmounted(() => {
           <div class="feat-left">
             <div class="feat-tag">AI BRAIN</div>
             <h2 class="feat-title">On-device AI,<br>zero cloud calls</h2>
-            <p class="feat-body">A local LLM reads every signal, weighs community-trained scores, and outputs a structured verdict with confidence and reasoning. <br>Runs on Qvac by Tether.</p>
+            <p class="feat-body">Structured verdict with confidence and reasoning. <br>Runs on Qvac by Tether.</p>
             <button class="feat-cta" @click="showSection('checker')">See a Verdict →</button>
           </div>
           <div class="feat-right">
@@ -803,7 +710,7 @@ onUnmounted(() => {
               <!-- Request lines -->
               <text x="28" y="60" fill="#ffffff80" font-size="9" font-family="monospace">POST /checker</text>
               <text x="28" y="76" fill="#1e3a1e" font-size="9" font-family="monospace">&#123;</text>
-              <text x="28" y="90" fill="#ffffff80" font-size="9" font-family="monospace">  "input": "0xd8dA6BF26964..."</text>
+              <text x="28" y="90" fill="#ffffff80" font-size="9" font-family="monospace">  "input": "6bvB3PTz48wozyPJeuTB..."</text>
               <text x="28" y="104" fill="#ffffff80" font-size="9" font-family="monospace">  "apiKey": "pk_live_xxx"</text>
               <text x="28" y="118" fill="#1e3a1e" font-size="9" font-family="monospace">&#125;</text>
               <!-- Blinking cursor -->
@@ -834,6 +741,59 @@ onUnmounted(() => {
                 <animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.4s" fill="freeze"/>
               </rect>
             </svg>
+          </div>
+        </section>
+
+
+        <!-- Benefit section -->
+        <section class="benefit-section">
+          <div class="benefit-header">
+            <h2 class="benefit-title">Benefit</h2>
+            <span class="benefit-subtitle">Human-powered Proof of Human Network</span>
+          </div>
+          <div class="benefit-cards">
+            <div class="benefit-card">
+              <svg class="benefit-icon" viewBox="0 0 120 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <line x1="10" y1="82" x2="100" y2="82" stroke="#fff" stroke-width="1.5"/>
+                <line x1="32" y1="22" x2="32" y2="38" stroke="#fff" stroke-width="1.5"/>
+                <rect x="22" y="38" width="20" height="28" stroke="#fff" stroke-width="1.5" fill="none"/>
+                <line x1="32" y1="66" x2="32" y2="82" stroke="#fff" stroke-width="1.5"/>
+                <line x1="68" y1="18" x2="68" y2="34" stroke="#fff" stroke-width="1.5"/>
+                <rect x="58" y="34" width="20" height="32" stroke="#fff" stroke-width="1.5" fill="none"/>
+                <line x1="68" y1="66" x2="68" y2="76" stroke="#fff" stroke-width="1.5"/>
+                <line x1="20" y1="82" x2="20" y2="86" stroke="#fff" stroke-width="1"/>
+                <line x1="44" y1="82" x2="44" y2="86" stroke="#fff" stroke-width="1"/>
+                <line x1="56" y1="82" x2="56" y2="86" stroke="#fff" stroke-width="1"/>
+                <line x1="80" y1="82" x2="80" y2="86" stroke="#fff" stroke-width="1"/>
+                <line x1="100" y1="82" x2="100" y2="86" stroke="#fff" stroke-width="1"/>
+              </svg>
+              <p class="benefit-label">Detect Fake and real<br>Trading Volume</p>
+            </div>
+            <div class="benefit-card">
+              <svg class="benefit-icon" viewBox="0 0 120 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="42" y="14" width="36" height="28" rx="4" stroke="#fff" stroke-width="1.5" fill="none"/>
+                <line x1="60" y1="14" x2="60" y2="8" stroke="#fff" stroke-width="1.5"/>
+                <line x1="54" y1="8" x2="66" y2="8" stroke="#fff" stroke-width="1.5"/>
+                <rect x="49" y="22" width="8" height="6" rx="1" stroke="#fff" stroke-width="1.2" fill="none"/>
+                <rect x="63" y="22" width="8" height="6" rx="1" stroke="#fff" stroke-width="1.2" fill="none"/>
+                <circle cx="60" cy="56" r="8" stroke="#fff" stroke-width="1.5" fill="none"/>
+                <path d="M44 82 Q44 68 60 68 Q76 68 76 82" stroke="#fff" stroke-width="1.5" fill="none"/>
+                <line x1="25" y1="15" x2="95" y2="85" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              <p class="benefit-label">Bot / Human Classification<br>and Digital Identities on Solana</p>
+            </div>
+            <div class="benefit-card">
+              <svg class="benefit-icon" viewBox="0 0 120 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="60" cy="50" r="8" stroke="#fff" stroke-width="1.5" fill="none"/>
+                <circle cx="24" cy="24" r="8" stroke="#fff" stroke-width="1.5" fill="none"/>
+                <circle cx="96" cy="24" r="8" stroke="#fff" stroke-width="1.5" fill="none"/>
+                <circle cx="96" cy="76" r="8" stroke="#fff" stroke-width="1.5" fill="none"/>
+                <line x1="31" y1="29" x2="53" y2="44" stroke="#fff" stroke-width="1.5"/>
+                <line x1="89" y1="29" x2="67" y2="44" stroke="#fff" stroke-width="1.5"/>
+                <line x1="89" y1="71" x2="67" y2="56" stroke="#fff" stroke-width="1.5"/>
+              </svg>
+              <p class="benefit-label">AI-powered user portrait<br>from crypto wallet address</p>
+            </div>
           </div>
         </section>
 
@@ -1483,7 +1443,7 @@ onUnmounted(() => {
               <pre class="code-pre">curl -X POST https://proofofhuman.ge/checker \
   -H "Content-Type: application/json" \
   -d '{
-    "input": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+    "input": "6bvB3PTz48wozyPJeuTB77axexWu9MfUSjBYbQzEgK88",
     "apiKey": "your-api-key-here"
   }'
 # → { result: [...], brainKey, freeScansLeft }</pre>
@@ -1502,7 +1462,7 @@ onUnmounted(() => {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    input: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045',
+    input: '6bvB3PTz48wozyPJeuTB77axexWu9MfUSjBYbQzEgK88',
     apiKey: 'your-api-key-here'
   })
 })
@@ -1741,6 +1701,7 @@ const results = await pollJob(jobId)</pre>
   font-family: 'JetBrains Mono', monospace; margin-bottom: 2rem;
 }
 .problem-title {
+  text-align: center;
   font-size: clamp(1.8rem, 4vw, 3rem);
   font-weight: 700; color: #ccc; line-height: 1.25; margin-bottom: 2.5rem;
 }
@@ -1757,6 +1718,65 @@ const results = await pollJob(jobId)</pre>
 .problem-quote-name { display: block; font-style: normal; font-weight: 600; color: #ffffffcc; font-size: 0.88rem; margin-bottom: 0.4rem; }
 .problem-quote-text { margin: 0; color: #ffffff80; font-style: italic; font-size: 1.1rem; line-height: 1.6; }
 .problem-desc { color: #ffffff80; font-size: 1.25rem; line-height: 1.7; margin-bottom: 2.5rem; }
+
+
+/* ── Benefit ──────────────────────────────────────────────────────────────── */
+.benefit-section {
+  padding: 5rem 2rem 4rem;
+  border-top: 1px solid #111;
+  text-align: center;
+}
+.benefit-header {
+  display: flex;
+  align-items: baseline;
+  gap: 1.5rem;
+  margin-bottom: 3.5rem;
+  justify-content: flex-start;
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.benefit-title {
+  font-family: 'Share Tech Mono', 'Courier New', monospace;
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 400;
+  color: #fff;
+  letter-spacing: 0.02em;
+  margin: 0;
+}
+.benefit-subtitle {
+  color: #ffffff60;
+  font-size: 1rem;
+  white-space: nowrap;
+}
+.benefit-cards {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+  max-width: 900px;
+  margin: 0 auto;
+}
+.benefit-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+  flex: 1;
+  min-width: 200px;
+  max-width: 260px;
+}
+.benefit-icon {
+  width: 120px;
+  height: 100px;
+}
+.benefit-label {
+  color: #ffffffcc;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  text-align: center;
+  margin: 0;
+}
 
 /* ── Roadmap ──────────────────────────────────────────────────────────────── */
 .roadmap-section { padding: 5rem 0 6rem; border-top: 1px solid #111; }
