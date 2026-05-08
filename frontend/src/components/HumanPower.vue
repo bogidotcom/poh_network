@@ -1174,8 +1174,8 @@ onUnmounted(() => {
             <span class="file-name">{{ batchFile.name }} — {{ batchRowCount }} addresses</span>
             <button @click="batchFile = null; batchRowCount = 0; batchRows = []" class="mini-btn"><Trash2 :size="12" /></button>
           </div>
-          <button @click="connected ? runCheck() : showWalletModal = true" :disabled="loading || brainPolling || isResolving || (!scanInput && !batchFile)" class="submit-listing-btn">
-            {{ isResolving ? 'Resolving...' : loading ? 'Scanning...' : brainPolling ? 'AI analyzing...' : batchFile ? 'Scan Batch' : connected ? 'Scan Wallet' : 'Connect Wallet' }}
+          <button @click="connected ? runCheck() : showWalletModal = true" :disabled="loading || isResolving || brainPolling || (checkerResults && !brainVerdict?.reasoning)" class="submit-listing-btn">
+            {{ isResolving ? 'Resolving...' : loading ? 'Scanning...' : (brainPolling || (checkerResults && !brainVerdict?.reasoning)) ? 'AI analyzing...' : batchFile ? 'Scan Batch' : connected ? 'Scan Wallet' : 'Connect Wallet' }}
           </button>
         </div>
 

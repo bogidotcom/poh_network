@@ -14,11 +14,18 @@ cd frontend && npm install && cd ..
 # Configure environment
 cp .env.example .env
 # Edit .env — minimum required: SOLANA_RPC, FEE_RECIPIENT
+# Optional but recommended:
+#   ETHERSCAN_API_KEY  — tx graph analysis on ETH / Base / Arbitrum (free at etherscan.io)
+#   QVAC_URL           — set to http://localhost:11435 to enable Qvac brain (recommended)
 
-# Pull AI models
-ollama pull qwen2.5:1.5b      # Learner role
+# Pull Ollama fallback models (used only when Qvac is unavailable)
+ollama pull qwen2.5:1.5b      # Learner + Evaluator fallback
 ollama pull deepseek-r1:1.5b  # Evaluator fallback
-ollama pull mixtral            # Compiler role
+ollama pull mixtral            # Compiler fallback
+
+# Install Qvac CLI + SDK (primary AI runtime for all 3 brain roles)
+npm install -g @qvac/cli @qvac/sdk
+# Qvac auto-starts via yarn dev:all. Model config in qvac.config.json (Qwen3-8B by default).
 
 # Start everything (Redis + Ollama + Qvac + backend + frontend)
 npm run dev:all        # hot-reload (nodemon + vite dev server)
@@ -50,6 +57,7 @@ poh/dev/
 │   │   └── evaluator.js       Multi-language expression sandbox (JS/Go/Rust/PHP/Java)
 │   └── utils/
 │       ├── brain.js           Multi-role AI brain (Evaluator · Learner · Compiler)
+│       ├── txGraph.js         Transaction graph analysis — counterparty diversity, timing CV
 │       ├── profiles.js        Profile storage — API keys, balances, votes, rewards
 │       ├── jobQueue.js        Async job queue — bulk scans, 2 concurrent jobs, 5 wallets/batch
 │       ├── scheduler.js       Hourly brain consolidation via node-cron
@@ -66,6 +74,7 @@ poh/dev/
 │   ├── profiles.json          User profiles, API keys, balances
 │   ├── rewards.json           Per-method scan earnings and pending withdrawals
 │   ├── method_health.json     Per-method pass/fail stats
+│   ├── feedback.json          Verdict correction records (👍/👎 from users)
 │   └── brain_state.md         Compiler output — compact system summary (updated hourly)
 └── scripts/
     ├── setup.sh               Server provisioning — installs Node, Ollama, Qvac, Redis, builds app
@@ -212,41 +221,58 @@ Leaderboard — top 20 method earners by total POH earned.
 
 ## AI Brain
 
-POH runs a **multi-role brain** entirely on-device via Ollama. Three separate model roles handle distinct responsibilities, each with enforced JSON output contracts.
+POH runs a **multi-role brain** entirely on-device. All three roles route through **Qvac** as primary, with Ollama as automatic fallback if Qvac's circuit breaker opens.
 
-### Download models
+### Qvac (primary — all roles)
 
-```bash
-ollama pull deepseek-r1:1.5b
-ollama pull qwen2.5:1.5b
-ollama pull mixtral
-```
-
-### Role 1 — Evaluator (`analyzeHumanness`)
-Called after every scan. Uses strict signal interpretation — no free-form guessing.
-
-- Sends all passing signals + the top-10 failing signals by weight (compact format)
-- Scores each signal contribution, detects conflicts between signals
-- If signals are weak or conflicting → outputs `UNCERTAIN` instead of a false positive
-- Runs a **second verification pass** after the first: checks for overconfidence (>0.85 needs strong multi-signal support) and ignored weights
-- Appends `"You will be evaluated for consistency. Different outputs for similar inputs are considered failure."` to every prompt — stabilises weaker open models
-
-**Optional: accelerate with Qvac**  
-The Evaluator natively integrates with [Qvac](https://qvac.tether.io) — an on-device OpenAI-compatible inference server by Tether. When `QVAC_URL` is set, small quantised models (Qwen3 600M) run locally for faster verdicts with a heuristic fallback if JSON parsing fails. Ollama is used automatically when `QVAC_URL` is unset.
+[Qvac](https://qvac.tether.io) is Tether's on-device OpenAI-compatible inference server. POH ships with `qvac.config.json` pre-configured for **Qwen3-8B Q4_K_M** — downloaded automatically on first start (~4.7 GB).
 
 ```bash
-# Install Qvac CLI and SDK globally
-npm install -g @qvac/cli @qvac/sdk
-
-# Start the evaluator model (runs on :11435)
+# Already handled by yarn dev:all / yarn start:all.
+# Manual start:
 yarn qvac
 
-# then in .env:
+# .env:
 QVAC_URL=http://localhost:11435
 QVAC_MODEL=evaluator
 ```
 
-Model config lives in `qvac.config.json` at the project root. The Evaluator sends `POST /v1/chat/completions` — any OpenAI-compatible server works (LM Studio, llama.cpp ≥ b3670, Ollama with `/v1` prefix).
+Config (`qvac.config.json`):
+```json
+{
+  "serve": {
+    "models": {
+      "evaluator": {
+        "model": "QWEN3_8B_INST_Q4_K_M",
+        "default": true,
+        "preload": true,
+        "config": { "ctx_size": 8192 }
+      }
+    }
+  }
+}
+```
+
+Any OpenAI-compatible server works in place of Qvac (LM Studio, llama.cpp ≥ b3670, Ollama with `/v1` prefix).
+
+### Ollama (fallback models)
+
+```bash
+ollama pull qwen2.5:1.5b      # Learner + Evaluator fallback
+ollama pull deepseek-r1:1.5b  # Evaluator fallback
+ollama pull mixtral            # Compiler fallback
+```
+
+Ollama is used automatically only when Qvac is unavailable (circuit breaker open after 3 consecutive failures, retries every 5 minutes).
+
+### Role 1 — Evaluator (`analyzeHumanness`)
+Called after every scan. Uses strict signal interpretation — no free-form guessing.
+
+- Sends all passing signals + top-10 failing signals by weight (compact format)
+- Scores each signal contribution, detects conflicts between signals
+- Weak or conflicting signals → outputs `UNCERTAIN` instead of a false positive
+- Runs a **second verification pass**: checks overconfidence (>0.85 requires strong multi-signal support) and ignored weights
+- Injects the last 5 user verdict corrections into the prompt to learn from past mistakes
 
 **Output schema:**
 ```json
@@ -259,31 +285,55 @@ Model config lives in `qvac.config.json` at the project root. The Evaluator send
 }
 ```
 
-### Role 2 — Learner (`onVote`)
-Called on every community vote. Updates `data/weights.json`.
+### Role 2 — Learner (`onVote`, `onVerdictFeedback`)
+Called on every community vote and every user verdict correction (👍/👎).
 
 - Adjusts per-method weights gradually — max ±0.05 per vote
-- Weights clamped to 0.1–3.0; no single vote can cause large drift
-- Penalises methods with conflicting vote history; rewards long-term accuracy
-- Qwen 2.5 is recommended here (better structured output, less philosophical than reasoning models)
+- Weights clamped to 0.1–3.0; no single action can cause large drift
+- Records corrections to `data/feedback.json`; appends insights to `brain_state.md`
+- User 👎 feedback identifies misleading signals (−0.03 weight); 👍 reinforces them (+0.02)
 
 ### Role 3 — Compiler (`consolidate`)
 Runs hourly via scheduler. Rewrites `data/brain_state.md`.
 
 - Reads top/weak methods by weight, last 8 scans, last 8 votes
 - Outputs a ≤400-word technical summary — no speculation, no repetition
-- Mixtral or DeepSeek recommended for speed + summarisation quality
 
 ### Method assessment (`onNewMethod`)
 Called when a listing is submitted. Evaluates signal quality and edge-case risk (`none | low | medium | high`). Result is appended to `brain_state.md`.
 
 ### JSON contract enforcement
-All brain calls use `evaluatorChatJSON()` / `ollamaChatJSON()`:
-1. Extracts the first `{...}` block from model output
+All brain calls use `evaluatorChatJSON()` / `learnerChatJSON()` / `compilerChat()`:
+1. Extracts the first `{...}` block from model output (handles `<think>` blocks and markdown fences)
 2. Validates required fields are present
-3. On failure, retries once with: `"Your previous output was invalid. Fix format only."`
+3. On failure, retries once with explicit field list
 
-Qvac path additionally sets `response_format: { type: "json_object" }` for native JSON mode — eliminates the need for regex extraction on capable models.
+---
+
+## Transaction Graph Analysis
+
+Every scan automatically runs `src/utils/txGraph.js` in parallel with the registered detection methods. It fetches the last 50 transactions and computes:
+
+| Metric | Signal |
+|---|---|
+| `uniqueCounterparties` | Low count → bot (interacts with few addresses) |
+| `repeatRatio` | High → bot (same counterparties over and over) |
+| `timingCv` | Low (< 0.3) → bot (regular intervals = scripted) |
+| `selfRatio` | High → bot (self-transfers, wash activity) |
+
+A result is `true` (human signal) when: ≥ 8 unique counterparties, repeat ratio < 50%, self-transfer ratio < 30%, timing CV > 0.3.
+
+**Data sources:**
+
+| Chain | Source |
+|---|---|
+| ETH | Etherscan v2 API (`ETHERSCAN_API_KEY`) |
+| Base | Etherscan v2 API (`ETHERSCAN_API_KEY`) |
+| Arbitrum | Etherscan v2 API (`ETHERSCAN_API_KEY`) |
+| BNB | Alchemy `getAssetTransfers` (`RPC_56`) |
+| Solana | `getSignaturesForAddress` + `getTransaction` via `SOLANA_RPC` |
+
+Results appear in the scan output as `tx_graph_eth`, `tx_graph_base`, etc. and are included in the brain's verdict context.
 
 ---
 
@@ -315,8 +365,9 @@ Supported languages: **JS · Go · Rust · PHP · Java** (all normalised to JS s
 |---|---|
 | Backend | Node.js · Express · ethers.js v6 · @solana/web3.js |
 | Frontend | Vue 3 · Vite · Lucide icons |
-| AI (Evaluator) | Qvac |
-| AI (Learner · Compiler) | Ollama — local inference |
+| AI (all roles — primary) | Qvac 0.3.0 · Qwen3-8B Q4_K_M · 8192 ctx |
+| AI (all roles — fallback) | Ollama — qwen2.5:1.5b · deepseek-r1:1.5b · mixtral |
+| Tx graph | Etherscan v2 (ETH · Base · Arbitrum) · Alchemy (BNB) · Solana RPC |
 | Cache | Redis (in-memory fallback) |
 | Scheduler | node-cron (hourly brain consolidation) |
 | Wallet | @solana/wallet-adapter (Phantom · Solflare · Coinbase · Trust · Ledger · Torus · Nightly + Wallet Standard) |

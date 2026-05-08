@@ -191,7 +191,7 @@ async function qvacChat(prompt, { model = QVAC_MODEL, maxTokens = 512, timeLimit
   });
 }
 
-// ── Evaluator router — Qvac if configured, Ollama otherwise ──────────────────
+// ── Role routers — Qvac if configured, Ollama otherwise ──────────────────────
 
 async function evaluatorChat(prompt, opts = {}) {
   if (QVAC_URL) {
@@ -217,6 +217,35 @@ async function evaluatorChatJSON(prompt, requiredKeys, opts = {}) {
   }
 
   return parsed;
+}
+
+async function learnerChat(prompt, opts = {}) {
+  if (QVAC_URL) {
+    const result = await qvacChat(prompt, opts);
+    if (result !== null) return result;
+  }
+  return ollamaChat(prompt, { ...opts, model: LEARNER_MODEL });
+}
+
+async function learnerChatJSON(prompt, requiredKeys, opts = {}) {
+  const raw = await learnerChat(prompt, { ...opts, jsonMode: true });
+  let parsed = extractJSON(raw);
+  if (!parsed || requiredKeys.some(k => !(k in parsed))) {
+    const retry = await learnerChat(
+      `${prompt}\n\nIMPORTANT: Respond with ONLY a valid JSON object. Required fields: ${requiredKeys.join(', ')}. No other text.`,
+      { ...opts, jsonMode: true }
+    );
+    parsed = extractJSON(retry);
+  }
+  return parsed;
+}
+
+async function compilerChat(prompt, opts = {}) {
+  if (QVAC_URL) {
+    const result = await qvacChat(prompt, opts);
+    if (result !== null) return result;
+  }
+  return ollamaChat(prompt, { ...opts, model: COMPILER_MODEL });
 }
 
 // ── 1. EVALUATOR — analyzeHumanness ──────────────────────────────────────────
@@ -343,10 +372,10 @@ ${feedbackLine}
 Reply with ONLY this JSON (new_weight must be within 0.05 of current weight ${currentWeight}):
 {"new_weight": ${currentWeight}}`;
 
-  const result = await ollamaChatJSON(
+  const result = await learnerChatJSON(
     prompt,
     ['new_weight'],
-    { model: LEARNER_MODEL, maxTokens: 60, timeLimit: 20000 }
+    { maxTokens: 60, timeLimit: 20000 }
   );
 
   const updated = { ...currentWeights };
@@ -481,8 +510,7 @@ STYLE:
 - no speculation`;
 
   console.log('[brain] Consolidating knowledge...');
-  const newBrainState = await ollamaChat(prompt, {
-    model: COMPILER_MODEL,
+  const newBrainState = await compilerChat(prompt, {
     maxTokens: 300,
     timeLimit: 60000
   });
@@ -599,8 +627,8 @@ ${signalsSummary}
 Which signal type was most misleading? One sentence max.
 {"insight":"..."}`;
 
-  const insight = await ollamaChatJSON(prompt, ['insight'], {
-    model: LEARNER_MODEL, maxTokens: 80, timeLimit: 20000,
+  const insight = await learnerChatJSON(prompt, ['insight'], {
+    maxTokens: 80, timeLimit: 20000,
   });
 
   const note = `\n\n### Verdict Correction — ${new Date().toISOString()}\nAddress: ${address}\nAI said: ${aiVerdict} → User says: ${correction}\n${comment ? `Comment: "${comment}"\n` : ''}${insight?.insight ? `Insight: ${insight.insight}` : ''}`;
