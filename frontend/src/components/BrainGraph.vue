@@ -23,7 +23,7 @@ const canvasRef = ref(null)
 const tooltip   = ref(null)
 
 const TYPE_COLOR = { evm: '#627EEA', rest: '#00D395', solana: '#9945FF' }
-const BRAIN_COLOR = '#e8e8ff'
+const BRAIN_COLOR = '#00D4B0'
 const HUMAN_COLOR = '#22c55e'
 const BOT_COLOR   = '#ef4444'
 
@@ -188,58 +188,50 @@ function renderFrame() {
     }
   })
 
-  // ── Brain node ─────────────────────────────────────────────────────────────
+  // ── Brain node (Qvac logo) ─────────────────────────────────────────────────
   const brain = nodes.find(n => n.id === '__brain__')
   if (brain?.x != null) {
     const pulse = brainPulse
     brainPulse = Math.max(0, brainPulse - 0.025)
 
+    const QVAC_TEAL = '#00D4B0'
+    const r = brain.r + pulse * 4
+
     // Outer glow rings
     for (let i = 3; i >= 1; i--) {
       const rOff = i * 14 + pulse * 12
-      const alpha = (0.06 - i * 0.015 + pulse * 0.06).toFixed(3)
+      const alpha = (0.07 - i * 0.015 + pulse * 0.08).toFixed(3)
       ctx.beginPath()
       ctx.arc(brain.x, brain.y, brain.r + rOff, 0, Math.PI * 2)
-      ctx.strokeStyle = `rgba(200,200,255,${alpha})`
+      ctx.strokeStyle = `rgba(0,212,176,${alpha})`
       ctx.lineWidth = 1
       ctx.stroke()
     }
 
-    // Core gradient
-    const grad = ctx.createRadialGradient(brain.x, brain.y - 8, 2, brain.x, brain.y, brain.r + pulse * 8)
-    grad.addColorStop(0, '#ffffff')
-    grad.addColorStop(0.45, '#c8c8ff')
-    grad.addColorStop(1, '#4444aa44')
-    ctx.shadowBlur = 28 + pulse * 20
-    ctx.shadowColor = '#8888ff'
+    // Black fill
     ctx.beginPath()
-    ctx.arc(brain.x, brain.y, brain.r + pulse * 4, 0, Math.PI * 2)
-    ctx.fillStyle = grad
+    ctx.arc(brain.x, brain.y, r, 0, Math.PI * 2)
+    ctx.fillStyle = '#000000'
     ctx.fill()
+
+    // Teal border
+    ctx.beginPath()
+    ctx.arc(brain.x, brain.y, r, 0, Math.PI * 2)
+    ctx.strokeStyle = QVAC_TEAL
+    ctx.lineWidth = 1.8
+    ctx.shadowBlur = 18 + pulse * 22
+    ctx.shadowColor = QVAC_TEAL
+    ctx.stroke()
     ctx.shadowBlur = 0
 
-    // Label
-    ctx.fillStyle = '#000010'
-    ctx.font = 'bold 8px monospace'
+    // "qvac." label
+    ctx.fillStyle = QVAC_TEAL
+    ctx.font = 'bold 12px monospace'
     ctx.textAlign = 'center'
-    ctx.fillText('AI', brain.x, brain.y - 4)
-    ctx.fillText('BRAIN', brain.x, brain.y + 6)
-
-    // Role dots
-    const roles = [{ lbl: 'E', col: '#f59e0b', dx: -12, dy: 20 }, { lbl: 'L', col: '#3b82f6', dx: 0, dy: 24 }, { lbl: 'C', col: '#8b5cf6', dx: 12, dy: 20 }]
-    roles.forEach(({ lbl, col, dx, dy }) => {
-      ctx.beginPath()
-      ctx.arc(brain.x + dx, brain.y + dy, 6, 0, Math.PI * 2)
-      ctx.fillStyle = col
-      ctx.shadowBlur = 8
-      ctx.shadowColor = col
-      ctx.fill()
-      ctx.shadowBlur = 0
-      ctx.fillStyle = '#000'
-      ctx.font = 'bold 6px monospace'
-      ctx.textAlign = 'center'
-      ctx.fillText(lbl, brain.x + dx, brain.y + dy + 2)
-    })
+    ctx.shadowBlur = 12 + pulse * 16
+    ctx.shadowColor = QVAC_TEAL
+    ctx.fillText('qvac', brain.x, brain.y + 4)
+    ctx.shadowBlur = 0
   }
 
   // ── Verdict nodes ──────────────────────────────────────────────────────────
