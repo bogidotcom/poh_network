@@ -119,12 +119,12 @@ const emit = defineEmits([
         <!-- My Votes -->
         <div class="profile-card">
           <div class="profile-card-header">
-            <span class="profile-card-title">My Votes</span>
+            <span class="profile-card-title">My Feedback</span>
             <span class="profile-card-count">{{ myVotesData.length }}</span>
           </div>
           <div v-if="!myVotesData.length" class="profile-empty">
-            No votes cast yet.
-            <button class="utility-link no-margin" @click="emit('show-section', 'votes'); emit('load-voting')">Go vote →</button>
+            No feedback provided yet.
+            <button class="utility-link no-margin" @click="emit('show-section', 'votes'); emit('load-voting')">Provide feedback →</button>
           </div>
           <div v-else class="method-list-profile">
             <div v-for="v in myVotesData" :key="v.methodId" class="mlist-row">

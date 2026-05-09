@@ -69,7 +69,7 @@ function go(section, extra) {
       <button :class="['mobile-nav-btn', { active: current === 'landing'  }]" @click="go('landing')">POH</button>
       <button :class="['mobile-nav-btn', { active: current === 'checker'  }]" @click="go('checker')">Scan</button>
       <button :class="['mobile-nav-btn', { active: current === 'listing'  }]" @click="go('listing')">Train</button>
-      <button :class="['mobile-nav-btn', { active: current === 'votes'    }]" @click="go('votes', 'load')">Vote</button>
+      <button :class="['mobile-nav-btn', { active: current === 'votes'    }]" @click="go('votes', 'load')">Feedback</button>
       <button :class="['mobile-nav-btn', { active: current === 'api'      }]" @click="go('api')">API</button>
       <button :class="['mobile-nav-btn', { active: current === 'staking'  }]" @click="go('staking')">Stake</button>
       <button :class="['mobile-nav-btn', { active: current === 'profile'  }]" @click="go('profile', 'load')">Profile</button>

@@ -481,7 +481,7 @@ onUnmounted(() => {
         <button :class="['mobile-nav-btn', { active: currentSection === 'landing' }]" @click="showSection('landing')">POH</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'checker' }]" @click="showSection('checker')">Scan</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'listing' }]" @click="showSection('listing')">Train</button>
-        <button :class="['mobile-nav-btn', { active: currentSection === 'votes' }]" @click="showSection('votes'); loadVoting()">Vote</button>
+        <button :class="['mobile-nav-btn', { active: currentSection === 'votes' }]" @click="showSection('votes'); loadVoting()">Feedback</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'api' }]" @click="showSection('api')">API</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'staking' }]" @click="showSection('staking')">Stake</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'profile' }]" @click="showSection('profile'); loadProfile(); loadMyVotes()">Profile</button>
@@ -500,9 +500,9 @@ onUnmounted(() => {
     <!-- Vote Confirmation Modal -->
     <div v-if="voteConfirmPending !== null" class="modal-overlay" @click.self="voteConfirmPending = null">
       <div class="glass-panel modal vote-confirm-modal">
-        <h3 class="modal-title">Confirm your vote</h3>
+        <h3 class="modal-title">Confirm your Feedback</h3>
         <p class="modal-desc">
-          You're voting
+          You're providing feedback that classifies the item as
           <strong :class="voteConfirmPending === true ? 'vote-confirm-human' : 'vote-confirm-bot'">
             {{ voteConfirmPending === true ? '✓ Human' : '✗ Bot / AI' }}
           </strong>
@@ -835,7 +835,7 @@ onUnmounted(() => {
                 <text x="172" y="175" fill="#22c55e80" font-size="7" font-family="monospace" opacity="0">
                   <animate attributeName="opacity" values="0;1" dur="0.3s" begin="2.7s" fill="freeze"/>74%</text>
               </svg>
-              <p class="benefit-label">Bot / Human Classification<br>and Digital Identities on Solana</p>
+              <p class="benefit-label">Captcha<br>and Digital Identities</p>
             </div>
 
             <!-- AI portrait: wallet → signals → profile -->
@@ -1635,12 +1635,12 @@ onUnmounted(() => {
             <!-- My Votes -->
             <div class="profile-card">
               <div class="profile-card-header">
-                <span class="profile-card-title">My Votes</span>
+                <span class="profile-card-title">My Feedback</span>
                 <span class="profile-card-count">{{ myVotesData.length }}</span>
               </div>
               <div v-if="!myVotesData.length" class="profile-empty">
-                No votes cast yet.
-                <button class="utility-link no-margin" @click="showSection('votes'); loadVoting()">Go vote →</button>
+                No feedback provided yet.
+                <button class="utility-link no-margin" @click="showSection('votes'); loadVoting()">Provide feedback →</button>
               </div>
               <div v-else class="method-list-profile">
                 <div v-for="v in myVotesData" :key="v.methodId" class="mlist-row">
@@ -2034,7 +2034,7 @@ const results = await pollJob(jobId)</pre>
   gap: 1.5rem;
   flex: 1;
   min-width: 220px;
-  max-width: 280px;
+  /* max-width: 280px; */
 }
 .benefit-svg {
   width: 100%;
