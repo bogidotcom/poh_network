@@ -577,7 +577,7 @@ onUnmounted(() => {
         <section class="problem-screen">
           <div class="problem-inner">
             <div class="problem-tag">THE PROBLEM</div>
-            <h2 class="problem-title">Soon, there will be more AI-agents, than <span class="problem-accent">people</span></h2>
+            <h2 class="problem-title">Defining AI-agents, and <span class="problem-accent">people</span></h2>
             <blockquote class="problem-quote">
               <div class="problem-quote-inner">
                 <img src="/jensen-huang.jpg" alt="Jensen Huang" class="problem-quote-avatar" />
