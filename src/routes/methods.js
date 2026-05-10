@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const { parse } = require('csv-parse/sync');
-const { getVoteTokenStake, verifyWalletSignature } = require('../utils/solana');
+const { getVoteTokenStake, verifyWalletSignature, verifyTxSuccess } = require('../utils/solana');
 const { recordVote, getMyVotes, hasVoted, isTxUsed, recordTx } = require('../utils/profiles');
 const brain = require('../utils/brain');
 

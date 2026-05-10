@@ -19,7 +19,7 @@ function stakeRecordPDA(walletPubkey) {
  */
 async function verifyTxSuccess(txHash) {
   try {
-    if ((txHash === 'MOCK_SUCCESS' || txHash === 'MOCK_BURN') && process.env.NODE_ENV !== 'production') return true;
+    // if ((txHash === 'MOCK_SUCCESS' || txHash === 'MOCK_BURN') && process.env.NODE_ENV !== 'production') return true;
     const tx = await connection.getTransaction(txHash, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
     if (!tx) return false;
     return tx.meta?.err === null;
