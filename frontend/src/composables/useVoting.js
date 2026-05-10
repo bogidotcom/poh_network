@@ -42,22 +42,22 @@ export function useVoting({ walletAddress, connected, adapterSignMessage }) {
     if (!connected.value) { error.value = 'Connect wallet to vote'; return }
     if (!adapterSignMessage.value) { error.value = 'Wallet does not support message signing'; return }
 
-    const fb = voteFeedback.value.trim()
-    if (fb) {
-      feedbackValidating.value = true
-      try {
-        const res = await axios.post('/methods/verifyer/validate-feedback', { feedback: fb })
-        if (!res.data.valid) {
-          error.value = `Comment rejected: ${res.data.reason}`
-          feedbackValidating.value = false
-          return
-        }
-      } catch {
-        // validation down — proceed
-      } finally {
-        feedbackValidating.value = false
-      }
-    }
+    // const fb = voteFeedback.value.trim()
+    // if (fb) {
+    //   feedbackValidating.value = true
+    //   try {
+    //     const res = await axios.post('/methods/verifyer/validate-feedback', { feedback: fb })
+    //     if (!res.data.valid) {
+    //       error.value = `Comment rejected: ${res.data.reason}`
+    //       feedbackValidating.value = false
+    //       return
+    //     }
+    //   } catch {
+    //     // validation down — proceed
+    //   } finally {
+    //     feedbackValidating.value = false
+    //   }
+    // }
 
     voteConfirmPending.value = voteVal
   }
