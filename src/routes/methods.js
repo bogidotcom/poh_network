@@ -138,14 +138,12 @@ router.get('/verifyer', (req, res) => {
 
   const myVotes = address ? getMyVotes(address) : {};
 
-  // Annotate and sort: least-voted (lowest score) first, shuffled within same score bucket
+  // Weighted random: methods with fewer votes surface more often but order is never fixed.
+  // Weight = Math.random() / (1 + voteCount) — highest weight wins first slot.
   methods = methods
-    .map(m => ({ ...m, myVoted: !!myVotes[m.id] }))
-    .sort((a, b) => {
-      const scoreDiff = (a.score || 0) - (b.score || 0);
-      if (scoreDiff !== 0) return scoreDiff;
-      return Math.random() - 0.5; // shuffle within same score
-    });
+    .map(m => ({ ...m, myVoted: !!myVotes[m.id], _w: Math.random() / (1 + (m.voteCount || 0)) }))
+    .sort((a, b) => b._w - a._w)
+    .map(({ _w, ...m }) => m);
 
   res.json(methods);
 });

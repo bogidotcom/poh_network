@@ -1,10 +1,12 @@
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import axios from 'axios'
 import { Connection, PublicKey, Transaction } from '@solana/web3.js'
 import { getAssociatedTokenAddress, createTransferInstruction } from '@solana/spl-token'
 
 export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, SOLANA_RPC, signAndSendTransaction }) {
   const scanInput            = ref('')
+  // Auto-lowercase domain names (anything with a dot — never a raw wallet address)
+  watch(scanInput, v => { if (v.includes('.') && v !== v.toLowerCase()) scanInput.value = v.toLowerCase() })
   const resolvedInputDisplay = ref('')
   const checkerResults       = ref(null)
   const showEvidence         = ref(false)
