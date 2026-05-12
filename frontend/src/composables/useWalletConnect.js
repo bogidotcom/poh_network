@@ -85,7 +85,16 @@ export function useWalletConnect({ SOLANA_RPC, onConnect } = {}) {
   async function connectWallet(walletName, walletUrl) {
     const adapter = _adapters.find(a => a.name === walletName)
     const ready   = adapter?.readyState === 'Installed' || adapter?.readyState === 'Loadable'
-    if (!adapter || !ready) { window.open(walletUrl || 'https://phantom.app', '_blank'); return }
+    if (!adapter || !ready) {
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+      if (isMobile) {
+        const encoded = encodeURIComponent(window.location.href)
+        if (walletName === 'Phantom')  { window.location.href = `https://phantom.app/ul/browse/${encoded}?ref=${encoded}`; return }
+        if (walletName === 'Solflare') { window.location.href = `https://solflare.com/ul/v1/browse/${encoded}?ref=${encoded}`; return }
+      }
+      window.open(walletUrl || 'https://phantom.app', '_blank')
+      return
+    }
     showWalletModal.value = false
     try {
       connecting.value = true

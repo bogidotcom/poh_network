@@ -99,7 +99,7 @@ async function suggestDevnetNetwork() {
     networkSuggestion.value = 'switching'
     await provider.request({
       method: 'wallet_switchSolanaChain',
-      params:  { solana_chain_id: DEVNET_GENESIS },
+      params:  { chainId: DEVNET_GENESIS },
     })
     // Phantom switched — hide banner
     networkSuggestion.value = null
@@ -117,7 +117,7 @@ async function retryNetworkSwitch() {
     const provider = window.phantom?.solana ?? window.solana
     await provider.request({
       method: 'wallet_switchSolanaChain',
-      params:  { solana_chain_id: DEVNET_GENESIS },
+      params:  { chainId: DEVNET_GENESIS },
     })
     networkSuggestion.value = null
   } catch (e) {
