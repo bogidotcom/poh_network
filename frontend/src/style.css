@@ -136,6 +136,61 @@ h1, h2, h3 { font-weight: 600; letter-spacing: -0.03em; }
   padding: 0.5rem 0;
 }
 
+/* ── Shared page / form primitives (used across all section components) ── */
+.scan-hero { text-align: center; margin-bottom: 2.5rem; }
+.scan-tag {
+  font-size: 0.81rem; font-weight: 700; letter-spacing: 0.2em;
+  color: #808080; text-transform: uppercase; margin-bottom: 0.75rem;
+}
+.scan-title { font-size: 2.19rem; font-weight: 700; letter-spacing: -0.03em; color: #fff; margin-bottom: 0.5rem; }
+.scan-sub   { font-size: 1.0rem; color: #808080; line-height: 1.6; }
+
+.form-section {
+  border: 1px solid #161616; border-radius: 10px;
+  padding: 1.25rem 1.5rem 1.5rem; margin-bottom: 0.75rem; background: #050505;
+}
+.form-label-row {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid #111;
+}
+.form-section-label {
+  font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.16em; color: #3a3a3a;
+}
+.field-label {
+  display: block; font-size: 0.72rem; font-weight: 500;
+  color: #808080; margin-bottom: 0.4rem; letter-spacing: 0.02em;
+}
+.input-group { display: flex; flex-direction: column; gap: 1rem; }
+
+.premium-input,
+.premium-select,
+.premium-textarea {
+  width: 100%; background: #080808; border: 1px solid #1e1e1e;
+  border-radius: 7px; padding: 0.6rem 0.85rem; color: #e0e0e0;
+  font-size: 1rem; line-height: 1.4;
+  transition: border-color 0.15s, background 0.15s;
+  font-family: inherit; box-sizing: border-box;
+}
+.premium-textarea { min-height: 80px; resize: vertical; line-height: 1.55; }
+.premium-input::placeholder,
+.premium-textarea::placeholder { color: #808080; }
+.premium-input:focus,
+.premium-select:focus,
+.premium-textarea:focus { outline: none; border-color: #808080; background: #0c0c0c; }
+
+.submit-listing-btn {
+  width: 100%; background: #fff; color: #000; border: none;
+  padding: 0.9rem 1.5rem; border-radius: 8px; font-weight: 700;
+  font-size: 1rem; cursor: pointer; transition: opacity 0.15s;
+  letter-spacing: 0.02em; margin-top: 0.25rem;
+}
+.submit-listing-btn:hover:not(:disabled) { opacity: 0.88; }
+.submit-listing-btn:disabled { opacity: 0.2; cursor: not-allowed; }
+
+.empty-state { text-align: center; padding: 4rem 1rem; color: #555; }
+.prompt-text  { color: #808080; margin-bottom: 1.25rem; font-size: 1rem; }
+
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: #000; }
 ::-webkit-scrollbar-thumb { background: #1e1e1e; border-radius: 3px; }

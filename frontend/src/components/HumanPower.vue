@@ -40,7 +40,8 @@ const SUGGEST_DEVNET_NETWORK = true
 
 // ── UI State ──────────────────────────────────────────────────────────────────
 const currentSection = ref('landing')
-const mobileMenuOpen = ref(false)
+const mobileMenuOpen  = ref(false)
+const walletDropOpen  = ref(false)
 const loading = ref(false)
 const error = ref(null)
 const showSection = (id) => { currentSection.value = id; mobileMenuOpen.value = false }
@@ -455,12 +456,6 @@ onUnmounted(() => {
         <button :class="['nav-btn', { active: currentSection === 'staking' }]" @click="showSection('staking')">
           <SquareArrowDown class="icon" :size="14" /> Stake
         </button>
-        <button :class="['nav-btn', { active: currentSection === 'profile' }]" @click="showSection('profile'); loadProfile(); loadMyVotes()">
-          <PersonStanding class="icon" :size="14" /> Profile
-        </button>
-        <button :class="['nav-btn', { active: currentSection === 'api' }]" @click="showSection('api')">
-          <FolderCode class="icon" :size="14" /> API
-        </button>
         <button :class="['nav-btn', { active: currentSection === 'ecosystem' }]" @click="showSection('ecosystem')">
           <Globe class="icon" :size="14" /> Ecosystem
         </button>
@@ -472,10 +467,16 @@ onUnmounted(() => {
           <button v-if="!connected" @click="showWalletModal = true" class="select-wallet-btn">
             Connect Wallet
           </button>
-          <div v-else class="connected-status">
-            <div class="status-indicator"></div>
-            <span class="address-text">{{ shortAddress }}</span>
-            <button @click="disconnectWallet" class="disconnect-link">Disconnect</button>
+          <div v-else class="wallet-dropdown-wrapper">
+            <div class="connected-status">
+              <div class="status-indicator"></div>
+              <span class="address-text">{{ shortAddress }}</span>
+            </div>
+            <div class="wallet-dropdown">
+              <button class="wallet-drop-item" @click="showSection('profile'); loadProfile(); loadMyVotes()">Profile</button>
+              <button class="wallet-drop-item" @click="showSection('api')">API</button>
+              <button class="wallet-drop-item wallet-drop-disconnect" @click="disconnectWallet">Disconnect</button>
+            </div>
           </div>
         </div>
 
@@ -493,19 +494,24 @@ onUnmounted(() => {
         <button :class="['mobile-nav-btn', { active: currentSection === 'checker' }]" @click="showSection('checker')">Scan</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'listing' }]" @click="showSection('listing')">Train</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'votes' }]" @click="showSection('votes'); loadVoting()">Feedback</button>
-        <button :class="['mobile-nav-btn', { active: currentSection === 'api' }]" @click="showSection('api')">API</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'ecosystem' }]" @click="showSection('ecosystem')">Ecosystem</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'staking' }]" @click="showSection('staking')">Stake</button>
-        <button :class="['mobile-nav-btn', { active: currentSection === 'profile' }]" @click="showSection('profile'); loadProfile(); loadMyVotes()">Profile</button>
         <div class="mobile-menu-divider"></div>
         <button v-if="!connected" @click="showWalletModal = true; mobileMenuOpen = false" class="mobile-nav-btn mobile-connect">
           Connect Wallet
         </button>
-        <div v-else class="mobile-wallet-status">
-          <div class="status-indicator"></div>
-          <span class="address-text">{{ shortAddress }}</span>
-          <button @click="disconnectWallet; mobileMenuOpen = false" class="disconnect-link">Disconnect</button>
-        </div>
+        <template v-else>
+          <button class="mobile-wallet-status" @click="walletDropOpen = !walletDropOpen">
+            <div class="status-indicator"></div>
+            <span class="address-text">{{ shortAddress }}</span>
+            <span class="wallet-drop-chevron" :class="{ open: walletDropOpen }">›</span>
+          </button>
+          <div v-if="walletDropOpen" class="mobile-wallet-drop">
+            <button class="mobile-wallet-drop-item" @click="showSection('profile'); loadProfile(); loadMyVotes(); mobileMenuOpen = false; walletDropOpen = false">Profile</button>
+            <button class="mobile-wallet-drop-item" @click="showSection('api'); mobileMenuOpen = false; walletDropOpen = false">API</button>
+            <button class="mobile-wallet-drop-item mobile-wallet-drop-disconnect" @click="disconnectWallet(); mobileMenuOpen = false; walletDropOpen = false">Disconnect</button>
+          </div>
+        </template>
       </div>
     </div>
 
@@ -2960,6 +2966,82 @@ const results = await pollJob(jobId)</pre>
 }
 
 .disconnect-link:hover { color: #aaa; }
+
+/* ── Wallet dropdown (desktop hover) ────────────────────────────────────── */
+.wallet-dropdown-wrapper {
+  position: relative;
+}
+.wallet-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: #0d0d0d;
+  border: 1px solid #222;
+  border-radius: 8px;
+  padding: 0.3rem;
+  min-width: 140px;
+  z-index: 200;
+  flex-direction: column;
+  gap: 0;
+}
+.wallet-dropdown-wrapper:hover .wallet-dropdown { display: flex; }
+.wallet-drop-item {
+  background: none;
+  border: none;
+  color: #aaa;
+  font-size: 0.82rem;
+  text-align: left;
+  padding: 0.55rem 0.8rem;
+  border-radius: 5px;
+  cursor: pointer;
+  width: 100%;
+  transition: background 0.12s, color 0.12s;
+}
+.wallet-drop-item:hover { background: #181818; color: #fff; }
+.wallet-drop-disconnect { color: #e05 !important; }
+.wallet-drop-disconnect:hover { background: #1a0808 !important; }
+
+/* ── Mobile wallet drop ─────────────────────────────────────────────────── */
+.mobile-wallet-status {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem 0.5rem;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.wallet-drop-chevron {
+  margin-left: auto;
+  color: #555;
+  font-size: 1.2rem;
+  line-height: 1;
+  transition: transform 0.2s;
+  display: inline-block;
+  transform: rotate(90deg);
+}
+.wallet-drop-chevron.open { transform: rotate(-90deg); }
+.mobile-wallet-drop {
+  display: flex;
+  flex-direction: column;
+  padding: 0 0.5rem 0.5rem 1.5rem;
+  gap: 0;
+}
+.mobile-wallet-drop-item {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 0.9rem;
+  text-align: left;
+  padding: 0.6rem 0.5rem;
+  cursor: pointer;
+  border-radius: 5px;
+  transition: color 0.12s;
+}
+.mobile-wallet-drop-item:hover { color: #fff; }
+.mobile-wallet-drop-disconnect { color: #e05 !important; }
 
 /* ── Modal ───────────────────────────────────────────────────────────────── */
 .modal-overlay {
