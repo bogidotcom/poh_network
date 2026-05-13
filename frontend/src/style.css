@@ -137,6 +137,35 @@ h1, h2, h3 { font-weight: 600; letter-spacing: -0.03em; }
 }
 
 /* ── Shared page / form primitives (used across all section components) ── */
+.content-section {
+  max-width: 720px;
+  margin: 0 auto 5rem;
+  animation: fadeUp 0.3s ease-out;
+  width: 100%;
+  overflow-x: hidden;
+  min-width: 0;
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.listing-header { text-align: center; margin-bottom: 2rem; }
+
+.type-tabs { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+.type-tab {
+  background: none;
+  border: 1px solid #1a1a1a;
+  color: #808080;
+  padding: 0.4rem 1rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.type-tab:hover { border-color: #808080; color: #aaa; }
+.type-tab.active { background: #fff; color: #000; border-color: #fff; font-weight: 600; }
 .scan-hero { text-align: center; margin-bottom: 2.5rem; }
 .scan-tag {
   font-size: 0.81rem; font-weight: 700; letter-spacing: 0.2em;
