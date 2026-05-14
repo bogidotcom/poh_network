@@ -35,7 +35,9 @@ function appendToDataset(record) {
     dataset = JSON.parse(fs.readFileSync(DATASET_PATH, 'utf-8'));
   }
   dataset.push(record);
-  fs.writeFileSync(DATASET_PATH, JSON.stringify(dataset, null, 2));
+  const tmp = DATASET_PATH + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(dataset, null, 2));
+  fs.renameSync(tmp, DATASET_PATH);
 }
 
 /**
