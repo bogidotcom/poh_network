@@ -541,7 +541,7 @@ STYLE:
   console.log('[brain] Consolidating knowledge...');
   const newBrainState = await compilerChat(prompt, {
     maxTokens: 300,
-    timeLimit: 60000
+    timeLimit: 300000
   });
 
   if (newBrainState) {
