@@ -182,7 +182,7 @@ function sanitize(p) {
 // ── POST /profile/faucet — devnet only, send 10 000 POH to caller ─────────────
 const FAUCET_AMOUNT = 10_000 * 1_000_000; // 10 000 POH in 6-decimal units
 const faucetCooldowns = new Map();         // address → last claim timestamp (in-memory)
-const FAUCET_COOLDOWN_MS = 60 * 60 * 24 * 1000; // 24 hour between claims
+const FAUCET_COOLDOWN_MS = 60 * 1000; // 24 hour between claims
 
 router.post('/faucet', async (req, res, next) => {
   try {

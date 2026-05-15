@@ -84,7 +84,7 @@ async function callContract(rpcUrl, address, hexMethod, abiTypes, returnTypes, p
   const { ethers } = require('ethers');
   hexMethod = toHexSelector(hexMethod, abiTypes);
 
-  const network = chainId ? ethers.Network.from(Number(chainId)) : undefined;
+  const network = chainId ? new ethers.Network(String(chainId), Number(chainId)) : undefined;
   const provider = network
     ? new ethers.JsonRpcProvider(rpcUrl, network, { staticNetwork: network })
     : new ethers.JsonRpcProvider(rpcUrl);

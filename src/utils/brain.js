@@ -59,7 +59,9 @@ function getWeights() {
 }
 
 function saveWeights(w) {
-  fs.writeFileSync(WEIGHTS_PATH, JSON.stringify(w, null, 2));
+  const tmp = WEIGHTS_PATH + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(w, null, 2));
+  fs.renameSync(tmp, WEIGHTS_PATH);
 }
 
 function getFeedback() {
@@ -69,7 +71,9 @@ function getFeedback() {
 }
 
 function saveFeedback(list) {
-  fs.writeFileSync(FEEDBACK_PATH, JSON.stringify(list, null, 2));
+  const tmp = FEEDBACK_PATH + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(list, null, 2));
+  fs.renameSync(tmp, FEEDBACK_PATH);
 }
 
 // Returns the last N human corrections as a compact string for prompt injection
@@ -465,9 +469,14 @@ OUTPUT (STRICT JSON):
 // ── 4. COMPILER — consolidate ─────────────────────────────────────────────────
 
 async function consolidate() {
-  const dataset = fs.existsSync(DATASET_PATH)
-    ? JSON.parse(fs.readFileSync(DATASET_PATH, 'utf-8'))
-    : [];
+  let dataset = [];
+  try {
+    if (fs.existsSync(DATASET_PATH))
+      dataset = JSON.parse(fs.readFileSync(DATASET_PATH, 'utf-8'));
+  } catch (err) {
+    console.error('[brain] Could not read dataset.json for consolidation:', err.message);
+    return;
+  }
 
   const scanRecords = dataset.filter(d => d.instruction.startsWith('Verification'));
   const voteRecords = dataset.filter(d => d.instruction.startsWith('Voter'));

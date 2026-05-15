@@ -17,7 +17,9 @@ const upload = multer({ dest: 'uploads/' });
 
 // Helper to save methods
 function saveMethods(methods) {
-  fs.writeFileSync(METHODS_PATH, JSON.stringify(methods, null, 2));
+  const tmp = METHODS_PATH + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(methods, null, 2));
+  fs.renameSync(tmp, METHODS_PATH);
 }
 
 // Helper to get methods
@@ -33,7 +35,9 @@ function appendToDataset(record) {
     dataset = JSON.parse(fs.readFileSync(DATASET_PATH, 'utf-8'));
   }
   dataset.push(record);
-  fs.writeFileSync(DATASET_PATH, JSON.stringify(dataset, null, 2));
+  const tmp = DATASET_PATH + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(dataset, null, 2));
+  fs.renameSync(tmp, DATASET_PATH);
 }
 
 /**

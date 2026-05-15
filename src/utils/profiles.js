@@ -16,7 +16,9 @@ function getProfiles() {
 }
 
 function saveProfiles(data) {
-  fs.writeFileSync(PROFILES_PATH, JSON.stringify(data, null, 2));
+  const tmp = PROFILES_PATH + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+  fs.renameSync(tmp, PROFILES_PATH);
 }
 
 function getProfile(address) {
@@ -39,7 +41,9 @@ function getRewards() {
 }
 
 function saveRewards(data) {
-  fs.writeFileSync(REWARDS_PATH, JSON.stringify(data, null, 2));
+  const tmp = REWARDS_PATH + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+  fs.renameSync(tmp, REWARDS_PATH);
 }
 
 // ── Free scan tracking ────────────────────────────────────────────────────────
@@ -176,7 +180,9 @@ function isTxUsed(txHash) {
 function recordTx(txHash, context) {
   const used = _loadUsedTx();
   used[txHash] = { at: new Date().toISOString(), ...context };
-  fs.writeFileSync(USED_TX_PATH, JSON.stringify(used, null, 2));
+  const tmp = USED_TX_PATH + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(used, null, 2));
+  fs.renameSync(tmp, USED_TX_PATH);
 }
 
 module.exports = {
