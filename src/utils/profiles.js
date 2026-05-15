@@ -75,34 +75,17 @@ function calcScanCost(count) {
 }
 
 // ── Reward distribution ───────────────────────────────────────────────────────
-// 50% of pohPaid goes to method owners, weighted by method score/weight
-function distributeRewards(pohPaid, executedMethodIds, allMethods, weights) {
-  const pool = Math.floor(pohPaid * 0.5);
-  if (pool <= 0 || !executedMethodIds.length) return;
-
-  // Compute each method's weight share
-  const scored = executedMethodIds.map(id => {
-    const m = allMethods.find(m => m.id === id);
-    const w = weights[id] ?? 1.0;
-    const s = Math.max(0, (m?.score ?? 0) + 5); // shift so 0 score still gets share
-    return { id, ownerWallet: m?.ownerWallet, score: s * w };
-  }).filter(x => x.ownerWallet);
-
-  const totalScore = scored.reduce((s, x) => s + x.score, 0);
-  if (totalScore === 0) return;
-
-  const rewards = getRewards();
-  for (const { id, ownerWallet, score } of scored) {
-    const share = Math.floor((score / totalScore) * pool);
-    if (!rewards[id]) rewards[id] = { methodId: id, ownerWallet, totalEarned: 0, pendingWithdrawal: 0 };
-    rewards[id].totalEarned += share;
-    rewards[id].pendingWithdrawal += share;
-    // Credit method owner's profile balance
-    upsertProfile(ownerWallet, {
-      balance: (getProfile(ownerWallet)?.balance || 0) + share,
-    });
-  }
-  saveRewards(rewards);
+// 100% of scan fee POH goes to stakers proportionally to their staking pool share.
+// Method owners no longer receive scan-fee splits (they earn via curve trading fees).
+function distributeRewards(pohPaid) {
+  if (pohPaid <= 0) return;
+  const { getAllStakers } = require('./solana');
+  getAllStakers()
+    .then(stakers => {
+      if (!stakers.length) return;
+      distributeStakerRewards(pohPaid, stakers);
+    })
+    .catch(err => console.error('[rewards] distributeRewards failed:', err.message));
 }
 
 // ── Staker reward distribution ────────────────────────────────────────────────

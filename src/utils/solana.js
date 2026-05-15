@@ -254,6 +254,33 @@ async function sendPohTokens(toAddress, amountRaw) {
   return sendAndConfirmTransaction(connection, tx, [payer], { commitment: 'confirmed' });
 }
 
+/**
+ * Sends native SOL (lamports) from the backend treasury wallet to a recipient.
+ * Requires SOLANA_PRIV_KEY to be set.
+ */
+async function sendSol(toAddress, lamports) {
+  const privKeyB58 = process.env.SOLANA_PRIV_KEY;
+  if (!privKeyB58 || privKeyB58 === 'YOUR_OPTIONAL_PRIV_KEY_FOR_MINTING') {
+    throw new Error('Backend wallet not configured — set SOLANA_PRIV_KEY');
+  }
+
+  const _bs58 = require('bs58');
+  const bs58decode = (_bs58.default || _bs58).decode;
+  const { Keypair, Transaction, SystemProgram, sendAndConfirmTransaction } = require('@solana/web3.js');
+
+  const secretKey = /^[0-9a-fA-F]{128}$/.test(privKeyB58)
+    ? Buffer.from(privKeyB58, 'hex')
+    : bs58decode(privKeyB58);
+  const payer    = Keypair.fromSecretKey(secretKey);
+  const toPubkey = new PublicKey(toAddress);
+
+  const tx = new Transaction().add(
+    SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey, lamports: BigInt(lamports) })
+  );
+
+  return sendAndConfirmTransaction(connection, tx, [payer], { commitment: 'confirmed' });
+}
+
 // Verify a Solana wallet signed a specific message.
 // Signature and public key are expected as base58 strings.
 function verifyWalletSignature(message, signatureB58, walletAddress) {
@@ -270,4 +297,4 @@ function verifyWalletSignature(message, signatureB58, walletAddress) {
   }
 }
 
-module.exports = { verifySolPayment, verifyTxSuccess, verifyPohTransfer, getVoteTokenStake, getSolBalance, getVoteBalance, verifyBurnTransaction, getAllStakers, sendPohTokens, verifyWalletSignature };
+module.exports = { verifySolPayment, verifyTxSuccess, verifyPohTransfer, getVoteTokenStake, getSolBalance, getVoteBalance, verifyBurnTransaction, getAllStakers, sendPohTokens, sendSol, verifyWalletSignature };

@@ -21,6 +21,7 @@
     "axios": "^1.13.6",
     "buffer": "^6.0.3",
     "d3": "^7.9.0",
+    "lightweight-charts": "^5.0.7",
     "lucide-vue-next": "^0.575.0",
     "vite-plugin-node-polyfills": "^0.25.0",
     "vue": "^3.5.25"

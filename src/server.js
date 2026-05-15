@@ -25,6 +25,7 @@ app.use('/checker', require('./routes/checker'));
 app.use('/abi', require('./routes/abi'));
 app.use('/profile', require('./routes/profile'));
 app.use('/ecosystem', require('./routes/ecosystem'));
+app.use('/curves', require('./routes/curves'));
 
 // Health check
 app.get('/', (req, res) => {
