@@ -10,9 +10,9 @@
     "returnTypes": "",
     "headers": "{}",
     "id": "1776689122827sol_balance",
-    "score": -10.9,
+    "score": -3.08239539114615,
     "created_at": "2026-04-20T12:45:22.824Z",
-    "voteCount": 2
+    "voteCount": 6
   },
   {
     "type": "solana",
@@ -39,88 +39,9 @@
     "returnTypes": "",
     "headers": "{}",
     "id": "1776689122829sol_usdc",
-    "score": 0,
-    "created_at": "2026-04-20T12:45:22.824Z"
-  },
-  {
-    "type": "evm",
-    "chainId": 80094,
-    "address": "",
-    "method": "eth_getBalance",
-    "description": "Berachain \u2014 native BERA balance > 0.1 (real user funded their wallet)",
-    "expression": "result[0] > 100000000000000000n",
-    "lang": "js",
-    "decimals": 18,
-    "abiTypes": "[]",
-    "returnTypes": "[]",
-    "headers": "{}",
-    "id": "1776780461266Berachai",
-    "score": 0,
-    "created_at": "2026-04-21T14:07:41.266Z"
-  },
-  {
-    "type": "evm",
-    "chainId": 80094,
-    "address": "",
-    "method": "eth_getTransactionCount",
-    "description": "Berachain \u2014 tx count > 3 (wallet has on-chain history)",
-    "expression": "result[0] > 3n",
-    "lang": "js",
-    "decimals": 18,
-    "abiTypes": "[]",
-    "returnTypes": "[]",
-    "headers": "{}",
-    "id": "1776780461267Berachai",
-    "score": 0,
-    "created_at": "2026-04-21T14:07:41.266Z"
-  },
-  {
-    "type": "evm",
-    "chainId": 80094,
-    "address": "0x656107c5e44B2F0E7a56823b9a4A61Deb98c4fDc",
-    "method": "balanceOf",
-    "description": "Berachain \u2014 BGT governance token balance > 0 (earned via liquidity provision)",
-    "expression": "result[0] > 0n",
-    "lang": "js",
-    "decimals": 18,
-    "abiTypes": "[\"address\"]",
-    "returnTypes": "[\"uint256\"]",
-    "headers": "{}",
-    "id": "1776780461268Berachai",
-    "score": 0,
-    "created_at": "2026-04-21T14:07:41.266Z"
-  },
-  {
-    "type": "evm",
-    "chainId": 80094,
-    "address": "0xFCBD14DC51f0A4d49d5E53C2E0950e0bC26d0Dce",
-    "method": "balanceOf",
-    "description": "Berachain \u2014 HONEY stablecoin balance > 0 (user has interacted with Berachain DeFi)",
-    "expression": "result[0] > 0n",
-    "lang": "js",
-    "decimals": 18,
-    "abiTypes": "[\"address\"]",
-    "returnTypes": "[\"uint256\"]",
-    "headers": "{}",
-    "id": "1776780461269Berachai",
-    "score": 0,
-    "created_at": "2026-04-21T14:07:41.266Z"
-  },
-  {
-    "type": "evm",
-    "chainId": 80094,
-    "address": "0x7507c1dc16935B82698e4C63f2746A2fCf994dF8",
-    "method": "balanceOf",
-    "description": "Berachain \u2014 WBERA balance > 0 (used DEX swaps on Berachain)",
-    "expression": "result[0] > 0n",
-    "lang": "js",
-    "decimals": 18,
-    "abiTypes": "[\"address\"]",
-    "returnTypes": "[\"uint256\"]",
-    "headers": "{}",
-    "id": "1776780461270Berachai",
-    "score": 0,
-    "created_at": "2026-04-21T14:07:41.266Z"
+    "score": 1.09,
+    "created_at": "2026-04-20T12:45:22.824Z",
+    "voteCount": 1
   },
   {
     "type": "evm",
@@ -135,8 +56,9 @@
     "returnTypes": "[]",
     "headers": "{}",
     "id": "1776780461271Ethereum",
-    "score": 0,
-    "created_at": "2026-04-21T14:07:41.266Z"
+    "score": -3.457604608853851,
+    "created_at": "2026-04-21T14:07:41.266Z",
+    "voteCount": 4
   },
   {
     "type": "evm",
@@ -183,8 +105,9 @@
     "returnTypes": "[\"uint256\"]",
     "headers": "{}",
     "id": "1776780461274Ethereum",
-    "score": 0,
-    "created_at": "2026-04-21T14:07:41.266Z"
+    "score": 1.09,
+    "created_at": "2026-04-21T14:07:41.266Z",
+    "voteCount": 1
   },
   {
     "type": "evm",
@@ -215,8 +138,9 @@
     "returnTypes": "[]",
     "headers": "{}",
     "id": "1776780461276Base_\u2014_n",
-    "score": 0,
-    "created_at": "2026-04-21T14:07:41.266Z"
+    "score": 1.09,
+    "created_at": "2026-04-21T14:07:41.266Z",
+    "voteCount": 1
   },
   {
     "type": "evm",
@@ -296,8 +220,9 @@
     "returnTypes": "[\"uint256\"]",
     "headers": "{}",
     "id": "1776780461281Arbitrum",
-    "score": 0,
-    "created_at": "2026-04-21T14:07:41.266Z"
+    "score": 1.09,
+    "created_at": "2026-04-21T14:07:41.266Z",
+    "voteCount": 1
   },
   {
     "type": "evm",
@@ -312,8 +237,9 @@
     "returnTypes": "[]",
     "headers": "{}",
     "id": "1776780461282Polygon_",
-    "score": 0,
-    "created_at": "2026-04-21T14:07:41.266Z"
+    "score": 2.18,
+    "created_at": "2026-04-21T14:07:41.266Z",
+    "voteCount": 2
   },
   {
     "type": "evm",
@@ -328,8 +254,9 @@
     "returnTypes": "[\"uint256\"]",
     "headers": "{}",
     "id": "1776780461283Polygon_",
-    "score": 0,
-    "created_at": "2026-04-21T14:07:41.266Z"
+    "score": 1.09,
+    "created_at": "2026-04-21T14:07:41.266Z",
+    "voteCount": 1
   },
   {
     "type": "evm",
@@ -416,9 +343,10 @@
     "returnTypes": "",
     "headers": "{}",
     "id": "1776780461289Farcaste",
-    "score": 0,
+    "score": 1.09,
     "created_at": "2026-04-21T14:07:41.266Z",
-    "addressType": "evm"
+    "addressType": "evm",
+    "voteCount": 1
   },
   {
     "type": "rest",
@@ -515,8 +443,9 @@
     "description": "Coinbase Verified ID (Base EAS) \u2014 Coinbase KYC attestation issued on Base via EAS",
     "headers": "{\"Content-Type\": \"application/json\"}",
     "id": "poh_coinbase_eas_base_1776849825388",
-    "score": 0,
-    "created_at": "2026-04-22T00:00:00.000Z"
+    "score": 1.09,
+    "created_at": "2026-04-22T00:00:00.000Z",
+    "voteCount": 1
   },
   {
     "type": "rest",
@@ -527,8 +456,9 @@
     "description": "Nomis credit score (Ethereum) \u2014 on-chain reputation score based on wallet activity; score > 0 signals real user",
     "headers": "{}",
     "id": "poh_nomis_eth_1776849825388",
-    "score": 0,
-    "created_at": "2026-04-22T00:00:00.000Z"
+    "score": -1.09,
+    "created_at": "2026-04-22T00:00:00.000Z",
+    "voteCount": 1
   },
   {
     "type": "rest",
@@ -565,8 +495,9 @@
     "description": "GitPOAP \u2014 on-chain GitHub contribution attestations; only real developers with verified GitHub commits receive these",
     "headers": "{}",
     "id": "poh_gitpoap_contrib_1776849825388",
-    "score": 0,
-    "created_at": "2026-04-22T00:00:00.000Z"
+    "score": 1.09,
+    "created_at": "2026-04-22T00:00:00.000Z",
+    "voteCount": 1
   },
   {
     "type": "rest",
@@ -578,8 +509,9 @@
     "description": "Galxe OAT/NFT count \u2014 real users collect on-chain achievement tokens (OATs) from campaigns and events",
     "headers": "{\"Content-Type\": \"application/json\"}",
     "id": "poh_galxe_oat_count_1776849825388",
-    "score": 0,
-    "created_at": "2026-04-22T00:00:00.000Z"
+    "score": 1.09,
+    "created_at": "2026-04-22T00:00:00.000Z",
+    "voteCount": 1
   },
   {
     "type": "evm",
@@ -593,8 +525,9 @@
     "description": "Binance BAB token (opBNB) \u2014 KYC-verified Binance user check on opBNB chain",
     "headers": "{}",
     "id": "poh_bab_opbnb_1776849825388",
-    "score": 0,
-    "created_at": "2026-04-22T00:00:00.000Z"
+    "score": 4.547604608853851,
+    "created_at": "2026-04-22T00:00:00.000Z",
+    "voteCount": 1
   },
   {
     "type": "rest",
@@ -647,10 +580,11 @@
     "lang": "js",
     "description": "Human Passport \u2014 Base chain activity",
     "id": "1777148092539gwovtuj55",
-    "score": 0,
+    "score": 3.7261976955730742,
     "ownerWallet": null,
     "created_at": "2026-04-25T20:14:52.537Z",
-    "addressType": "evm"
+    "addressType": "evm",
+    "voteCount": 1
   },
   {
     "type": "rest",
@@ -689,10 +623,11 @@
     "lang": "js",
     "description": "Human Passport \u2014 Polygon chain activity",
     "id": "1777148092542qod7ia5ge",
-    "score": 0,
+    "score": 1.09,
     "ownerWallet": null,
     "created_at": "2026-04-25T20:14:52.537Z",
-    "addressType": "evm"
+    "addressType": "evm",
+    "voteCount": 1
   },
   {
     "type": "evm",
@@ -735,9 +670,10 @@
     "lang": "js",
     "description": "Is Smart Contract on BNB Chain \u2014 address has deployed code (negative: true = AI/contract, not human)",
     "id": "1777400000003smartctbnb",
-    "score": 0,
+    "score": 1.09,
     "ownerWallet": null,
-    "created_at": "2026-04-28T00:00:00.000Z"
+    "created_at": "2026-04-28T00:00:00.000Z",
+    "voteCount": 1
   },
   {
     "type": "evm",
@@ -762,9 +698,10 @@
     "lang": "js",
     "description": "Is Solana Program \u2014 account is marked executable (negative: true = on-chain program, not a human wallet)",
     "id": "1777400000005solanaprog",
-    "score": 0,
+    "score": -3.3200000000000003,
     "ownerWallet": null,
-    "created_at": "2026-04-28T00:00:00.000Z"
+    "created_at": "2026-04-28T00:00:00.000Z",
+    "voteCount": 3
   },
   {
     "type": "solana",
@@ -774,9 +711,10 @@
     "lang": "js",
     "description": "Solana AI Agent Registry \u2014 wallet is registered as an AI agent (negative: true = AI agent, not human)",
     "id": "1777400000006agentreg",
-    "score": 0,
+    "score": -1.09,
     "ownerWallet": null,
-    "created_at": "2026-04-28T00:00:00.000Z"
+    "created_at": "2026-04-28T00:00:00.000Z",
+    "voteCount": 1
   },
   {
     "type": "rest",
@@ -801,10 +739,11 @@
     "lang": "js",
     "description": "Zora network activity \u2014 address has transactions on Zora L2 (positive human signal)",
     "id": "1777400000008zora",
-    "score": 0,
+    "score": 1.09,
     "ownerWallet": null,
     "created_at": "2026-04-28T00:00:00.000Z",
-    "addressType": "evm"
+    "addressType": "evm",
+    "voteCount": 1
   },
   {
     "type": "evm",
@@ -817,10 +756,11 @@
     "lang": "js",
     "description": "ZNS domain on Ink Network \u2014 owns at least one ZNS name (positive human signal)",
     "id": "1777400zns_57073_0xfb2c",
-    "score": 0,
+    "score": 4.547604608853851,
     "ownerWallet": null,
     "created_at": "2026-04-29T00:00:00.000Z",
-    "addressType": "evm"
+    "addressType": "evm",
+    "voteCount": 1
   },
   {
     "type": "evm",
@@ -833,10 +773,11 @@
     "lang": "js",
     "description": "ZNS domain on Unichain \u2014 owns at least one ZNS name (positive human signal)",
     "id": "1777400zns_130_0xf180",
-    "score": 0,
+    "score": 7.618133686300463,
     "ownerWallet": null,
     "created_at": "2026-04-29T00:00:00.000Z",
-    "addressType": "evm"
+    "addressType": "evm",
+    "voteCount": 1
   },
   {
     "type": "evm",
@@ -897,10 +838,11 @@
     "lang": "js",
     "description": "ZNS domain on XRPL EVM \u2014 owns at least one ZNS name (positive human signal)",
     "id": "1777400zns_1440002_0xf180",
-    "score": 0,
+    "score": 1.09,
     "ownerWallet": null,
     "created_at": "2026-04-29T00:00:00.000Z",
-    "addressType": "evm"
+    "addressType": "evm",
+    "voteCount": 1
   },
   {
     "type": "evm",
@@ -945,10 +887,11 @@
     "lang": "js",
     "description": "ZNS domain on Hyperliquid \u2014 owns at least one ZNS name (positive human signal)",
     "id": "1777400zns_999_0x55b8",
-    "score": 0,
+    "score": 1.09,
     "ownerWallet": null,
     "created_at": "2026-04-29T00:00:00.000Z",
-    "addressType": "evm"
+    "addressType": "evm",
+    "voteCount": 1
   },
   {
     "type": "evm",
@@ -1025,10 +968,11 @@
     "lang": "js",
     "description": "ZNS domain on Polygon \u2014 owns at least one ZNS name (positive human signal)",
     "id": "1777400zns_137_0x8ccd",
-    "score": 0,
+    "score": 1.09,
     "ownerWallet": null,
     "created_at": "2026-04-29T00:00:00.000Z",
-    "addressType": "evm"
+    "addressType": "evm",
+    "voteCount": 1
   },
   {
     "type": "evm",
@@ -1041,10 +985,11 @@
     "lang": "js",
     "description": "ZNS domain on Taiko \u2014 owns at least one ZNS name (positive human signal)",
     "id": "1777400zns_167000_0xfb2c",
-    "score": 0,
+    "score": 1.09,
     "ownerWallet": null,
     "created_at": "2026-04-29T00:00:00.000Z",
-    "addressType": "evm"
+    "addressType": "evm",
+    "voteCount": 1
   },
   {
     "type": "evm",
@@ -1089,10 +1034,11 @@
     "lang": "js",
     "description": "ZNS domain on Berachain \u2014 owns at least one ZNS name (positive human signal)",
     "id": "1777400zns_80094_0xfb2c",
-    "score": 0,
+    "score": 1.09,
     "ownerWallet": null,
     "created_at": "2026-04-29T00:00:00.000Z",
-    "addressType": "evm"
+    "addressType": "evm",
+    "voteCount": 1
   },
   {
     "type": "evm",
@@ -1105,10 +1051,11 @@
     "lang": "js",
     "description": "ZNS domain on Sonic \u2014 owns at least one ZNS name (positive human signal)",
     "id": "1777400zns_146_0xfb2c",
-    "score": 0,
+    "score": 1.09,
     "ownerWallet": null,
     "created_at": "2026-04-29T00:00:00.000Z",
-    "addressType": "evm"
+    "addressType": "evm",
+    "voteCount": 1
   },
   {
     "type": "evm",
@@ -1137,10 +1084,11 @@
     "lang": "js",
     "description": "ZNS domain on Katana (Ronin) \u2014 owns at least one ZNS name (positive human signal)",
     "id": "1777400zns_2020_0x55b8",
-    "score": 0,
+    "score": 5.5,
     "ownerWallet": null,
     "created_at": "2026-04-29T00:00:00.000Z",
-    "addressType": "evm"
+    "addressType": "evm",
+    "voteCount": 1
   },
   {
     "type": "rest",
@@ -1433,8 +1381,9 @@
     "returnTypes": "[\"uint256\"]",
     "headers": "{}",
     "id": "1777507200105BlockBa",
-    "score": 0,
-    "created_at": "2026-04-30T00:00:00.000Z"
+    "score": 1.09,
+    "created_at": "2026-04-30T00:00:00.000Z",
+    "voteCount": 1
   },
   {
     "type": "evm",
@@ -1481,8 +1430,9 @@
     "returnTypes": "[\"uint256\"]",
     "headers": "{}",
     "id": "1777507200153Tangibl",
-    "score": 0,
-    "created_at": "2026-04-30T00:00:00.000Z"
+    "score": 1.09,
+    "created_at": "2026-04-30T00:00:00.000Z",
+    "voteCount": 1
   },
   {
     "type": "evm",
@@ -1497,8 +1447,9 @@
     "returnTypes": "[\"uint256\"]",
     "headers": "{}",
     "id": "1777507200171Arianee",
-    "score": 0,
-    "created_at": "2026-04-30T00:00:00.000Z"
+    "score": 3.7261976955730742,
+    "created_at": "2026-04-30T00:00:00.000Z",
+    "voteCount": 1
   },
   {
     "type": "solana",
@@ -1525,8 +1476,9 @@
     "returnTypes": "",
     "headers": "{}",
     "id": "1777507300003Artrade",
-    "score": 0,
-    "created_at": "2026-04-30T00:00:00.000Z"
+    "score": 1.09,
+    "created_at": "2026-04-30T00:00:00.000Z",
+    "voteCount": 1
   },
   {
     "type": "solana",
@@ -1567,8 +1519,9 @@
     "returnTypes": "",
     "headers": "{}",
     "id": "1777507300015HeliumH",
-    "score": 0,
-    "created_at": "2026-04-30T00:00:00.000Z"
+    "score": 1.09,
+    "created_at": "2026-04-30T00:00:00.000Z",
+    "voteCount": 1
   },
   {
     "type": "solana",
@@ -1637,8 +1590,9 @@
     "returnTypes": "",
     "headers": "{}",
     "id": "1777507300067w3bFarc",
-    "score": 0,
-    "created_at": "2026-04-30T00:00:00.000Z"
+    "score": 1.09,
+    "created_at": "2026-04-30T00:00:00.000Z",
+    "voteCount": 1
   },
   {
     "type": "rest",
@@ -1679,8 +1633,9 @@
     "returnTypes": "",
     "headers": "{}",
     "id": "1777507300112w3bFoll",
-    "score": 0,
-    "created_at": "2026-04-30T00:00:00.000Z"
+    "score": 1.09,
+    "created_at": "2026-04-30T00:00:00.000Z",
+    "voteCount": 1
   },
   {
     "type": "rest",
@@ -1693,8 +1648,9 @@
     "returnTypes": "",
     "headers": "{}",
     "id": "1777507300129w3bBio",
-    "score": 0,
-    "created_at": "2026-04-30T00:00:00.000Z"
+    "score": 1.09,
+    "created_at": "2026-04-30T00:00:00.000Z",
+    "voteCount": 1
   },
   {
     "type": "rest",
@@ -1723,8 +1679,9 @@
     "abiTypes": "",
     "returnTypes": "",
     "id": "1777600000002galxe_notb",
-    "score": 0,
-    "created_at": "2026-04-30T00:00:00.000Z"
+    "score": 1.09,
+    "created_at": "2026-04-30T00:00:00.000Z",
+    "voteCount": 1
   },
   {
     "type": "rest",
@@ -1738,8 +1695,9 @@
     "abiTypes": "",
     "returnTypes": "",
     "id": "1777600000003galxe_twit",
-    "score": 0,
-    "created_at": "2026-04-30T00:00:00.000Z"
+    "score": 1.09,
+    "created_at": "2026-04-30T00:00:00.000Z",
+    "voteCount": 1
   },
   {
     "type": "rest",
@@ -1828,10 +1786,11 @@
     "lang": "js",
     "description": "Matrixdock WSTBT (BSC) \u2014 wrapped short-term US Treasury Bill token bridged via Chainlink CCIP, indicates real-world asset exposure",
     "decimals": "18",
-    "score": 0,
+    "score": 1.09,
     "ownerWallet": null,
     "created_at": "2026-05-02T00:00:00.000Z",
-    "id": "1777721412789hstegt"
+    "id": "1777721412789hstegt",
+    "voteCount": 1
   },
   {
     "type": "evm",
@@ -1879,10 +1838,11 @@
     "description": "friend.tech creator (Base) \u2014 wallet has issued keys/shares on friend.tech, indicating an established social presence",
     "headers": "{}",
     "id": "1777939200003friendtech_creator",
-    "score": 0,
+    "score": 1.09,
     "ownerWallet": null,
     "created_at": "2026-05-05T00:00:00.000Z",
-    "addressType": "evm"
+    "addressType": "evm",
+    "voteCount": 1
   },
   {
     "type": "rest",
@@ -1893,10 +1853,11 @@
     "lang": "js",
     "description": "Audius artist/listener \u2014 wallet is linked to an Audius music profile with tracks or followers (decentralised music creator)",
     "id": "1777939200004audius_music",
-    "score": 0,
+    "score": 1.09,
     "ownerWallet": null,
     "created_at": "2026-05-05T00:00:00.000Z",
-    "addressType": "evm"
+    "addressType": "evm",
+    "voteCount": 1
   },
   {
     "type": "solana",
@@ -2030,9 +1991,10 @@
     "description": "Illuvium (ILV) balance > 0 \u2014 holds ILV governance token from Illuvium AAA blockchain RPG on Ethereum",
     "headers": "{}",
     "id": "1777939200013illuvium_ilv",
-    "score": 0,
+    "score": 1.09,
     "ownerWallet": null,
-    "created_at": "2026-05-05T00:00:00.000Z"
+    "created_at": "2026-05-05T00:00:00.000Z",
+    "voteCount": 1
   },
   {
     "type": "evm",
@@ -2110,9 +2072,10 @@
     "description": "Pirate Nation (PIRATE) balance > 0 \u2014 holds PIRATE token from Pirate Nation on-chain RPG",
     "headers": "{}",
     "id": "1777939200018piratenation_token",
-    "score": 0,
+    "score": 1.09,
     "ownerWallet": null,
-    "created_at": "2026-05-05T00:00:00.000Z"
+    "created_at": "2026-05-05T00:00:00.000Z",
+    "voteCount": 1
   },
   {
     "type": "evm",
@@ -2126,9 +2089,10 @@
     "description": "BLOCKv (VEE) balance > 0 \u2014 holds VEE token from BLOCKv digital goods platform",
     "headers": "{}",
     "id": "1777939200019blockv_vee",
-    "score": 0,
+    "score": 1.09,
     "ownerWallet": null,
-    "created_at": "2026-05-05T00:00:00.000Z"
+    "created_at": "2026-05-05T00:00:00.000Z",
+    "voteCount": 1
   },
   {
     "type": "evm",
@@ -2176,67 +2140,173 @@
     "addressType": "solana"
   },
   {
-    "type": "evm",
-    "chainId": 56,
-    "address": "0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82",
-    "method": "balanceOf",
-    "abiTypes": "[\"address\"]",
-    "returnTypes": "[\"uint256\"]",
-    "expression": "result[0] > 1000000000000000000n",
+    "type": "rest",
+    "method": "GET",
+    "addressType": "evm",
+    "address": "https://api.web3.bio/search?identity={address}&platform=ethereum",
+    "description": "Has any linked web3 social identity (ENS, Farcaster, Twitter, etc.) via web3.bio",
+    "expression": "(data&&data.data&&data.data.identity&&data.data.identity.identityGraph&&data.data.identity.identityGraph.vertices||[]).some(function(v){return ['ens','farcaster','twitter','lens','space_id','arbitrum'].indexOf(v.platform)>=0})",
     "lang": "js",
-    "description": "PancakeSwap CAKE (BSC) — holds at least 1 CAKE token, showing active DeFi engagement on BNB Chain",
-    "decimals": "18",
+    "abiTypes": "",
+    "returnTypes": "",
+    "headers": "{}",
+    "decimals": null,
+    "id": "1778823783091xk7mhwq6f",
     "score": 0,
     "ownerWallet": null,
-    "created_at": "2026-05-12T00:00:00.000Z",
-    "id": "1778544000001cake_bnb"
+    "created_at": "2026-05-15T00:00:00.000Z"
   },
   {
-    "type": "evm",
-    "chainId": 56,
-    "address": "0xcF6BB5389c92Bdda8a3747Ddb454cB7a64626C63",
-    "method": "balanceOf",
-    "abiTypes": "[\"address\"]",
-    "returnTypes": "[\"uint256\"]",
-    "expression": "result[0] > 0n",
+    "type": "rest",
+    "method": "GET",
+    "addressType": "evm",
+    "address": "https://api.web3.bio/search?identity={address}&platform=ethereum",
+    "description": "Owns an ENS (.eth) domain \u2014 strong human ownership signal",
+    "expression": "(data&&data.data&&data.data.identity&&data.data.identity.identityGraph&&data.data.identity.identityGraph.vertices||[]).some(function(v){return v.platform==='ens'})",
     "lang": "js",
-    "description": "Venus Protocol XVS (BSC) — holds XVS governance token, indicating participation in BNB Chain's leading lending protocol",
-    "decimals": "18",
+    "abiTypes": "",
+    "returnTypes": "",
+    "headers": "{}",
+    "decimals": null,
+    "id": "1778823783091iu7shgg5w",
     "score": 0,
     "ownerWallet": null,
-    "created_at": "2026-05-12T00:00:00.000Z",
-    "id": "1778544000002xvs_bnb"
+    "created_at": "2026-05-15T00:00:00.000Z"
   },
   {
-    "type": "evm",
-    "chainId": 56,
-    "address": "0xB0b84D294e0C75A6abe60171b70edEb2EFd14A1b",
-    "method": "balanceOf",
-    "abiTypes": "[\"address\"]",
-    "returnTypes": "[\"uint256\"]",
-    "expression": "result[0] > 0n",
+    "type": "rest",
+    "method": "GET",
+    "addressType": "evm",
+    "address": "https://api.web3.bio/search?identity={address}&platform=ethereum",
+    "description": "ENS domain registered over 90 days ago \u2014 established identity, not a fresh bot wallet",
+    "expression": "(data&&data.data&&data.data.identity&&data.data.identity.identityGraph&&data.data.identity.identityGraph.vertices||[]).some(function(v){return v.platform==='ens'&&v.registeredAt&&(Date.now()/1000-v.registeredAt)>7776000})",
     "lang": "js",
-    "description": "Lista DAO slisBNB (BSC) — liquid staked BNB via Lista protocol, signals long-term BNB Chain commitment",
-    "decimals": "18",
+    "abiTypes": "",
+    "returnTypes": "",
+    "headers": "{}",
+    "decimals": null,
+    "id": "1778823783091de6lhj73a",
     "score": 0,
     "ownerWallet": null,
-    "created_at": "2026-05-12T00:00:00.000Z",
-    "id": "1778544000003slisbnb"
+    "created_at": "2026-05-15T00:00:00.000Z"
   },
   {
-    "type": "evm",
-    "chainId": 56,
-    "address": "0x46A15B0b27311cedF172AB29E4f4766fbE7F4364",
-    "method": "balanceOf",
-    "abiTypes": "[\"address\"]",
-    "returnTypes": "[\"uint256\"]",
-    "expression": "result[0] > 0n",
+    "type": "rest",
+    "method": "GET",
+    "addressType": "evm",
+    "address": "https://api.web3.bio/search?identity={address}&platform=ethereum",
+    "description": "Has Farcaster social account linked to wallet \u2014 decentralized social presence",
+    "expression": "(data&&data.data&&data.data.identity&&data.data.identity.identityGraph&&data.data.identity.identityGraph.vertices||[]).some(function(v){return v.platform==='farcaster'})",
     "lang": "js",
-    "description": "PancakeSwap V3 LP (BSC) — holds at least one active V3 liquidity position, strong signal of DeFi market participation",
-    "decimals": "0",
+    "abiTypes": "",
+    "returnTypes": "",
+    "headers": "{}",
+    "decimals": null,
+    "id": "1778823783091h7ya5pfw3",
     "score": 0,
     "ownerWallet": null,
-    "created_at": "2026-05-12T00:00:00.000Z",
-    "id": "1778544000004pcsv3lp"
+    "created_at": "2026-05-15T00:00:00.000Z"
+  },
+  {
+    "type": "rest",
+    "method": "GET",
+    "addressType": "evm",
+    "address": "https://api.web3.bio/search?identity={address}&platform=ethereum",
+    "description": "Has Twitter/X account with NextID cryptographic proof linked to wallet",
+    "expression": "(data&&data.data&&data.data.identity&&data.data.identity.identityGraph&&data.data.identity.identityGraph.edges||[]).some(function(e){return e.dataSource==='nextid'&&(e.source.indexOf('twitter')>=0||e.target.indexOf('twitter')>=0)})",
+    "lang": "js",
+    "abiTypes": "",
+    "returnTypes": "",
+    "headers": "{}",
+    "decimals": null,
+    "id": "1778823783091uyvkv3hcj",
+    "score": 0,
+    "ownerWallet": null,
+    "created_at": "2026-05-15T00:00:00.000Z"
+  },
+  {
+    "type": "rest",
+    "method": "GET",
+    "addressType": "evm",
+    "address": "https://api.web3.bio/search?identity={address}&platform=ethereum",
+    "description": "Has a web3 social bio description set \u2014 profile completion signals real user",
+    "expression": "!!(data&&data.data&&data.data.identity&&(data.data.identity.profile&&data.data.identity.profile.description||(data.data.identity.identityGraph&&data.data.identity.identityGraph.vertices||[]).some(function(v){return v.profile&&v.profile.description})))",
+    "lang": "js",
+    "abiTypes": "",
+    "returnTypes": "",
+    "headers": "{}",
+    "decimals": null,
+    "id": "17788237830919h2qi6o2q",
+    "score": 0,
+    "ownerWallet": null,
+    "created_at": "2026-05-15T00:00:00.000Z"
+  },
+  {
+    "type": "rest",
+    "method": "GET",
+    "addressType": "evm",
+    "address": "https://api.web3.bio/search?identity={address}&platform=ethereum",
+    "description": "Has avatar set in web3 social profile \u2014 bots rarely set profile images",
+    "expression": "!!(data&&data.data&&data.data.identity&&(data.data.identity.profile&&data.data.identity.profile.avatar||(data.data.identity.identityGraph&&data.data.identity.identityGraph.vertices||[]).some(function(v){return v.profile&&v.profile.avatar})))",
+    "lang": "js",
+    "abiTypes": "",
+    "returnTypes": "",
+    "headers": "{}",
+    "decimals": null,
+    "id": "17788237830918xcdrsfow",
+    "score": 0,
+    "ownerWallet": null,
+    "created_at": "2026-05-15T00:00:00.000Z"
+  },
+  {
+    "type": "rest",
+    "method": "GET",
+    "addressType": "evm",
+    "address": "https://api.web3.bio/search?identity={address}&platform=ethereum",
+    "description": "Has 3+ distinct cross-platform web3 identities \u2014 broad social footprint is human",
+    "expression": "(function(){var vs=(data&&data.data&&data.data.identity&&data.data.identity.identityGraph&&data.data.identity.identityGraph.vertices||[]).filter(function(v){return ['ethereum','nextid'].indexOf(v.platform)<0});return new Set(vs.map(function(v){return v.platform})).size>=3})()",
+    "lang": "js",
+    "abiTypes": "",
+    "returnTypes": "",
+    "headers": "{}",
+    "decimals": null,
+    "id": "17788237830918s1qt0b7u",
+    "score": 0,
+    "ownerWallet": null,
+    "created_at": "2026-05-15T00:00:00.000Z"
+  },
+  {
+    "type": "rest",
+    "method": "GET",
+    "addressType": "evm",
+    "address": "https://api.web3.bio/search?identity={address}&platform=ethereum",
+    "description": "Has Space ID cross-chain domain (.bnb, .arb, etc.) \u2014 multi-chain human identity",
+    "expression": "(data&&data.data&&data.data.identity&&data.data.identity.identityGraph&&data.data.identity.identityGraph.vertices||[]).some(function(v){return v.platform==='space_id'})",
+    "lang": "js",
+    "abiTypes": "",
+    "returnTypes": "",
+    "headers": "{}",
+    "decimals": null,
+    "id": "1778823783091xvl4a7cel",
+    "score": 0,
+    "ownerWallet": null,
+    "created_at": "2026-05-15T00:00:00.000Z"
+  },
+  {
+    "type": "rest",
+    "method": "GET",
+    "addressType": "evm",
+    "address": "https://api.web3.bio/search?identity={address}&platform=ethereum",
+    "description": "Has Mirror on-chain blog post \u2014 humans publish content; bots do not write web3 articles",
+    "expression": "(data&&data.data&&data.data.identity&&data.data.identity.identityGraph&&data.data.identity.identityGraph.edges||[]).some(function(e){return e.dataSource==='mirror'})",
+    "lang": "js",
+    "abiTypes": "",
+    "returnTypes": "",
+    "headers": "{}",
+    "decimals": null,
+    "id": "177882378309119r9pr2gy",
+    "score": 0,
+    "ownerWallet": null,
+    "created_at": "2026-05-15T00:00:00.000Z"
   }
 ]
