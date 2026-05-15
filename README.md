@@ -58,20 +58,28 @@ poh/dev/
 │   └── utils/
 │       ├── brain.js           Multi-role AI brain (Evaluator · Learner · Compiler)
 │       ├── txGraph.js         Transaction graph analysis — counterparty diversity, timing CV
-│       ├── profiles.js        Profile storage — API keys, balances, votes, rewards
+│       ├── curves.js          Signal bonding curve — math, storage, trade execution
+│       ├── profiles.js        Profile storage — API keys, balances, votes, signal tokens
 │       ├── jobQueue.js        Async job queue — bulk scans, 2 concurrent jobs, 5 wallets/batch
 │       ├── scheduler.js       Hourly brain consolidation via node-cron
 │       ├── redis.js           Response cache (falls back to in-memory)
-│       ├── solana.js          Solana RPC helpers (balance, SPL token, burn verify)
+│       ├── solana.js          Solana RPC helpers (balance, SPL token, burn verify, sendSol)
 │       └── evm.js             EVM RPC helpers (callContract, toHexSelector)
+│   routes/
+│       └── curves.js          GET /curves/:id, /chart, /quote — POST /buy, /sell
 ├── frontend/
-│   └── src/components/
-│       └── HumanPower.vue     Vue 3 SPA — Landing / Scanner / Listing / Votes / Profile
+│   └── src/
+│       ├── components/
+│       │   ├── HumanPower.vue       Vue 3 SPA — Landing / Scanner / Listing / Feedback / Profile
+│       │   └── VoteQueueSection.vue Signal feedback page — chart, trade UI, Human/Robot buttons
+│       └── composables/
+│           └── useCurve.js          buy/sell/quote/chart composable (lightweight-charts)
 ├── data/
 │   ├── methods.json           Registered detection methods
+│   ├── curves.json            Per-signal bonding curve state (supply, SOL reserve, trades)
 │   ├── weights.json           Per-method AI weights (updated by Learner role)
 │   ├── dataset.json           Scan + vote training records (Alpaca format)
-│   ├── profiles.json          User profiles, API keys, balances
+│   ├── profiles.json          User profiles, API keys, balances, signalTokens
 │   ├── rewards.json           Per-method scan earnings and pending withdrawals
 │   ├── method_health.json     Per-method pass/fail stats
 │   ├── feedback.json          Verdict correction records (👍/👎 from users)
@@ -152,8 +160,65 @@ Returns cost breakdown for a given batch size before committing.
 { "count": 100, "perAddress": 0.55, "total": 55000000, "tiers": [...] }
 ```
 
+### Signal Bonding Curves
+
+Every registered signal gets its own bonding curve on listing. The curve price rises as community members buy (signal "Human" confidence) and falls as they sell (signal "Robot" distrust). Curve price multiplies the AI brain's per-signal weight — market-priced signals carry more influence in verdicts.
+
+**Curve math:** `price(supply) = 0.0001 + 0.0000001 × supply` SOL per token.  
+**Fee:** 5% on every buy and sell — retained by the protocol.
+
+#### `GET /curves/:methodId`
+Current curve state: supply, SOL reserve, current price, total volume.
+
+#### `GET /curves/:methodId/chart`
+OHLCV candles for price chart (default 5-min buckets). `?interval=<ms>` to override.
+
+#### `GET /curves/:methodId/quote?action=buy|sell&amount=<tokens>`
+Quote a trade before executing. Returns gross cost/refund, fee, and price-after.
+
+#### `POST /curves/:methodId/buy`
+Buy signal tokens. User must send the quoted SOL to `FEE_RECIPIENT` on-chain first.
+
+| Field | Description |
+|---|---|
+| `txHash` | Solana tx hash of the SOL transfer to FEE_RECIPIENT |
+| `walletAddress` | Buyer's wallet |
+| `tokenAmount` | Integer number of tokens to buy |
+
+#### `POST /curves/:methodId/sell`
+Sell signal tokens back for SOL. Backend sends SOL from treasury to the seller.
+
+| Field | Description |
+|---|---|
+| `walletAddress` | Seller's wallet |
+| `tokenAmount` | Integer tokens to sell |
+| `signature` | ed25519 sig over `poh-sell-v1:{methodId}:{tokenAmount}:{wallet}:{ts}` |
+| `message` | The signed message |
+
+---
+
+### Fee & Reward Model
+
+| Source | Distribution |
+|---|---|
+| Signal listing (1000 POH) | 500 POH → deployer vault (on-chain) · 500 POH → staker vault (on-chain) |
+| Scan fees (POH) | 100% → stakers, distributed proportionally to staking pool share (off-chain) |
+| Curve trades (SOL) | 95% flows through curve reserve · 5% protocol fee |
+
+Staking rewards (scan fees) are distributed pro-rata: if you hold 10% of total staked POH you earn 10% of all scan fee revenue. Stakers claim via `POST /profile/claim`.
+
+### Signal Strength Formula
+
+`strength = AI_weight × curve_multiplier`
+
+`curve_multiplier = 1 + log(1 + priceRatio − 1) × 0.5`
+
+where `priceRatio = currentPrice / basePrice`. A signal at 10× its launch price gets a ~2.7× multiplier on its AI brain weight, making it count more in human-vs-bot verdicts.
+
+---
+
 ### `POST /methods/listing`
-Register a new detection method. Costs **0.01 SOL** per method.
+Register a new detection method. Costs **1000 POH** per method. A bonding curve is automatically created for the signal on successful registration.
 
 Supported types: `evm` · `solana` · `rest`
 

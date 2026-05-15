@@ -54,8 +54,22 @@ function saveBrainState(content) {
 
 function getWeights() {
   if (!fs.existsSync(WEIGHTS_PATH)) return {};
-  try { return JSON.parse(fs.readFileSync(WEIGHTS_PATH, 'utf-8')); }
-  catch { return {}; }
+  let base = {};
+  try { base = JSON.parse(fs.readFileSync(WEIGHTS_PATH, 'utf-8')); } catch { return {}; }
+
+  // Amplify weights by bonding curve price appreciation.
+  // A signal with high market confidence (more buys → higher price) gets a
+  // larger multiplier so the AI brain treats it as a stronger signal.
+  try {
+    const { getCurveStrengthMultiplier } = require('./curves');
+    const amplified = {};
+    for (const [id, w] of Object.entries(base)) {
+      amplified[id] = w * getCurveStrengthMultiplier(id);
+    }
+    return amplified;
+  } catch {
+    return base;
+  }
 }
 
 function saveWeights(w) {

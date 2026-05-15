@@ -26,9 +26,10 @@ import SvgCommunity from '../svgs/SvgCommunity.vue'
 import SvgAiBrain from '../svgs/SvgAiBrain.vue'
 import SvgApiTooling from '../svgs/SvgApiTooling.vue'
 import { useChecker } from '../composables/useChecker.js'
-import { useVoting } from '../composables/useVoting.js'
+import { useVoting }  from '../composables/useVoting.js'
 import { useListing } from '../composables/useListing.js'
 import { useProfile } from '../composables/useProfile.js'
+import { useCurve }   from '../composables/useCurve.js'
 import {
   getPohBalance, getStakeInfo, getGlobalState,
   stakeTokens, unstakeTokens,
@@ -69,6 +70,7 @@ const {
   onConnect: () => {
     loadProfile()
     if (POH_MINT.value) loadPohBalance()
+    loadSolBalance()
     if (currentSection.value === 'votes') loadVoting()
     if (SUGGEST_DEVNET_NETWORK) suggestDevnetNetwork()
   },
@@ -357,6 +359,45 @@ const {
 
 watch(listingComposable.error, val => { if (val) error.value = val })
 
+// ── Curve (signal bonding curve) ──────────────────────────────────────────────
+const curve = useCurve({ walletAddress, walletProvider, adapterSignMessage, SOLANA_RPC, FEE_RECIPIENT })
+const {
+  curveState, chartCandles, solBalance: curveSolBalance, ownedTokens,
+  quoteResult, loading: curveLoading,
+  loadSolBalance, loadCurveState, loadChart, getQuote, buySignal, sellSignal,
+} = curve
+
+watch(currentVoteItem, async (item) => {
+  if (!item?.id) { curveState.value = null; chartCandles.value = []; return }
+  await Promise.all([loadCurveState(item.id), loadChart(item.id)])
+})
+
+watch(walletAddress, (addr) => { if (addr) loadSolBalance() })
+
+async function onCurveBuy(methodId, tokenAmount) {
+  try {
+    await buySignal(methodId, tokenAmount)
+    // Also record positive vote
+    castVote(true)
+  } catch (err) {
+    error.value = err.message || 'Buy failed'
+  }
+}
+
+async function onCurveSell(methodId, tokenAmount) {
+  try {
+    await sellSignal(methodId, tokenAmount)
+    // Also record negative vote
+    castVote(false)
+  } catch (err) {
+    error.value = err.message || 'Sell failed'
+  }
+}
+
+function onCurveQuote(methodId, tokenAmount) {
+  getQuote(methodId, 'buy', tokenAmount)
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function copyText(text) {
   navigator.clipboard.writeText(text).catch(() => {})
@@ -381,7 +422,10 @@ watch(walletAddress, (addr) => {
 onMounted(async () => {
   await fetchConfig()
   if (currentSection.value === 'votes') loadVoting()
-  if (connected.value) loadPohBalance()
+  if (connected.value) {
+    loadPohBalance()
+    loadSolBalance()
+  }
   fetchMethodsForGraph()
   startNetAnim()
 })
@@ -1100,85 +1144,29 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Votes -->
-      <div v-if="currentSection === 'votes'" class="votes-page">
-        <div class="votes-header">
-          <div class="scan-tag">CONSENSUS QUEUE</div>
-          <h2 class="scan-title">Review detection methods</h2>
-          <p class="scan-sub">Vote on whether each method reliably distinguishes humans from bots. Your POH stake weight determines your influence.</p>
-        </div>
-
-        <div v-if="loading" class="empty-state"><p>Loading...</p></div>
-
-        <div v-else-if="!currentVoteItem" class="empty-state">
-          <Code :size="28" />
-          <p>{{ votingList.length ? 'All methods reviewed.' : 'Queue is empty.' }}</p>
-          <button v-if="votingList.length" class="utility-link" @click="voteIndex = 0">Start over</button>
-        </div>
-
-        <div v-else class="vote-single">
-          <div class="vote-progress">
-            <div class="vote-progress-bar">
-              <div class="vote-progress-fill" :style="{ width: (voteIndex / votingList.length * 100) + '%' }"></div>
-            </div>
-            <span class="vote-progress-label">{{ voteIndex + 1 }} / {{ votingList.length }}</span>
-          </div>
-
-          <div class="vote-card-single">
-            <div class="vcs-meta">
-              <span class="vmc-type">{{ currentVoteItem.type?.toUpperCase() }}</span>
-              <span v-if="currentVoteItem.chainId" class="vcs-chain">chain {{ currentVoteItem.chainId }}</span>
-              <span class="vmc-score">score {{ currentVoteItem.score?.toFixed(1) ?? '0.0' }}</span>
-            </div>
-
-            <p class="vcs-desc">{{ currentVoteItem.description }}</p>
-
-            <div class="vcs-detail" v-if="currentVoteItem.address">
-              <span class="vcs-detail-label">{{ currentVoteItem.type === 'rest' ? 'Endpoint' : 'Address' }}</span>
-              <span class="vcs-detail-val">{{ currentVoteItem.address }}</span>
-            </div>
-            <div class="vcs-detail" v-if="currentVoteItem.method">
-              <span class="vcs-detail-label">Method</span>
-              <span class="vcs-detail-val">{{ currentVoteItem.method }}</span>
-            </div>
-            <div class="vcs-detail" v-if="currentVoteItem.expression">
-              <span class="vcs-detail-label">Expression</span>
-              <code :class="['vcs-code', exprExpanded ? 'vcs-code--expanded' : 'vcs-code--truncated']" @click="exprExpanded = !exprExpanded" :title="exprExpanded ? 'Click to collapse' : 'Click to expand'">{{ currentVoteItem.expression }}</code>
-            </div>
-
-            <div class="vcs-score-bar">
-              <div class="vcs-score-fill" :style="{ width: Math.min(100, Math.max(0, (currentVoteItem.score || 0) * 10)) + '%' }"></div>
-            </div>
-
-            <textarea
-              v-model="voteFeedback"
-              class="vcs-feedback"
-              placeholder="Optional: explain your reasoning to help the AI learn…"
-              rows="2"
-              maxlength="200"
-              @input="autoExpand"
-            ></textarea>
-
-            <div class="vcs-actions">
-              <button class="vcs-btn vcs-btn-yes" :disabled="voteSubmitting || feedbackValidating"
-                @click="castVote(true)"
-              >
-                {{ feedbackValidating ? 'Checking…' : voteSubmitting ? '…' : '✓ Human' }}
-              </button>
-              <button class="vcs-btn vcs-btn-no" :disabled="voteSubmitting || feedbackValidating"
-                @click="castVote(false)"
-              >
-                {{ feedbackValidating ? 'Checking…' : '✗ Robot' }}
-              </button>
-              <button class="vcs-btn vcs-btn-skip" :disabled="feedbackValidating"
-                @click="castVote('skip')"
-              >
-                Skip →
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <!-- Votes / Signal Feedback -->
+      <VoteQueueSection
+        v-if="currentSection === 'votes'"
+        :loading="loading"
+        :voting-list="votingList"
+        :vote-index="voteIndex"
+        :current-vote-item="currentVoteItem"
+        :vote-submitting="voteSubmitting"
+        :vote-feedback="voteFeedback"
+        :feedback-validating="feedbackValidating"
+        :curve-state="curveState"
+        :chart-candles="chartCandles"
+        :sol-balance="curveSolBalance"
+        :owned-tokens="ownedTokens"
+        :quote-result="quoteResult"
+        :curve-loading="curveLoading"
+        @update:vote-index="voteIndex = $event"
+        @update:vote-feedback="voteFeedback = $event"
+        @cast-vote="castVote"
+        @curve-buy="onCurveBuy"
+        @curve-sell="onCurveSell"
+        @curve-quote="onCurveQuote"
+      />
 
       <!-- Profile -->
       <div v-if="currentSection === 'profile'" class="profile-page">

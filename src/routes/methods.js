@@ -9,6 +9,7 @@ const { parse } = require('csv-parse/sync');
 const { getVoteTokenStake, verifyWalletSignature, verifyTxSuccess } = require('../utils/solana');
 const { recordVote, getMyVotes, hasVoted, isTxUsed, recordTx } = require('../utils/profiles');
 const brain = require('../utils/brain');
+const { initCurve } = require('../utils/curves');
 
 const METHODS_PATH = path.join(__dirname, '../../data/methods.json');
 const DATASET_PATH = path.join(__dirname, '../../data/dataset.json');
@@ -118,6 +119,11 @@ router.post('/listing', upload.single('csv'), async (req, res, next) => {
 
     // NOTE: staker share (500 POH) is handled entirely on-chain by the Anchor registerMethod
     // instruction → SFEE_PDA. Stakers claim via claimStakerRewards. No off-chain distribution needed.
+
+    // ── Create bonding curve for each new signal ──────────────────────────
+    for (const m of newMethods) {
+      initCurve(m.id);
+    }
 
     // ── Brain: evaluate each new method ──────────────────────────────────
     for (const m of newMethods) {

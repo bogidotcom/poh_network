@@ -288,7 +288,7 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
           if (!job || job.status !== 'done') return;
           clearInterval(pollRewards);
           const executedIds = [...new Set(job.results.map(r => r.methodId).filter(Boolean))];
-          distributeRewards(total, executedIds, allMethods, brain.getWeights());
+          distributeRewards(total);
         }, 5000);
       }
 
@@ -307,7 +307,7 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
     if (!isFree && txHash) {
       const { total } = calcScanCost(1);
       const executedIds = [...new Set(results.map(r => r.methodId).filter(Boolean))];
-      distributeRewards(total, executedIds, allMethods, brain.getWeights());
+      distributeRewards(total);
     }
 
     const scanKey = inputs[0];
