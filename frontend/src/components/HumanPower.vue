@@ -48,7 +48,7 @@ const error = ref(null)
 const showSection = (id) => { currentSection.value = id; mobileMenuOpen.value = false }
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const { POH_MINT, FEE_RECIPIENT, SOLANA_RPC, STAKING_CONTRACT, fetchConfig } = useConfig()
+const { POH_MINT, FEE_RECIPIENT, CURVE_TREASURY, SOLANA_RPC, STAKING_CONTRACT, fetchConfig } = useConfig()
 
 // ── Wallet ────────────────────────────────────────────────────────────────────
 const {
@@ -181,7 +181,7 @@ const voting = useVoting({ walletAddress, connected, adapterSignMessage })
 const {
   votingList, voteIndex, voteSubmitting, voteFeedback,
   voteConfirmPending, feedbackValidating, currentVoteItem, myVotesData,
-  loadVoting, castVote, confirmVote, loadMyVotes, fetchMethodsForGraph,
+  loadVoting, castVote, confirmVote, loadMyVotes, fetchMethodsForGraph, jumpToMethod,
 } = voting
 
 watch(voting.error, val => { if (val) error.value = val })
@@ -354,17 +354,67 @@ const listingComposable = useListing({
 const {
   listing, headers, abiFns, abiLoading, abiError,
   LISTING_FEE_POH,
-  addHeader, removeHeader, fetchAbi, pickMethod, submitListing,
+  addHeader, removeHeader, fetchAbi, pickMethod, submitListing, deployStep,
 } = listingComposable
 
 watch(listingComposable.error, val => { if (val) error.value = val })
 
+// ── Listing test ──────────────────────────────────────────────────────────────
+const testAddresses = ref([''])
+const testRunning   = ref(false)
+const testResults   = ref([])
+
+function addTestAddress()      { testAddresses.value.push('') }
+function removeTestAddress(i)  { testAddresses.value.splice(i, 1); testResults.value.splice(i, 1) }
+
+const testResolvedUrl = computed(() => {
+  if (listing.value.type !== 'rest' || !listing.value.address) return null
+  const addr = testAddresses.value[0]?.trim()
+  return addr ? listing.value.address.replace(/\{address\}/g, addr) : listing.value.address
+})
+
+async function runListingTest() {
+  const addrs = testAddresses.value.map(a => a.trim()).filter(Boolean)
+  if (!addrs.length) return
+  testRunning.value = true
+  testResults.value = addrs.map(address => ({ address, loading: true, result: null, error: null }))
+  const m = {
+    ...listing.value,
+    method: listing.value.type === 'rest' ? listing.value.httpMethod : listing.value.method,
+    headers: JSON.stringify((headers.value || []).reduce((a, h) => { if (h.key) a[h.key] = h.value; return a }, {})),
+  }
+  await Promise.all(addrs.map(async (address, i) => {
+    try {
+      const { data } = await axios.post('/checker/preview', { address, method: m })
+      if (data.error) testResults.value[i] = { address, loading: false, result: null, error: data.error, ms: data.ms }
+      else            testResults.value[i] = { address, loading: false, result: data, error: null }
+    } catch (e) {
+      testResults.value[i] = { address, loading: false, result: null, error: e.response?.data?.error || e.message }
+    }
+  }))
+  testRunning.value = false
+}
+
+// ── Referral — parse ?ref=WALLET and ?signal=ID from URL on load ──────────────
+const referralWallet = ref(null)
+onMounted(async () => {
+  const params   = new URLSearchParams(window.location.search)
+  const ref      = params.get('ref')
+  const signalId = params.get('signal')
+  if (ref)      referralWallet.value = ref
+  if (signalId) {
+    showSection('votes')
+    await loadVoting()
+    await jumpToMethod(signalId)
+  }
+})
+
 // ── Curve (signal bonding curve) ──────────────────────────────────────────────
-const curve = useCurve({ walletAddress, walletProvider, adapterSignMessage, SOLANA_RPC, FEE_RECIPIENT })
+const curve = useCurve({ walletAddress, walletProvider, SOLANA_RPC, pohFeeRecipient: FEE_RECIPIENT, referralWallet })
 const {
   curveState, chartCandles, solBalance: curveSolBalance, ownedTokens,
   quoteResult, loading: curveLoading,
-  loadSolBalance, loadCurveState, loadChart, getQuote, buySignal, sellSignal,
+  loadSolBalance, loadCurveState, loadChart, getQuote, buySignal, sellSignal, claimCreatorFees,
 } = curve
 
 watch(currentVoteItem, async (item) => {
@@ -374,28 +424,49 @@ watch(currentVoteItem, async (item) => {
 
 watch(walletAddress, (addr) => { if (addr) loadSolBalance() })
 
-async function onCurveBuy(methodId, tokenAmount) {
+async function onCurveBuy(methodId, solLamports) {
   try {
-    await buySignal(methodId, tokenAmount)
-    // Also record positive vote
-    castVote(true)
+    await buySignal(methodId, solLamports)
+    voteFeedback.value = ''
   } catch (err) {
     error.value = err.message || 'Buy failed'
   }
 }
 
-async function onCurveSell(methodId, tokenAmount) {
+async function onCurveSell(methodId, rawTokens) {
   try {
-    await sellSignal(methodId, tokenAmount)
-    // Also record negative vote
-    castVote(false)
+    await sellSignal(methodId, rawTokens)
+    voteFeedback.value = ''
   } catch (err) {
     error.value = err.message || 'Sell failed'
   }
 }
 
-function onCurveQuote(methodId, tokenAmount) {
-  getQuote(methodId, 'buy', tokenAmount)
+const DEPLOY_STEP_ORDER = ['signing', 'tx1', 'tx2', 'poh', 'saving', 'done']
+function stepClass(step) {
+  const current = DEPLOY_STEP_ORDER.indexOf(deployStep.value)
+  const target  = DEPLOY_STEP_ORDER.indexOf(step)
+  if (current > target) return 'deploy-step--done'
+  if (current === target) return 'deploy-step--active'
+  return 'deploy-step--pending'
+}
+
+async function onClaimFees(methodId) {
+  try {
+    await claimCreatorFees(methodId)
+  } catch (err) {
+    error.value = err.message || 'Claim failed'
+  }
+}
+
+function onCurveQuote(methodId, action, amount) {
+  getQuote(methodId, action, amount)
+}
+
+async function goToSignal(methodId) {
+  showSection('votes')
+  await loadVoting()
+  await jumpToMethod(methodId)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -498,7 +569,7 @@ onUnmounted(() => {
           <PlusSquare class="icon" :size="14" /> Train
         </button>
         <button :class="['nav-btn', { active: currentSection === 'votes' }]" @click="showSection('votes'); loadVoting()">
-          <Vote class="icon" :size="14" /> Vote
+          <Vote class="icon" :size="14" /> Feedback
         </button>
         <button :class="['nav-btn', { active: currentSection === 'staking' }]" @click="showSection('staking')">
           <SquareArrowDown class="icon" :size="14" /> Stake
@@ -520,9 +591,11 @@ onUnmounted(() => {
               <span class="address-text">{{ shortAddress }}</span>
             </div>
             <div class="wallet-dropdown">
-              <button class="wallet-drop-item" @click="showSection('profile'); loadProfile(); loadMyVotes()">Profile</button>
-              <button class="wallet-drop-item" @click="showSection('api')">API</button>
-              <button class="wallet-drop-item wallet-drop-disconnect" @click="disconnectWallet">Disconnect</button>
+              <div class="wallet-dropdown-inner">
+                <button class="wallet-drop-item" @click="showSection('profile'); loadProfile(); loadMyVotes()">Profile</button>
+                <button class="wallet-drop-item" @click="showSection('api')">API</button>
+                <button class="wallet-drop-item wallet-drop-disconnect" @click="disconnectWallet">Disconnect</button>
+              </div>
             </div>
           </div>
         </div>
@@ -733,7 +806,7 @@ onUnmounted(() => {
           <div class="feat-left">
             <div class="feat-tag">COMMUNITY</div>
             <h2 class="feat-title">You decide what<br>counts as human</h2>
-            <p class="feat-body">Every detection method goes through community consensus.</p>
+            <p class="feat-body">Every detection method goes through community consensus via conviction curve.</p>
             <button class="feat-cta" @click="showSection('votes'); loadVoting()">Open Vote Queue →</button>
           </div>
         </section>
@@ -827,7 +900,7 @@ onUnmounted(() => {
         <div class="scan-hero">
           <div class="scan-tag">WALLET SCANNER</div>
           <h2 class="scan-title">Human or AI</h2>
-          <p class="scan-sub">Run all registered detection methods simultaneously and get an AI verdict.</p>
+          <p class="scan-sub">Detect who controls crypto wallet and get an AI verdict.</p>
         </div>
 
         <div class="scan-box">
@@ -923,7 +996,17 @@ onUnmounted(() => {
             </span>
           </div>
           <p class="brain-reasoning">{{ brainVerdict.reasoning }}</p>
-          <div class="brain-conf">Confidence: {{ Math.round((brainVerdict.confidence || 0) * 100) }}%</div>
+          <div class="brain-conf">
+            <span class="brain-conf-icon">🤖</span>
+            <div class="brain-conf-track">
+              <div
+                class="brain-conf-fill"
+                :class="brainVerdict.verdict === 'HUMAN' ? 'brain-conf-human' : 'brain-conf-bot'"
+                :style="{ width: Math.round((brainVerdict.confidence || 0) * 100) + '%' }"
+              ></div>
+            </div>
+            <span class="brain-conf-icon">👤</span>
+          </div>
 
           <!-- Verdict feedback -->
           <div class="brain-feedback">
@@ -1126,6 +1209,67 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <!-- Test — shared -->
+        <div class="form-section">
+          <div class="form-label-row">
+            <span class="form-section-label">Test</span>
+            <span class="field-hint-inline">Run live against real addresses before submitting</span>
+          </div>
+          <div class="input-group">
+            <div class="test-addr-list">
+              <div v-for="(_, i) in testAddresses" :key="i" class="flex-input">
+                <input
+                  v-model="testAddresses[i]"
+                  type="text"
+                  :placeholder="listing.type === 'evm' ? '0x… wallet address' : listing.type === 'rest' ? 'Address / identifier' : 'Solana wallet pubkey'"
+                  class="premium-input flex-grow font-mono"
+                  @keydown.enter="runListingTest"
+                />
+                <button v-if="testAddresses.length > 1" class="mini-btn" @click="removeTestAddress(i)">×</button>
+              </div>
+              <button class="utility-link" @click="addTestAddress">+ Add address</button>
+            </div>
+            <div v-if="listing.type === 'rest' && testResolvedUrl" class="test-resolved-url">
+              <span class="test-url-label">{{ listing.httpMethod || 'GET' }}</span>
+              <span class="test-url-val">{{ testResolvedUrl }}</span>
+            </div>
+            <button class="test-run-btn" :disabled="testRunning || !testAddresses.some(a => a.trim())" @click="runListingTest">
+              <span v-if="testRunning" class="test-spinner"></span>
+              {{ testRunning ? 'Running…' : 'Run Test' }}
+            </button>
+            <div v-for="r in testResults" :key="r.address" class="test-result-block">
+              <div class="test-result-header">
+                <code class="test-result-addr">{{ r.address }}</code>
+                <span v-if="r.result?.ms != null" class="test-result-ms">{{ r.result.ms }}ms</span>
+                <span v-if="r.loading" class="test-result-ms">running…</span>
+              </div>
+              <div v-if="r.error" class="test-result-error">{{ r.error }}</div>
+              <template v-if="r.result">
+                <div v-if="r.result.expressionResult !== null && r.result.expressionResult !== undefined"
+                     class="preview-verdict"
+                     :class="r.result.expressionResult ? 'verdict-pass' : 'verdict-fail'">
+                  <span class="verdict-icon">{{ r.result.expressionResult ? '✓' : '✗' }}</span>
+                  Expression → <code class="verdict-value">{{ String(r.result.expressionResult) }}</code>
+                </div>
+                <div v-else-if="listing.expression" class="test-result-no-expr">(expression not evaluated)</div>
+                <div v-if="r.result.resolvedUrl" class="test-resolved-url" style="margin-top:0.4rem">
+                  <span class="test-url-label">URL</span>
+                  <span class="test-url-val">{{ r.result.resolvedUrl }}</span>
+                </div>
+                <div class="preview-raw">
+                  <div class="test-raw-header">
+                    <span class="preview-raw-label">Raw response</span>
+                    <span v-if="r.result.rawResult?.status" :class="['test-status', r.result.rawResult.status < 400 ? 'test-status-ok' : 'test-status-err']">
+                      HTTP {{ r.result.rawResult.status }}
+                    </span>
+                  </div>
+                  <pre class="preview-raw-pre">{{ JSON.stringify(r.result.rawResult, null, 2) }}</pre>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+
         <!-- Description + submit — shared -->
         <div class="form-section">
           <div class="form-label-row"><span class="form-section-label">Description</span></div>
@@ -1137,8 +1281,8 @@ onUnmounted(() => {
                 Balance: {{ pohBalance.toFixed(2) }} POH
               </span>
             </div>
-            <button @click="submitListing" :disabled="loading || !listing.description || pohBalance < 1000" class="submit-listing-btn">
-              {{ loading ? 'Confirming on-chain...' : 'Submit Method — 1000 POH' }}
+            <button @click="submitListing" :disabled="loading || !!deployStep || !listing.description || pohBalance < 1000" class="submit-listing-btn">
+              {{ deployStep ? 'Deploying…' : 'Submit Method — 0.1 SOL + 1000 POH' }}
             </button>
           </div>
         </div>
@@ -1160,9 +1304,11 @@ onUnmounted(() => {
         :owned-tokens="ownedTokens"
         :quote-result="quoteResult"
         :curve-loading="curveLoading"
+        :wallet-address="walletAddress"
         @update:vote-index="voteIndex = $event"
         @update:vote-feedback="voteFeedback = $event"
         @cast-vote="castVote"
+        @claim-fees="onClaimFees"
         @curve-buy="onCurveBuy"
         @curve-sell="onCurveSell"
         @curve-quote="onCurveQuote"
@@ -1250,7 +1396,7 @@ onUnmounted(() => {
                 <button class="utility-link no-margin" @click="showSection('listing')">Submit one →</button>
               </div>
               <div v-else class="method-list-profile">
-                <div v-for="m in profileData.methods" :key="m.id" class="mlist-row">
+                <div v-for="m in profileData.methods" :key="m.id" class="mlist-row mlist-row-link" @click="goToSignal(m.id)">
                   <div class="mlist-main">
                     <span class="mlist-type">{{ m.type?.toUpperCase() }}</span>
                     <span class="mlist-desc">{{ m.description }}</span>
@@ -1258,6 +1404,7 @@ onUnmounted(() => {
                   <div class="mlist-meta">
                     <span class="mlist-score">score {{ m.score?.toFixed(1) ?? '0.0' }}</span>
                     <span class="mlist-earned">{{ ((profileData.pending || 0) / 1e6).toFixed(4) }} POH pending</span>
+                    <span class="mlist-view">View signal →</span>
                   </div>
                 </div>
               </div>
@@ -1274,7 +1421,7 @@ onUnmounted(() => {
                 <button class="utility-link no-margin" @click="showSection('votes'); loadVoting()">Provide feedback →</button>
               </div>
               <div v-else class="method-list-profile">
-                <div v-for="v in myVotesData" :key="v.methodId" class="mlist-row">
+                <div v-for="v in myVotesData" :key="v.methodId" class="mlist-row mlist-row-link" @click="goToSignal(v.methodId)">
                   <div class="mlist-main">
                     <span class="mlist-type">{{ v.type?.toUpperCase() }}</span>
                     <span class="mlist-desc">{{ v.description }}</span>
@@ -1285,6 +1432,7 @@ onUnmounted(() => {
                       {{ v.vote ? '✓ Human' : '✗ Bot' }}
                     </span>
                     <span class="mlist-score">{{ new Date(v.at).toLocaleDateString() }}</span>
+                    <span class="mlist-view">View signal →</span>
                   </div>
                 </div>
               </div>
@@ -1461,8 +1609,8 @@ const results = await pollJob(jobId)</pre>
           <div class="staking-info-card">
             <div class="si-title">How staking works</div>
             <ul class="si-list">
-              <li>Stake POH → get more voting power on which detection methods are best</li>
-              <li>The more you stake, the more your votes count</li>
+              <li>Back good methods, earn more rewards</li>
+              <li>The more you stake, the more your votes count and more fees shared</li>
               <li>Unstake any time — no lockup</li>
             </ul>
           </div>
@@ -1470,9 +1618,8 @@ const results = await pollJob(jobId)</pre>
           <div class="staking-info-card">
             <div class="si-title">How rewards work</div>
             <ul class="si-list">
-              <li>Every scan fee is split — 50% goes to method owners</li>
-              <li>Your votes boost a method's score → that method earns more</li>
-              <li>Back good methods, earn more rewards</li>
+              <li>Every scan and training fee is split — 50% goes to stakers</li>
+              <li>1% of every trade of signal tokens goes to stakers</li>
             </ul>
           </div>
         </div>
@@ -1558,6 +1705,71 @@ const results = await pollJob(jobId)</pre>
       <div class="network-label">CONNECT</div>
     </footer>
   </div>
+
+  <!-- ── Deploy progress modal ──────────────────────────────────────────────── -->
+  <Teleport to="body">
+    <div v-if="deployStep" class="modal-overlay deploy-modal-overlay">
+      <div class="modal deploy-modal">
+        <div class="deploy-modal-title">Deploying Signal</div>
+        <p class="deploy-modal-why">
+          Listing requires <strong>2 on-chain transactions</strong> because Solana's
+          transaction size limit prevents combining pool config creation, token mint,
+          and the initial buy into a single transaction. Your wallet was asked to
+          approve both at once — they broadcast sequentially.
+        </p>
+
+        <div class="deploy-steps">
+          <div :class="['deploy-step', stepClass('signing')]">
+            <span class="deploy-step-dot"></span>
+            <div class="deploy-step-body">
+              <div class="deploy-step-label">Wallet approval</div>
+              <div class="deploy-step-desc">Sign both pool transactions in your wallet</div>
+            </div>
+          </div>
+
+          <div :class="['deploy-step', stepClass('tx1')]">
+            <span class="deploy-step-dot"></span>
+            <div class="deploy-step-body">
+              <div class="deploy-step-label">Tx 1 — Pool config</div>
+              <div class="deploy-step-desc">Creates the bonding curve configuration on-chain</div>
+            </div>
+          </div>
+
+          <div :class="['deploy-step', stepClass('tx2')]">
+            <span class="deploy-step-dot"></span>
+            <div class="deploy-step-body">
+              <div class="deploy-step-label">Tx 2 — Pool + auto-buy</div>
+              <div class="deploy-step-desc">Mints the token, opens the pool, and buys ~0.078 SOL worth of signal tokens for you</div>
+            </div>
+          </div>
+
+          <div :class="['deploy-step', stepClass('poh')]">
+            <span class="deploy-step-dot"></span>
+            <div class="deploy-step-body">
+              <div class="deploy-step-label">1000 POH listing fee</div>
+              <div class="deploy-step-desc">Registers the method on-chain; 500 POH to protocol, 500 to stakers</div>
+            </div>
+          </div>
+
+          <div :class="['deploy-step', stepClass('saving')]">
+            <span class="deploy-step-dot"></span>
+            <div class="deploy-step-body">
+              <div class="deploy-step-label">Saving</div>
+              <div class="deploy-step-desc">Recording signal in the POH index</div>
+            </div>
+          </div>
+
+          <div :class="['deploy-step', deployStep === 'done' ? 'deploy-step--done' : 'deploy-step--pending']">
+            <span class="deploy-step-dot"></span>
+            <div class="deploy-step-body">
+              <div class="deploy-step-label">Done</div>
+              <div class="deploy-step-desc">Signal is live and tradeable</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -1612,7 +1824,7 @@ const results = await pollJob(jobId)</pre>
 }
 .problem-accent { color: #fff; }
 .problem-quote {
-  border-left: 2px solid #333; margin: 0 0 2rem; padding: 1.25rem 1.5rem;
+  border-left: 2px solid #888; margin: 0 0 2rem; padding: 1.25rem 1.5rem;
   text-align: left; background: #ffffff08; border-radius: 0 8px 8px 0;
 }
 .problem-quote-inner { display: flex; align-items: flex-start; gap: 1rem; }
@@ -1905,7 +2117,7 @@ const results = await pollJob(jobId)</pre>
 
 .split-note {
   font-size: 1.25rem;
-  color: #3a3a3a;
+  color: #888;
 }
 
 .token-features {
@@ -2082,7 +2294,7 @@ const results = await pollJob(jobId)</pre>
 
 .net-nlabel {
   font-size: 9.5px;
-  fill: #3a3a3a;
+  fill: #888;
   font-family: -apple-system, 'SF Mono', monospace;
   pointer-events: none;
   transition: fill 0.25s;
@@ -2188,7 +2400,7 @@ const results = await pollJob(jobId)</pre>
   align-items: center;
   gap: 0.4rem;
   font-size: 1.1rem;
-  color: #3a3a3a;
+  color: #888;
   white-space: nowrap;
 }
 .nl-dot {
@@ -2228,7 +2440,7 @@ const results = await pollJob(jobId)</pre>
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.16em;
-  color: #3a3a3a;
+  color: #888;
 }
 
 .field-label {
@@ -2287,6 +2499,44 @@ const results = await pollJob(jobId)</pre>
   text-align: center;
   margin-bottom: 2rem;
 }
+
+/* ── Test section ─────────────────────────────────────────────────────────── */
+.test-addr-list { display: flex; flex-direction: column; gap: 0.4rem; }
+.test-run-btn {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.55rem 1.2rem; border-radius: 6px; font-size: 0.85rem; font-weight: 600;
+  background: #166534; color: #4ade80; border: 1px solid rgba(74,222,128,0.2);
+  cursor: pointer; transition: opacity 0.15s;
+}
+.test-run-btn:hover:not(:disabled) { opacity: 0.82; }
+.test-run-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.test-spinner {
+  width: 12px; height: 12px; border: 2px solid rgba(74,222,128,0.3);
+  border-top-color: #4ade80; border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.test-resolved-url { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.6rem; background: #0d0d0d; border-radius: 5px; border: 1px solid #1a1a1a; }
+.test-url-label { font-size: 0.7rem; font-weight: 700; color: #555; background: #161616; padding: 0.1rem 0.4rem; border-radius: 3px; }
+.test-url-val { font-size: 0.78rem; color: #666; font-family: monospace; word-break: break-all; }
+.test-result-block { background: #0d0d0d; border: 1px solid #1a1a1a; border-radius: 7px; padding: 0.75rem 0.9rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.test-result-header { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.test-result-addr { font-size: 0.8rem; color: #888; background: #111; padding: 0.15rem 0.45rem; border-radius: 4px; word-break: break-all; }
+.test-result-ms { font-size: 0.72rem; color: #555; margin-left: auto; }
+.test-result-error { font-size: 0.82rem; color: #e05c5c; background: rgba(224,92,92,0.06); padding: 0.4rem 0.6rem; border-radius: 4px; }
+.test-result-no-expr { font-size: 0.78rem; color: #555; font-style: italic; }
+.preview-verdict { display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; padding: 0.35rem 0.6rem; border-radius: 5px; }
+.verdict-pass { background: rgba(74,222,128,0.07); color: #4ade80; }
+.verdict-fail { background: rgba(224,92,92,0.07); color: #e05c5c; }
+.verdict-icon { font-weight: 700; }
+.verdict-value { font-size: 0.8rem; }
+.preview-raw { display: flex; flex-direction: column; gap: 0.3rem; }
+.preview-raw-label { font-size: 0.72rem; color: #555; }
+.preview-raw-pre { font-size: 0.72rem; color: #555; background: #0a0a0a; border-radius: 4px; padding: 0.5rem; overflow-x: auto; white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow-y: auto; margin: 0; }
+.test-raw-header { display: flex; align-items: center; gap: 0.5rem; }
+.test-status { font-size: 0.7rem; font-weight: 700; padding: 0.1rem 0.4rem; border-radius: 3px; }
+.test-status-ok  { color: #4ade80; background: rgba(74,222,128,0.08); }
+.test-status-err { color: #e05c5c; background: rgba(224,92,92,0.08); }
 
 .submit-listing-btn {
   width: 100%;
@@ -2421,7 +2671,37 @@ const results = await pollJob(jobId)</pre>
   margin-bottom: 0.5rem;
 }
 
-.brain-conf { font-size: 1.25rem; color: #808080; margin-top: 0.5rem; }
+.brain-conf {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.brain-conf-icon { font-size: 1rem; flex-shrink: 0; }
+.brain-conf-track {
+  position: relative;
+  flex: 1;
+  height: 8px;
+  background: #1a1a1a;
+  border-radius: 4px;
+  overflow: visible;
+}
+.brain-conf-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.6s ease;
+}
+.brain-conf-human { background: linear-gradient(90deg, #166534 0%, #4ade80 100%); }
+.brain-conf-bot   { background: linear-gradient(90deg, #ef4444 0%, #7f1d1d 100%); }
+.brain-conf-pct {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translate(calc(100% + 6px), -50%);
+  font-size: 0.72rem;
+  color: #555;
+  white-space: nowrap;
+}
 
 .brain-feedback {
   display: flex;
@@ -2436,7 +2716,7 @@ const results = await pollJob(jobId)</pre>
 .brain-feedback-btn {
   padding: 0.3rem 0.75rem;
   border-radius: 5px;
-  border: 1px solid #333;
+  border: 1px solid #888;
   background: #111;
   color: #ccc;
   font-size: 0.8rem;
@@ -2489,7 +2769,7 @@ const results = await pollJob(jobId)</pre>
 }
 
 .result-empty {
-  color: #333;
+  color: #888;
   font-size: 0.85rem;
   padding: 0.5rem 0;
 }
@@ -2841,7 +3121,7 @@ const results = await pollJob(jobId)</pre>
   padding: 0.1rem 0.35rem;
   flex-shrink: 0;
 }
-.devnet-sep { color: #333; flex-shrink: 0; }
+.devnet-sep { color: #888; flex-shrink: 0; }
 .devnet-hint { color: #444; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .devnet-bar-right {
   display: flex;
@@ -2982,14 +3262,20 @@ const results = await pollJob(jobId)</pre>
 .wallet-dropdown {
   display: none;
   position: absolute;
-  top: calc(100% + 6px);
+  top: 100%;
   right: 0;
+  padding-top: 6px;
+  background: transparent;
+  z-index: 200;
+  flex-direction: column;
+}
+.wallet-dropdown-inner {
   background: #0d0d0d;
   border: 1px solid #222;
   border-radius: 8px;
   padding: 0.3rem;
   min-width: 140px;
-  z-index: 200;
+  display: flex;
   flex-direction: column;
   gap: 0;
 }
@@ -3023,7 +3309,7 @@ const results = await pollJob(jobId)</pre>
 }
 .wallet-drop-chevron {
   margin-left: auto;
-  color: #555;
+  color: #888;
   font-size: 1.2rem;
   line-height: 1;
   transition: transform 0.2s;
@@ -3448,7 +3734,7 @@ const results = await pollJob(jobId)</pre>
   font-size: 1.25rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: #3a3a3a;
+  color: #888;
   margin-bottom: 1rem;
   font-weight: 600;
 }
@@ -3472,7 +3758,7 @@ const results = await pollJob(jobId)</pre>
   align-items: center;
   gap: 0.5rem;
   font-size: 1.25rem;
-  color: #3a3a3a;
+  color: #888;
 }
 
 .icon-success { color: var(--green); flex-shrink: 0; }
@@ -3912,6 +4198,21 @@ const results = await pollJob(jobId)</pre>
   border-radius: 6px;
   gap: 1rem;
 }
+.mlist-row-link {
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.mlist-row-link:hover {
+  background: #0a0a0a;
+  border-color: #1e1e1e;
+}
+.mlist-row-link:hover .mlist-view { opacity: 1; }
+.mlist-view {
+  font-size: 0.72rem;
+  color: #4ade80;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
 .mlist-main { display: flex; align-items: center; gap: 0.5rem; flex: 1; min-width: 0; }
 .mlist-type {
   font-size: 0.6875rem;
@@ -4102,4 +4403,95 @@ const results = await pollJob(jobId)</pre>
   .stake-action-row { flex-wrap: wrap; }
   .stake-claim-row { flex-direction: column; align-items: flex-start; }
 }
+
+/* ── Deploy progress modal ──────────────────────────────────────────────────── */
+.deploy-modal-overlay {
+  z-index: 9999;
+}
+.deploy-modal {
+  max-width: 440px;
+  width: 100%;
+  padding: 1.75rem 1.5rem 1.5rem;
+}
+.deploy-modal-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #ddd;
+  margin-bottom: 0.75rem;
+}
+.deploy-modal-why {
+  font-size: 0.78rem;
+  color: #555;
+  line-height: 1.55;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #111;
+}
+.deploy-modal-why strong { color: #888; }
+
+.deploy-steps { display: flex; flex-direction: column; gap: 0; }
+
+.deploy-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.6rem 0;
+  position: relative;
+}
+.deploy-step + .deploy-step::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 7px;
+  width: 1px;
+  height: 0.6rem;
+  background: #1a1a1a;
+}
+
+.deploy-step-dot {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 2px;
+  border: 1.5px solid #222;
+  background: #0a0a0a;
+  transition: background 0.2s, border-color 0.2s;
+}
+.deploy-step--done .deploy-step-dot {
+  background: #1a4a1a;
+  border-color: #2e6e2e;
+}
+.deploy-step--active .deploy-step-dot {
+  background: #0d2a0d;
+  border-color: #3a8a3a;
+  box-shadow: 0 0 6px #3a8a3a66;
+  animation: deploy-pulse 1s ease-in-out infinite;
+}
+.deploy-step--pending .deploy-step-dot {
+  background: #0a0a0a;
+  border-color: #1a1a1a;
+}
+
+@keyframes deploy-pulse {
+  0%, 100% { box-shadow: 0 0 4px #3a8a3a44; }
+  50%       { box-shadow: 0 0 10px #3a8a3a99; }
+}
+
+.deploy-step-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: color 0.2s;
+}
+.deploy-step--done   .deploy-step-label { color: #4a8a4a; }
+.deploy-step--active .deploy-step-label { color: #7ec87e; }
+.deploy-step--pending .deploy-step-label { color: #2a2a2a; }
+
+.deploy-step-desc {
+  font-size: 0.72rem;
+  color: #333;
+  margin-top: 1px;
+  line-height: 1.4;
+}
+.deploy-step--active .deploy-step-desc { color: #444; }
 </style>
