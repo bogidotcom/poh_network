@@ -408,6 +408,7 @@ router.get('/pricing', (req, res) => {
 router.post('/preview', async (req, res) => {
   const { address, method: m } = req.body || {};
   if (!address || !m) return res.status(400).json({ error: 'address and method required' });
+  const t0 = Date.now();
 
   const timeout = new Promise((_, reject) =>
     setTimeout(() => reject(new Error('Timeout after 8s')), 8000)
@@ -442,7 +443,9 @@ router.post('/preview', async (req, res) => {
         result = await callContract(rpcUrl, m.address, m.method,
           JSON.parse(m.abiTypes || '[]'), JSON.parse(m.returnTypes || '[]'), [address], m.chainId);
       }
-      const expressionResult = await evaluate(m.expression, { result, decimals }, m.lang || 'js');
+      const expressionResult = m.expression?.trim()
+        ? await evaluate(m.expression, { result, decimals }, m.lang || 'js')
+        : null;
       return { rawResult: serialize(result), expressionResult };
 
     } else if (m.type === 'rest') {
@@ -463,10 +466,10 @@ router.post('/preview', async (req, res) => {
         const params = hasHolder ? {} : { address };
         response = await axios.get(url, { params, headers, timeout: 7000, validateStatus: validate });
       }
-      const expressionResult = await evaluate(
-        m.expression, { data: response.data, status: response.status, decimals }, m.lang || 'js'
-      );
-      return { rawResult: { status: response.status, data: response.data }, expressionResult };
+      const expressionResult = m.expression?.trim()
+        ? await evaluate(m.expression, { data: response.data, status: response.status, decimals }, m.lang || 'js')
+        : null;
+      return { resolvedUrl: url, rawResult: { status: response.status, data: response.data }, expressionResult };
 
     } else if (m.type === 'solana') {
       const { Connection, PublicKey }              = require('@solana/web3.js');
@@ -494,7 +497,9 @@ router.post('/preview', async (req, res) => {
         });
         result = accounts.length > 0;
       }
-      const expressionResult = await evaluate(m.expression, { result, decimals }, m.lang || 'js');
+      const expressionResult = m.expression?.trim()
+        ? await evaluate(m.expression, { result, decimals }, m.lang || 'js')
+        : null;
       return { rawResult: serialize(result), expressionResult };
     }
     throw new Error('Unknown method type: ' + m.type);
@@ -502,9 +507,9 @@ router.post('/preview', async (req, res) => {
 
   try {
     const result = await Promise.race([run, timeout]);
-    res.json(result);
+    res.json({ ...result, ms: Date.now() - t0 });
   } catch (err) {
-    res.json({ error: err.message });
+    res.json({ error: err.message, ms: Date.now() - t0 });
   }
 });
 

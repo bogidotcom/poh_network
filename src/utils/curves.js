@@ -7,10 +7,12 @@ const CURVES_PATH = path.join(__dirname, '../../data/curves.json');
 
 // ── Bonding curve parameters ──────────────────────────────────────────────────
 // Linear: price(supply) = BASE_PRICE + SLOPE * supply  (lamports per 1 token)
-const BASE_PRICE  = 100_000;   // 0.0001 SOL at supply = 0
-const SLOPE       = 100;       // +0.0000001 SOL per token of existing supply
-const FEE_RATE    = 0.05;      // 5 % protocol fee on every trade
-const MAX_TRADES  = 500;       // trade history kept per curve
+const BASE_PRICE       = 100_000;   // 0.0001 SOL at supply = 0
+const SLOPE            = 100;       // +0.0000001 SOL per token of existing supply
+const OWNER_FEE_RATE   = 0.04;      // 4 % stays in CURVE_TREASURY (protocol revenue)
+const STAKER_FEE_RATE  = 0.01;      // 1 % distributed to stakers proportionally
+const FEE_RATE         = OWNER_FEE_RATE + STAKER_FEE_RATE;  // 5 % total (reserve math unchanged)
+const MAX_TRADES       = 500;       // trade history kept per curve
 
 // ── Math ──────────────────────────────────────────────────────────────────────
 
@@ -38,10 +40,12 @@ function sellRefundLamports(supply, n) {
   return Math.floor(n * BASE_PRICE + SLOPE * n * sNew + SLOPE * n * (n - 1) / 2);
 }
 
-/** Split gross amount into { net, fee } after applying FEE_RATE. */
+/** Split gross amount into { net, ownerFee, stakerFee, fee }. */
 function applyFee(amount) {
-  const fee = Math.floor(amount * FEE_RATE);
-  return { net: amount - fee, fee };
+  const ownerFee  = Math.floor(amount * OWNER_FEE_RATE);
+  const stakerFee = Math.floor(amount * STAKER_FEE_RATE);
+  const fee       = ownerFee + stakerFee;
+  return { net: amount - fee, ownerFee, stakerFee, fee };
 }
 
 // ── Storage ───────────────────────────────────────────────────────────────────
@@ -73,6 +77,7 @@ function initCurve(methodId) {
     solReserve:      0,   // lamports held for seller redemptions
     totalVolumeSol:  0,   // all-time volume in lamports
     totalFeesSol:    0,   // all-time fees collected in lamports
+    stakerFeePool:   0,   // accumulated 1% staker fees (lamports, pending distribution)
     trades:          [],
   };
   saveCurves(curves);
@@ -94,19 +99,20 @@ function executeBuy(methodId, tokenAmount, walletAddress) {
   if (tokenAmount <= 0) throw new Error('tokenAmount must be > 0');
 
   const grossCost = buyCostLamports(c.supply, tokenAmount);
-  const { net: netCost, fee } = applyFee(grossCost);
+  const { net: netCost, ownerFee, stakerFee, fee } = applyFee(grossCost);
 
-  c.supply        += tokenAmount;
-  c.solReserve    += netCost;
+  c.supply         += tokenAmount;
+  c.solReserve     += netCost;
   c.totalVolumeSol += grossCost;
   c.totalFeesSol   += fee;
+  c.stakerFeePool  += stakerFee;
 
   const newPrice = priceAtSupply(c.supply);
   c.trades.push({ wallet: walletAddress || null, type: 'buy', tokenAmount, solAmount: grossCost, price: newPrice, timestamp: Date.now() });
   if (c.trades.length > MAX_TRADES) c.trades = c.trades.slice(-MAX_TRADES);
 
   saveCurves(curves);
-  return { tokensOut: tokenAmount, grossCost, fee, newSupply: c.supply, newPrice };
+  return { tokensOut: tokenAmount, grossCost, ownerFee, stakerFee, fee, newSupply: c.supply, newPrice };
 }
 
 /**
@@ -122,20 +128,25 @@ function executeSell(methodId, tokenAmount, walletAddress) {
   if (tokenAmount > c.supply) throw new Error('Exceeds curve supply');
 
   const grossRefund = sellRefundLamports(c.supply, tokenAmount);
-  const { net: solOut, fee } = applyFee(grossRefund);
-  if (solOut > c.solReserve) throw new Error('Insufficient SOL reserve in curve');
+  const { net: solOut, ownerFee, stakerFee, fee } = applyFee(grossRefund);
+  if (solOut > c.solReserve) {
+    // Invariant violation — log full state for diagnosis
+    console.error(`[curves] reserve invariant broken: methodId=${methodId} supply=${c.supply} solReserve=${c.solReserve} solOut=${solOut} grossRefund=${grossRefund}`);
+    throw new Error(`Insufficient SOL reserve: curve has ${c.solReserve} lamports but sell requires ${solOut}`);
+  }
 
-  c.supply        -= tokenAmount;
-  c.solReserve    -= grossRefund;
+  c.supply         -= tokenAmount;
+  c.solReserve     -= solOut;
   c.totalVolumeSol += grossRefund;
   c.totalFeesSol   += fee;
+  c.stakerFeePool  += stakerFee;
 
   const newPrice = priceAtSupply(c.supply);
   c.trades.push({ wallet: walletAddress || null, type: 'sell', tokenAmount, solAmount: grossRefund, price: newPrice, timestamp: Date.now() });
   if (c.trades.length > MAX_TRADES) c.trades = c.trades.slice(-MAX_TRADES);
 
   saveCurves(curves);
-  return { solOut, grossRefund, fee, newSupply: c.supply, newPrice };
+  return { solOut, grossRefund, ownerFee, stakerFee, fee, newSupply: c.supply, newPrice };
 }
 
 // ── Chart ─────────────────────────────────────────────────────────────────────

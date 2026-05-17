@@ -7,7 +7,7 @@ const bs58  = require('bs58');
 const fs    = require('fs');
 const path  = require('path');
 const { getProfile, upsertProfile, getRewards, saveRewards, getProfiles, getMyVotes } = require('../utils/profiles');
-const { verifyPohTransfer, sendPohTokens } = require('../utils/solana');
+const { verifyPohTransfer, sendPohTokens, sendSol } = require('../utils/solana');
 
 const METHODS_PATH = path.join(__dirname, '../../data/methods.json');
 function getMethods() {
@@ -145,6 +145,30 @@ router.post('/claim', async (req, res, next) => {
     // If backend wallet isn't configured, return a clear error without 500
     if (err.message.includes('not configured')) {
       return res.status(503).json({ error: err.message, claimable: (getProfile(req.body.address)?.balance || 0) });
+    }
+    next(err);
+  }
+});
+
+// ── POST /profile/claim-sol — withdraw accrued SOL staker rewards ─────────────
+// Body: { address }  (no on-chain tx required; server pays from SOLANA_PRIV_KEY wallet)
+router.post('/claim-sol', async (req, res, next) => {
+  try {
+    const { address } = req.body;
+    if (!address) return res.status(400).json({ error: 'address required' });
+
+    const p = getProfile(address);
+    const claimable = p?.solBalance || 0;
+    if (claimable <= 0) return res.status(400).json({ error: 'Nothing to claim' });
+
+    const txHash = await sendSol(address, claimable);
+    upsertProfile(address, { solBalance: 0 });
+
+    console.log(`[profile] Claimed ${claimable} lamports SOL → ${address} tx: ${txHash}`);
+    res.json({ success: true, claimedLamports: claimable, claimedSol: claimable / 1e9, txHash });
+  } catch (err) {
+    if (err.message.includes('not configured')) {
+      return res.status(503).json({ error: err.message, claimable: getProfile(req.body.address)?.solBalance || 0 });
     }
     next(err);
   }

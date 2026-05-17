@@ -105,6 +105,27 @@ function distributeStakerRewards(poolRaw, stakers) {
   }
 }
 
+// ── SOL staker reward distribution ───────────────────────────────────────────
+// Distributes solLamports (curve trade fees) to stakers proportional to stake.
+// Credits profile.solBalance; stakers claim via POST /profile/claim-sol.
+function distributeSolToStakers(solLamports) {
+  if (solLamports <= 0) return;
+  const { getAllStakers } = require('./solana');
+  getAllStakers()
+    .then(stakers => {
+      if (!stakers.length) return;
+      const totalStaked = stakers.reduce((s, x) => s + x.stakedRaw, 0);
+      if (totalStaked === 0) return;
+      for (const { address, stakedRaw } of stakers) {
+        const share = Math.floor((stakedRaw / totalStaked) * solLamports);
+        if (share <= 0) continue;
+        const p = getProfile(address) || {};
+        upsertProfile(address, { solBalance: (p.solBalance || 0) + share });
+      }
+    })
+    .catch(err => console.error('[rewards] distributeSolToStakers failed:', err.message));
+}
+
 // ── IP abuse check ────────────────────────────────────────────────────────────
 // Returns true if this IP already has a different wallet with free scans used
 function isIpAbuse(ip, address) {
@@ -166,7 +187,7 @@ module.exports = {
   getProfile, upsertProfile, getProfiles,
   getRewards, saveRewards,
   getFreeScansLeft, consumeFreeScan,
-  calcScanCost, distributeRewards, distributeStakerRewards,
+  calcScanCost, distributeRewards, distributeStakerRewards, distributeSolToStakers,
   isIpAbuse, recordIp,
   recordVote, getMyVotes, hasVoted,
   isTxUsed, recordTx,
