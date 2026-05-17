@@ -3,164 +3,132 @@
 const express = require('express');
 const router  = express.Router();
 const {
-  getCurve, executeBuy, executeSell, getChartData,
-  buyCostLamports, sellRefundLamports, priceAtSupply, applyFee,
-} = require('../utils/curves');
-const { verifyWalletSignature, verifySolPayment, sendSol } = require('../utils/solana');
-const { getProfile, upsertProfile, isTxUsed, recordTx } = require('../utils/profiles');
+  getPoolRecord, createSignalPool, buildPoolCreationTx, recordPool,
+  getPoolState, getQuote, getChartData,
+} = require('../utils/meteora');
+const fs   = require('fs');
+const path = require('path');
 
-// ── GET /curves/:methodId — current state (no trade history) ──────────────────
-router.get('/:methodId', (req, res) => {
-  const c = getCurve(req.params.methodId);
-  if (!c) return res.status(404).json({ error: 'Curve not found' });
-  const { trades: _t, ...state } = c;
-  res.json({ ...state, currentPrice: priceAtSupply(c.supply) });
-});
-
-// ── GET /curves/:methodId/chart ───────────────────────────────────────────────
-router.get('/:methodId/chart', (req, res) => {
-  const intervalMs = parseInt(req.query.interval) || 5 * 60 * 1000;
-  const candles = getChartData(req.params.methodId, intervalMs);
-  res.json({ candles });
-});
-
-// ── GET /curves/:methodId/quote ───────────────────────────────────────────────
-// ?action=buy|sell  &amount=<tokens>  [&wallet=<address>]
-router.get('/:methodId/quote', (req, res) => {
-  const { action, amount, wallet } = req.query;
-  const n = parseInt(amount);
-  if (!n || n <= 0) return res.status(400).json({ error: 'amount must be a positive integer' });
-
-  const c = getCurve(req.params.methodId);
-  if (!c) return res.status(404).json({ error: 'Curve not found' });
-
-  if (action === 'buy') {
-    const gross = buyCostLamports(c.supply, n);
-    const { net, fee } = applyFee(gross);
-    return res.json({
-      action: 'buy',
-      tokenAmount: n,
-      grossCostLamports: gross,
-      grossCostSol: gross / 1e9,
-      feeLamports: fee,
-      tokensOut: n,
-      priceAfter: priceAtSupply(c.supply + n),
-      priceAfterSol: priceAtSupply(c.supply + n) / 1e9,
-    });
-  }
-
-  if (action === 'sell') {
-    if (n > c.supply) return res.status(400).json({ error: 'Amount exceeds total curve supply' });
-    if (wallet) {
-      const p = getProfile(wallet);
-      const owned = p?.signalTokens?.[req.params.methodId] || 0;
-      if (owned < n) return res.status(400).json({ error: `Insufficient tokens — you own ${owned}` });
-    }
-    const gross = sellRefundLamports(c.supply, n);
-    const { net: solOut, fee } = applyFee(gross);
-    return res.json({
-      action: 'sell',
-      tokenAmount: n,
-      grossRefundLamports: gross,
-      solOutLamports: solOut,
-      solOutSol: solOut / 1e9,
-      feeLamports: fee,
-      priceAfter: priceAtSupply(c.supply - n),
-      priceAfterSol: priceAtSupply(c.supply - n) / 1e9,
-    });
-  }
-
-  res.status(400).json({ error: 'action must be "buy" or "sell"' });
-});
-
-// ── POST /curves/:methodId/buy ────────────────────────────────────────────────
-// Body: { txHash, walletAddress, tokenAmount }
-// User must have already sent grossCostLamports SOL to FEE_RECIPIENT on-chain.
-router.post('/:methodId/buy', async (req, res, next) => {
+const METHODS_PATH = path.join(__dirname, '../../data/methods.json');
+function getMethod(methodId) {
   try {
-    const { txHash, walletAddress, tokenAmount } = req.body;
-    if (!txHash || !walletAddress || !tokenAmount)
-      return res.status(400).json({ error: 'txHash, walletAddress, tokenAmount are required' });
+    const list = JSON.parse(fs.readFileSync(METHODS_PATH, 'utf-8'));
+    return list.find(m => m.id === methodId) || null;
+  } catch { return null; }
+}
 
-    const n = parseInt(tokenAmount);
-    if (n <= 0) return res.status(400).json({ error: 'Invalid tokenAmount' });
+// ── GET /curves/:methodId — pool info + current price ─────────────────────────
+router.get('/:methodId', async (req, res, next) => {
+  try {
+    const record = getPoolRecord(req.params.methodId);
+    if (!record) return res.status(404).json({ error: 'Pool not found' });
 
-    const c = getCurve(req.params.methodId);
-    if (!c) return res.status(404).json({ error: 'Curve not found' });
-
-    // Replay guard
-    if (isTxUsed(txHash)) return res.status(409).json({ error: 'Transaction already used' });
-
-    // Expected SOL cost
-    const grossCost = buyCostLamports(c.supply, n);
-    const feeRecipient = process.env.FEE_RECIPIENT;
-    if (!feeRecipient) return res.status(500).json({ error: 'FEE_RECIPIENT not configured' });
-
-    const paid = await verifySolPayment(txHash, grossCost / 1e9, feeRecipient);
-    if (!paid) return res.status(402).json({ error: 'SOL payment not verified — expected at least ' + (grossCost / 1e9).toFixed(6) + ' SOL to ' + feeRecipient });
-
-    // Execute on curve
-    const result = executeBuy(req.params.methodId, n, walletAddress);
-
-    // Credit signal tokens in profile
-    const p = getProfile(walletAddress) || {};
-    const st = { ...(p.signalTokens || {}) };
-    st[req.params.methodId] = (st[req.params.methodId] || 0) + n;
-    upsertProfile(walletAddress, { signalTokens: st });
-
-    recordTx(txHash, { action: 'curve_buy', wallet: walletAddress, methodId: req.params.methodId, tokens: n });
-
-    res.json({ success: true, methodId: req.params.methodId, ...result });
+    const state = await getPoolState(req.params.methodId);
+    res.json({
+      methodId:       record.methodId,
+      poolAddress:    record.poolAddress,
+      mintAddress:    record.mintAddress,
+      configAddress:  record.configAddress,
+      creatorWallet:  record.creatorWallet,
+      createdAt:      record.createdAt,
+      currentPriceSol: state?.currentPriceSol ?? 0,
+      quoteReserve:   state?.quoteReserve ?? '0',
+      supply:         state?.supply ?? '0',
+      migrated:       state?.migrated ?? false,
+    });
   } catch (err) { next(err); }
 });
 
-// ── POST /curves/:methodId/sell ───────────────────────────────────────────────
-// Body: { walletAddress, tokenAmount, signature, message }
-// message format: "poh-sell-v1:{methodId}:{tokenAmount}:{walletAddress}:{timestamp}"
-router.post('/:methodId/sell', async (req, res, next) => {
+// ── GET /curves/:methodId/chart ───────────────────────────────────────────────
+router.get('/:methodId/chart', async (req, res, next) => {
   try {
-    const { walletAddress, tokenAmount, signature, message } = req.body;
-    if (!walletAddress || !tokenAmount || !signature || !message)
-      return res.status(400).json({ error: 'walletAddress, tokenAmount, signature, message are required' });
+    const intervalMs = parseInt(req.query.interval) || 5 * 60 * 1000;
+    const candles    = await getChartData(req.params.methodId, intervalMs);
+    res.json({ candles });
+  } catch (err) { next(err); }
+});
 
-    const n = parseInt(tokenAmount);
-    if (n <= 0) return res.status(400).json({ error: 'Invalid tokenAmount' });
+// ── GET /curves/:methodId/creator-fees — claimable creator trading fees ───────
+router.get('/:methodId/creator-fees', async (req, res, next) => {
+  try {
+    const record = getPoolRecord(req.params.methodId);
+    if (!record) return res.status(404).json({ error: 'Pool not found' });
 
-    // Verify signature
-    if (!verifyWalletSignature(message, signature, walletAddress))
-      return res.status(401).json({ error: 'Invalid signature' });
+    const { Connection, PublicKey } = require('@solana/web3.js');
+    const { DynamicBondingCurveClient } = require('@meteora-ag/dynamic-bonding-curve-sdk');
+    const conn   = new Connection(process.env.SOLANA_RPC || 'https://api.devnet.solana.com', 'confirmed');
+    const client = DynamicBondingCurveClient.create(conn);
+    const fees   = await client.state.getPoolFeeMetrics(new PublicKey(record.poolAddress));
 
-    // Validate message binds to this request
-    const expected = `poh-sell-v1:${req.params.methodId}:${n}:${walletAddress}:`;
-    if (!message.startsWith(expected))
-      return res.status(400).json({ error: 'Message does not match request parameters' });
+    res.json({
+      quoteSOL:   parseInt(fees.current.creatorQuoteFee?.toString() || '0') / 1e9,
+      baseTokens: parseInt(fees.current.creatorBaseFee?.toString()  || '0'),
+    });
+  } catch (err) { next(err); }
+});
 
-    const ts = parseInt(message.split(':').pop(), 10);
-    if (!ts || Date.now() - ts > 5 * 60 * 1000)
-      return res.status(400).json({ error: 'Message expired (> 5 minutes)' });
+// ── GET /curves/:methodId/quote ───────────────────────────────────────────────
+// ?action=buy|sell  &amount=<lamports>
+router.get('/:methodId/quote', async (req, res, next) => {
+  try {
+    const { action, amount } = req.query;
+    const n = parseInt(amount);
+    if (!n || n <= 0) return res.status(400).json({ error: 'amount (lamports) must be a positive integer' });
 
-    // Replay guard
-    if (isTxUsed(signature)) return res.status(409).json({ error: 'Signature already used' });
+    const record = getPoolRecord(req.params.methodId);
+    if (!record) return res.status(404).json({ error: 'Pool not found' });
 
-    // Check user owns enough tokens
-    const p = getProfile(walletAddress);
-    const owned = p?.signalTokens?.[req.params.methodId] || 0;
-    if (owned < n) return res.status(400).json({ error: `Insufficient tokens — you own ${owned}` });
+    const swapBaseForQuote = action === 'sell'; // buy = false (quote→base), sell = true (base→quote)
+    const quote = await getQuote(req.params.methodId, n, swapBaseForQuote);
+    res.json({ action, ...quote });
+  } catch (err) { next(err); }
+});
 
-    // Execute sell on curve
-    const result = executeSell(req.params.methodId, n, walletAddress);
+// ── POST /curves/pool-creation-tx — build a partially-signed pool tx for the user to pay ──
+// Body: { walletAddress, methodId, name, symbol }
+// Returns: { txBase64, poolAddress, mintAddress, configAddress, blockhash, lastValidBlockHeight }
+router.post('/pool-creation-tx', async (req, res, next) => {
+  try {
+    const { walletAddress, methodId, name, symbol } = req.body;
+    if (!walletAddress || !methodId || !name) {
+      return res.status(400).json({ error: 'walletAddress, methodId, and name are required' });
+    }
+    const existing = getPoolRecord(methodId);
+    if (existing) return res.json({ alreadyExists: true, ...existing });
 
-    // Send SOL to user
-    const txHash = await sendSol(walletAddress, result.solOut);
+    const result = await buildPoolCreationTx(methodId, name, symbol || name.slice(0, 4).toUpperCase(), walletAddress);
+    res.json(result);
+  } catch (err) { next(err); }
+});
 
-    // Debit tokens from profile
-    const st = { ...(p.signalTokens || {}) };
-    st[req.params.methodId] = owned - n;
-    upsertProfile(walletAddress, { signalTokens: st });
+// ── POST /curves/record-pool — persist pool info after user broadcasts the creation tx ──
+// Body: { methodId, poolAddress, mintAddress, configAddress, creatorWallet, txHash }
+router.post('/record-pool', (req, res) => {
+  const { methodId, poolAddress, mintAddress, configAddress, creatorWallet, txHash } = req.body;
+  if (!methodId || !poolAddress || !mintAddress || !txHash) {
+    return res.status(400).json({ error: 'methodId, poolAddress, mintAddress, txHash are required' });
+  }
+  const record = recordPool(methodId, { poolAddress, mintAddress, configAddress, creatorWallet, txHash });
+  res.json({ success: true, ...record });
+});
 
-    recordTx(signature, { action: 'curve_sell', wallet: walletAddress, methodId: req.params.methodId, tokens: n });
+// ── POST /curves/:methodId/init — create Meteora DBC pool for a signal ────────
+// Called by the listing flow when a method is approved/listed.
+// Body: { adminSecret }  (simple bearer guard — use same as server admin key)
+router.post('/:methodId/init', async (req, res, next) => {
+  try {
+    const method = getMethod(req.params.methodId);
+    if (!method) return res.status(404).json({ error: 'Method not found' });
 
-    res.json({ success: true, methodId: req.params.methodId, txHash, ...result });
+    const existing = getPoolRecord(req.params.methodId);
+    if (existing) return res.json({ alreadyExists: true, ...existing });
+
+    const record = await createSignalPool(
+      req.params.methodId,
+      method.name || req.params.methodId,
+      (method.name || req.params.methodId).slice(0, 4).toUpperCase(),
+    );
+    res.json({ success: true, ...record });
   } catch (err) { next(err); }
 });
 
