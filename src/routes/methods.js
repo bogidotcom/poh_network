@@ -9,7 +9,7 @@ const { parse } = require('csv-parse/sync');
 const { getVoteTokenStake, verifyWalletSignature, verifyTxSuccess } = require('../utils/solana');
 const { recordVote, getMyVotes, hasVoted, isTxUsed, recordTx } = require('../utils/profiles');
 const brain = require('../utils/brain');
-const { initCurve } = require('../utils/curves');
+const { recordPool, getPoolRecord } = require('../utils/meteora');
 
 const METHODS_PATH = path.join(__dirname, '../../data/methods.json');
 const DATASET_PATH = path.join(__dirname, '../../data/dataset.json');
@@ -82,9 +82,9 @@ router.post('/listing', upload.single('csv'), async (req, res, next) => {
       newMethods = parse(content, { columns: true, skip_empty_lines: true });
       fs.unlinkSync(req.file.path);
     } else {
-      const { type, chainId, address, method, abiTypes, returnTypes, expression, lang, description, headers, body, decimals } = req.body;
+      const { type, chainId, address, method, abiTypes, returnTypes, expression, lang, description, headers, body, decimals, poolAddress, mintAddress, configAddress } = req.body;
       if (!description) return res.status(400).json({ error: 'description is mandatory' });
-      newMethods.push({ type, chainId, address, method, abiTypes, returnTypes, expression, lang, description, headers, body, decimals });
+      newMethods.push({ type, chainId, address, method, abiTypes, returnTypes, expression, lang, description, headers, body, decimals, poolAddress, mintAddress, configAddress });
     }
 
     // Payment is enforced on-chain by the registerMethod Anchor instruction
@@ -96,6 +96,35 @@ router.post('/listing', upload.single('csv'), async (req, res, next) => {
     }
 
     const currentMethods = getMethods();
+
+    // Duplicate check before inserting anything
+    const duplicates = [];
+    for (const m of newMethods) {
+      const t = (m.type || '').toLowerCase();
+      let existing;
+      if (t === 'rest') {
+        const url = (m.address || '').trim().toLowerCase();
+        existing = url && currentMethods.find(x =>
+          (x.type || '').toLowerCase() === 'rest' &&
+          (x.address || '').trim().toLowerCase() === url
+        );
+      } else {
+        const addr = (m.address || '').trim().toLowerCase();
+        const meth = (m.method || '').trim().toLowerCase();
+        existing = addr && meth && currentMethods.find(x =>
+          (x.type || '').toLowerCase() === t &&
+          (x.address || '').trim().toLowerCase() === addr &&
+          (x.method || '').trim().toLowerCase() === meth
+        );
+      }
+      if (existing) duplicates.push(m.address || m.method || m.description);
+    }
+    if (duplicates.length) {
+      return res.status(409).json({
+        error: `Duplicate signal already listed: ${duplicates.join(', ')}`,
+      });
+    }
+
     newMethods.forEach(m => {
       // Ensure complex fields are strings if they aren't already
       if (typeof m.abiTypes === 'object') m.abiTypes = JSON.stringify(m.abiTypes);
@@ -120,9 +149,21 @@ router.post('/listing', upload.single('csv'), async (req, res, next) => {
     // NOTE: staker share (500 POH) is handled entirely on-chain by the Anchor registerMethod
     // instruction → SFEE_PDA. Stakers claim via claimStakerRewards. No off-chain distribution needed.
 
-    // ── Create bonding curve for each new signal ──────────────────────────
+    // ── Persist Meteora pool info if user deployed it with the listing tx ─
     for (const m of newMethods) {
-      initCurve(m.id);
+      if (m.poolAddress && m.mintAddress) {
+        try {
+          recordPool(m.id, {
+            poolAddress:   m.poolAddress,
+            mintAddress:   m.mintAddress,
+            configAddress: m.configAddress || '',
+            creatorWallet: walletAddress || '',
+            txHash:        txHash,
+          });
+        } catch (err) {
+          console.error(`[meteora] recordPool failed for ${m.id}:`, err.message);
+        }
+      }
     }
 
     // ── Brain: evaluate each new method ──────────────────────────────────
@@ -156,6 +197,16 @@ router.get('/verifyer', (req, res) => {
     .map(({ _w, ...m }) => m);
 
   res.json(methods);
+});
+
+/**
+ * GET /verifyer/:id — fetch a single method by id (used for profile→feedback navigation)
+ */
+router.get('/verifyer/:id', (req, res) => {
+  const methods = getMethods();
+  const m = methods.find(x => x.id === req.params.id);
+  if (!m) return res.status(404).json({ error: 'Method not found' });
+  res.json(m);
 });
 
 /**
@@ -199,7 +250,10 @@ router.post('/verifyer/vote', async (req, res, next) => {
 
     const stakeWeight = await getVoteTokenStake(walletAddress);
     // Scale impact: base 1 + stake fraction * 9 → range [1, 10]
-    const impact = 1 + stakeWeight * 9;
+    // Graduated signals (migrated to DEX) carry 1.5x weight
+    const pool = getPoolRecord(methodId);
+    const graduationMult = pool?.migrated ? 1.5 : 1.0;
+    const impact = (1 + stakeWeight * 9) * graduationMult;
 
     if (type === 'risk') {
       method.score += (vote === true ? -impact : impact);

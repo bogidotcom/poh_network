@@ -57,14 +57,13 @@ function getWeights() {
   let base = {};
   try { base = JSON.parse(fs.readFileSync(WEIGHTS_PATH, 'utf-8')); } catch { return {}; }
 
-  // Amplify weights by bonding curve price appreciation.
-  // A signal with high market confidence (more buys → higher price) gets a
-  // larger multiplier so the AI brain treats it as a stronger signal.
+  // Graduated signals (migrated to DEX) carry 1.5x weight — market validation
   try {
-    const { getCurveStrengthMultiplier } = require('./curves');
+    const { getPoolRecord } = require('./meteora');
     const amplified = {};
     for (const [id, w] of Object.entries(base)) {
-      amplified[id] = w * getCurveStrengthMultiplier(id);
+      const pool = getPoolRecord(id);
+      amplified[id] = w * (pool?.migrated ? 1.5 : 1.0);
     }
     return amplified;
   } catch {
