@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import axios from 'axios'
+import { Connection, Transaction } from '@solana/web3.js'
 import { getGlobalState, registerMethod } from '../pohProgram.js'
 
 export function useListing({ walletAddress, walletProvider, connected, POH_MINT, SOLANA_RPC, pohBalance, loadPohBalance }) {
@@ -13,6 +14,8 @@ export function useListing({ walletAddress, walletProvider, connected, POH_MINT,
   const abiError    = ref(null)
   const loading     = ref(false)
   const error       = ref(null)
+  // step: null | 'signing' | 'tx1' | 'tx2' | 'poh' | 'saving' | 'done'
+  const deployStep  = ref(null)
 
   const LISTING_FEE_POH = 1000
 
@@ -75,28 +78,71 @@ export function useListing({ walletAddress, walletProvider, connected, POH_MINT,
     }
     if (!listing.value.description?.trim()) { error.value = 'Description is required'; return }
 
-    // loading.value = true
-    // try {
-    //   const validation = await axios.post('/methods/listing/validate-description', { description: listing.value.description })
-    //   if (!validation.data.valid) {
-    //     error.value = `Description rejected: ${validation.data.reason}`
-    //     loading.value = false
-    //     return
-    //   }
-    // } catch {
-    //   // If validation service is down, proceed
-    // }
+    loading.value    = true
+    error.value      = null
+    deployStep.value = null
 
     try {
       const methodId = crypto.randomUUID().replace(/-/g, '')
+      const conn = new Connection(SOLANA_RPC.value, 'confirmed')
+
+      // ── Step 1: Deploy Meteora pool (user pays SOL rent) ──────────────────
+      let poolInfo = null
+      try {
+        const { data: txData } = await axios.post('/curves/pool-creation-tx', {
+          walletAddress: walletAddress.value,
+          methodId,
+          name:   listing.value.description.slice(0, 32),
+          symbol: listing.value.description.slice(0, 4).toUpperCase(),
+        })
+
+        if (!txData.alreadyExists) {
+          deployStep.value = 'signing'
+          const tx1 = Transaction.from(Buffer.from(txData.tx1Base64, 'base64'))
+          const tx2 = Transaction.from(Buffer.from(txData.tx2Base64, 'base64'))
+          const [signed1, signed2] = await walletProvider.value.signAllTransactions([tx1, tx2])
+
+          deployStep.value = 'tx1'
+          const sig1 = await conn.sendRawTransaction(signed1.serialize(), { skipPreflight: false })
+          await conn.confirmTransaction(
+            { signature: sig1, blockhash: txData.blockhash, lastValidBlockHeight: txData.lastValidBlockHeight },
+            'confirmed',
+          )
+
+          deployStep.value = 'tx2'
+          const sig2 = await conn.sendRawTransaction(signed2.serialize(), { skipPreflight: false })
+          await conn.confirmTransaction(
+            { signature: sig2, blockhash: txData.blockhash, lastValidBlockHeight: txData.lastValidBlockHeight },
+            'confirmed',
+          )
+
+          await axios.post('/curves/record-pool', {
+            methodId,
+            poolAddress:   txData.poolAddress,
+            mintAddress:   txData.mintAddress,
+            configAddress: txData.configAddress,
+            creatorWallet: walletAddress.value,
+            txHash:        sig2,
+          })
+          poolInfo = { poolAddress: txData.poolAddress, mintAddress: txData.mintAddress, configAddress: txData.configAddress }
+        } else {
+          poolInfo = { poolAddress: txData.poolAddress, mintAddress: txData.mintAddress, configAddress: txData.configAddress }
+        }
+      } catch (poolErr) {
+        console.warn('[listing] pool deploy failed, continuing without pool:', poolErr.message)
+      }
+
+      // ── Step 2: Pay 1000 POH listing fee on-chain ─────────────────────────
+      deployStep.value = 'poh'
       const global = await getGlobalState(SOLANA_RPC.value)
       const methodIndex = global?.totalMethods ?? 0
 
       const txHash = await registerMethod(
         walletProvider.value, walletAddress.value, POH_MINT.value, SOLANA_RPC.value,
-        methodId, methodIndex
+        methodId, methodIndex,
       )
 
+      // ── Step 3: Register method in backend ────────────────────────────────
       const headerObj = headers.value.reduce((a, h) => { if (h.key) a[h.key] = h.value; return a }, {})
       const payload = {
         ...listing.value,
@@ -105,16 +151,21 @@ export function useListing({ walletAddress, walletProvider, connected, POH_MINT,
         walletAddress: walletAddress.value,
         onChainMethodId: methodId,
         onChainIndex: methodIndex,
+        ...(poolInfo || {}),
       }
+      deployStep.value = 'saving'
       if (listing.value.type === 'rest') payload.method = listing.value.httpMethod
       await axios.post('/methods/listing', payload)
 
+      deployStep.value = 'done'
       await loadPohBalance()
-      alert(`Method registered! Paid ${LISTING_FEE_POH} POH — 500 to deployer, 500 distributed to stakers.`)
+      await new Promise(r => setTimeout(r, 1200)) // briefly show "done" state
+      deployStep.value = null
       listing.value = { type: 'evm', chainId: 1, address: '', method: '', abiTypes: '', returnTypes: '', decimals: '', expression: '', lang: 'js', description: '', body: '', httpMethod: 'GET' }
       headers.value = [{ key: '', value: '' }]
     } catch (err) {
       error.value = err.message || 'Registration failed'
+      deployStep.value = null
     } finally {
       loading.value = false
     }
@@ -128,6 +179,7 @@ export function useListing({ walletAddress, walletProvider, connected, POH_MINT,
     abiError,
     loading,
     error,
+    deployStep,
     LISTING_FEE_POH,
     addHeader,
     removeHeader,

@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import axios from 'axios'
 
 const props = defineProps({
@@ -33,37 +33,56 @@ function updateListingAndReset(key, val) {
   // reset abiFns via parent by re-triggering fetch
 }
 
-// ── Preview ───────────────────────────────────────────────────────────────────
+// ── Test ──────────────────────────────────────────────────────────────────────
 
-const previewAddr    = ref('')
-const previewLoading = ref(false)
-const previewResult  = ref(null)
-const previewError   = ref(null)
+const testAddresses = ref([''])
+const testRunning   = ref(false)
+const testResults   = ref([])   // [{ address, loading, result, error }]
 
-async function runPreview() {
-  if (!previewAddr.value?.trim()) return
-  previewLoading.value = true
-  previewResult.value  = null
-  previewError.value   = null
-  try {
-    const m = { ...props.listing }
-    if (m.type === 'rest') {
-      m.method = m.httpMethod
-      const headerObj = (props.headers || []).reduce((a, h) => {
-        if (h.key) a[h.key] = h.value
-        return a
-      }, {})
-      m.headers = JSON.stringify(headerObj)
-    }
-    const { data } = await axios.post('/checker/preview', { address: previewAddr.value.trim(), method: m })
-    if (data.error) previewError.value = data.error
-    else previewResult.value = data
-  } catch (e) {
-    previewError.value = e.response?.data?.error || e.message
-  } finally {
-    previewLoading.value = false
-  }
+function addTestAddress() {
+  testAddresses.value.push('')
 }
+function removeTestAddress(i) {
+  testAddresses.value.splice(i, 1)
+  testResults.value.splice(i, 1)
+}
+
+function buildMethod() {
+  const m = { ...props.listing }
+  if (m.type === 'rest') {
+    m.method = m.httpMethod
+    m.headers = JSON.stringify(
+      (props.headers || []).reduce((a, h) => { if (h.key) a[h.key] = h.value; return a }, {})
+    )
+  }
+  return m
+}
+
+async function runTest() {
+  const addrs = testAddresses.value.map(a => a.trim()).filter(Boolean)
+  if (!addrs.length) return
+  testRunning.value = true
+  testResults.value = addrs.map(address => ({ address, loading: true, result: null, error: null }))
+
+  const m = buildMethod()
+  await Promise.all(addrs.map(async (address, i) => {
+    try {
+      const { data } = await axios.post('/checker/preview', { address, method: m })
+      if (data.error) testResults.value[i] = { address, loading: false, result: null, error: data.error, ms: data.ms }
+      else            testResults.value[i] = { address, loading: false, result: data, error: null }
+    } catch (e) {
+      testResults.value[i] = { address, loading: false, result: null, error: e.response?.data?.error || e.message }
+    }
+  }))
+  testRunning.value = false
+}
+
+const resolvedUrl = computed(() => {
+  if (props.listing.type !== 'rest' || !props.listing.address) return null
+  const addr = testAddresses.value[0]?.trim()
+  if (!addr) return props.listing.address
+  return props.listing.address.replace(/\{address\}/g, addr)
+})
 </script>
 
 <template>
@@ -244,39 +263,87 @@ async function runPreview() {
       </div>
     </div>
 
-    <!-- Preview — shared -->
+    <!-- Test — shared -->
     <div class="form-section">
       <div class="form-label-row">
-        <span class="form-section-label">Preview</span>
-        <span class="field-hint-inline">Test this method before submitting</span>
+        <span class="form-section-label">Test</span>
+        <span class="field-hint-inline">Run live against real addresses before submitting</span>
       </div>
       <div class="input-group">
-        <div class="flex-input">
-          <input
-            type="text"
-            v-model="previewAddr"
-            placeholder="Enter an address to test against"
-            class="premium-input flex-grow"
-            @keydown.enter="runPreview"
-          />
-          <button
-            @click="runPreview"
-            :disabled="previewLoading || !previewAddr || !listing.expression"
-            class="mini-btn preview-run-btn"
-          >{{ previewLoading ? '...' : 'Run' }}</button>
-        </div>
-        <div v-if="!listing.expression" class="field-hint">Fill in the expression above first</div>
-        <div v-if="previewError" class="preview-error">{{ previewError }}</div>
-        <div v-if="previewResult" class="preview-result">
-          <div class="preview-verdict" :class="previewResult.expressionResult ? 'verdict-pass' : 'verdict-fail'">
-            <span class="verdict-icon">{{ previewResult.expressionResult ? '✓' : '✗' }}</span>
-            Expression returned <code class="verdict-value">{{ String(previewResult.expressionResult) }}</code>
+
+        <!-- Address inputs -->
+        <div class="test-addr-list">
+          <div v-for="(_, i) in testAddresses" :key="i" class="flex-input">
+            <input
+              v-model="testAddresses[i]"
+              type="text"
+              :placeholder="listing.type === 'evm' ? '0x… wallet address' : listing.type === 'rest' ? 'Address / identifier' : 'Solana wallet pubkey'"
+              class="premium-input flex-grow font-mono"
+              @keydown.enter="runTest"
+            />
+            <button v-if="testAddresses.length > 1" class="mini-btn" @click="removeTestAddress(i)">×</button>
           </div>
-          <div class="preview-raw">
-            <span class="preview-raw-label">Raw response</span>
-            <pre class="preview-raw-data">{{ JSON.stringify(previewResult.rawResult, null, 2) }}</pre>
-          </div>
+          <button class="utility-link" @click="addTestAddress">+ Add address</button>
         </div>
+
+        <!-- Resolved URL preview for REST -->
+        <div v-if="listing.type === 'rest' && resolvedUrl" class="test-resolved-url">
+          <span class="test-url-label">{{ listing.httpMethod || 'GET' }}</span>
+          <span class="test-url-val">{{ resolvedUrl }}</span>
+        </div>
+
+        <button
+          class="test-run-btn"
+          :disabled="testRunning || !testAddresses.some(a => a.trim())"
+          @click="runTest"
+        >
+          <span v-if="testRunning" class="test-spinner"></span>
+          {{ testRunning ? 'Running…' : 'Run Test' }}
+        </button>
+
+        <!-- Results -->
+        <div v-for="r in testResults" :key="r.address" class="test-result-block">
+          <div class="test-result-header">
+            <code class="test-result-addr">{{ r.address }}</code>
+            <span v-if="r.result?.ms != null" class="test-result-ms">{{ r.result.ms }}ms</span>
+            <span v-if="r.loading" class="test-result-ms">running…</span>
+          </div>
+
+          <div v-if="r.error" class="test-result-error">{{ r.error }}</div>
+
+          <template v-if="r.result">
+            <!-- Expression verdict -->
+            <div v-if="r.result.expressionResult !== null && r.result.expressionResult !== undefined"
+                 class="preview-verdict"
+                 :class="r.result.expressionResult ? 'verdict-pass' : 'verdict-fail'">
+              <span class="verdict-icon">{{ r.result.expressionResult ? '✓' : '✗' }}</span>
+              Expression → <code class="verdict-value">{{ String(r.result.expressionResult) }}</code>
+            </div>
+            <div v-else-if="listing.expression" class="test-result-no-expr">
+              (expression not evaluated — fill in expression above)
+            </div>
+
+            <!-- Resolved URL (REST) -->
+            <div v-if="r.result.resolvedUrl && r.result.resolvedUrl !== resolvedUrl" class="test-resolved-url" style="margin-top:0.4rem">
+              <span class="test-url-label">URL</span>
+              <span class="test-url-val">{{ r.result.resolvedUrl }}</span>
+            </div>
+
+            <!-- Raw response -->
+            <div class="preview-raw">
+              <div class="test-raw-header">
+                <span class="preview-raw-label">Raw response</span>
+                <span v-if="r.result.rawResult?.status" :class="['test-status', r.result.rawResult.status < 400 ? 'test-status-ok' : 'test-status-err']">
+                  HTTP {{ r.result.rawResult.status }}
+                </span>
+              </div>
+              <pre class="preview-raw-data">{{ JSON.stringify(
+                r.result.rawResult?.data !== undefined ? r.result.rawResult.data : r.result.rawResult,
+                null, 2) }}</pre>
+            </div>
+          </template>
+        </div>
+
       </div>
     </div>
 
@@ -300,24 +367,110 @@ async function runPreview() {
 </template>
 
 <style scoped>
-.preview-run-btn {
-  white-space: nowrap;
-  min-width: 52px;
-}
-
-.preview-error {
-  font-size: 0.82rem;
-  color: #e05c5c;
-  padding: 0.4rem 0;
-}
-
-.preview-result {
+/* ── Test section ─────────────────────────────────────────────────────────── */
+.test-addr-list {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  margin-top: 0.25rem;
+  gap: 0.4rem;
 }
 
+.test-run-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.25rem;
+  background: rgba(74,222,128,0.07);
+  border: 1px solid rgba(74,222,128,0.2);
+  border-radius: 8px;
+  color: #4ade80;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  align-self: flex-start;
+}
+.test-run-btn:not(:disabled):hover {
+  background: rgba(74,222,128,0.13);
+  border-color: rgba(74,222,128,0.4);
+}
+.test-run-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.test-spinner {
+  width: 12px; height: 12px;
+  border: 1.5px solid rgba(74,222,128,0.3);
+  border-top-color: #4ade80;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.test-resolved-url {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.6rem;
+  background: #060606;
+  border: 1px solid #141414;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.test-url-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #555;
+  letter-spacing: 0.06em;
+  flex-shrink: 0;
+}
+.test-url-val {
+  font-size: 0.72rem;
+  color: #666;
+  font-family: 'JetBrains Mono', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.test-result-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.85rem;
+  background: #060606;
+  border: 1px solid #141414;
+  border-radius: 8px;
+}
+.test-result-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.test-result-addr {
+  font-size: 0.75rem;
+  font-family: 'JetBrains Mono', monospace;
+  color: #888;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.test-result-ms {
+  font-size: 0.68rem;
+  color: #444;
+  font-family: 'JetBrains Mono', monospace;
+  flex-shrink: 0;
+}
+.test-result-error {
+  font-size: 0.8rem;
+  color: #e05c5c;
+  padding: 0.3rem 0;
+}
+.test-result-no-expr {
+  font-size: 0.75rem;
+  color: #333;
+}
+
+/* Shared verdict + raw (also used by legacy paths) */
 .preview-verdict {
   display: flex;
   align-items: center;
@@ -327,24 +480,9 @@ async function runPreview() {
   border-radius: 6px;
   border: 1px solid;
 }
-
-.verdict-pass {
-  color: #4ade80;
-  border-color: #1a3a22;
-  background: #0a1f11;
-}
-
-.verdict-fail {
-  color: #e05c5c;
-  border-color: #3a1a1a;
-  background: #1f0a0a;
-}
-
-.verdict-icon {
-  font-size: 1rem;
-  font-weight: 700;
-}
-
+.verdict-pass { color: #4ade80; border-color: #1a3a22; background: #0a1f11; }
+.verdict-fail { color: #e05c5c; border-color: #3a1a1a; background: #1f0a0a; }
+.verdict-icon { font-size: 1rem; font-weight: 700; }
 .verdict-value {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.82rem;
@@ -353,31 +491,31 @@ async function runPreview() {
   border-radius: 3px;
 }
 
-.preview-raw {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
+.preview-raw { display: flex; flex-direction: column; gap: 0.3rem; }
+.test-raw-header { display: flex; align-items: center; gap: 0.5rem; }
+.preview-raw-label { font-size: 0.7rem; color: #444; text-transform: uppercase; letter-spacing: 0.05em; }
+.test-status {
+  font-size: 0.68rem;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  font-weight: 600;
 }
-
-.preview-raw-label {
-  font-size: 0.75rem;
-  color: #555;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
+.test-status-ok  { color: #4ade80; background: rgba(74,222,128,0.08); }
+.test-status-err { color: #e05c5c; background: rgba(224,92,92,0.08); }
 
 .preview-raw-data {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.78rem;
-  color: #888;
-  background: #080808;
-  border: 1px solid #1a1a1a;
+  color: #666;
+  background: #030303;
+  border: 1px solid #111;
   border-radius: 6px;
   padding: 0.75rem 1rem;
   margin: 0;
   white-space: pre-wrap;
   word-break: break-all;
-  max-height: 300px;
+  max-height: 280px;
   overflow-y: auto;
 }
 </style>
