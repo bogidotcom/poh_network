@@ -229,7 +229,7 @@ onUnmounted(() => clearInterval(_timer))
 
 .net-nlabel {
   font-size: 9.5px;
-  fill: #3a3a3a;
+  fill: #888;
   font-family: -apple-system, 'SF Mono', monospace;
   pointer-events: none;
   transition: fill 0.25s;
@@ -288,9 +288,9 @@ onUnmounted(() => clearInterval(_timer))
 }
 .net-legend-group { display: flex; gap: 1.25rem; flex-wrap: wrap; align-items: center; }
 .nl-sep { width: 1px; height: 14px; background: #222; flex-shrink: 0; }
-.nl-item { display: flex; align-items: center; gap: 0.4rem; font-size: 1.1rem; color: #3a3a3a; white-space: nowrap; }
+.nl-item { display: flex; align-items: center; gap: 0.4rem; font-size: 1.1rem; color: #888; white-space: nowrap; }
 .nl-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; border: 1px solid transparent; }
-.nl-dot--evm    { background: #1a1a1a; border-color: #333; }
+.nl-dot--evm    { background: #1a1a1a; border-color: #888; }
 .nl-dot--solana { background: #0d0019; border-color: #4a2a7a; }
 .nl-dot--rest   { background: #0d0d0d; border-color: #222; }
 .nl-dot--eval   { background: #0a1a0a; border-color: #1a4a1a; }

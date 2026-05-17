@@ -230,7 +230,7 @@ const emit = defineEmits(['show-section', 'load-profile', 'load-my-votes'])
 .sh-cmd     { color: #7ec8e3; }
 .sh-flag    { color: #9d7ec8; }
 .sh-str     { color: #a8d8a8; }
-.sh-comment { color: #555; font-style: italic; }
+.sh-comment { color: #888; font-style: italic; }
 
 /* JavaScript */
 .js-kw   { color: #c792ea; }

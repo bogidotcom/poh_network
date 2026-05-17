@@ -30,7 +30,7 @@ function go(section, extra) {
         <PlusSquare :size="14" class="icon" /> Train
       </button>
       <button :class="['nav-btn', { active: current === 'votes'    }]" @click="go('votes', 'load')">
-        <Vote :size="14" class="icon" /> Vote
+        <Vote :size="14" class="icon" /> Feedback
       </button>
       <button :class="['nav-btn', { active: current === 'staking'  }]" @click="go('staking')">
         <SquareArrowDown :size="14" class="icon" /> Stake

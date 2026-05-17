@@ -36,7 +36,7 @@ const emit = defineEmits([
     <div class="scan-hero">
       <div class="scan-tag">WALLET SCANNER</div>
       <h2 class="scan-title">Verify any wallet</h2>
-      <p class="scan-sub">Run all registered detection methods simultaneously and get an AI verdict.</p>
+      <p class="scan-sub">Detect who controls crypto wallet and get an AI verdict.</p>
     </div>
 
     <div class="scan-box">
@@ -130,7 +130,18 @@ const emit = defineEmits([
         </span>
       </div>
       <p class="brain-reasoning">{{ brainVerdict.reasoning }}</p>
-      <div class="brain-conf">Confidence: {{ Math.round((brainVerdict.confidence || 0) * 100) }}%</div>
+      <div class="brain-conf">
+        <span class="brain-conf-icon">🤖</span>
+        <div class="brain-conf-track">
+          <div
+            class="brain-conf-fill"
+            :class="brainVerdict.verdict === 'HUMAN' ? 'brain-conf-human' : 'brain-conf-bot'"
+            :style="{ width: Math.round((brainVerdict.confidence || 0) * 100) + '%' }"
+          ></div>
+          <span class="brain-conf-pct">{{ Math.round((brainVerdict.confidence || 0) * 100) }}</span>
+        </div>
+        <span class="brain-conf-icon">👤</span>
+      </div>
     </div>
   </div>
 </template>

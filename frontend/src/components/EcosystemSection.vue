@@ -1,11 +1,24 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 import { ExternalLink, Globe } from 'lucide-vue-next'
 
 const projects  = ref([])
 const loading   = ref(false)
 const view      = ref('list')
+const searchQuery = ref('')
+
+const filteredProjects = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase()
+  const list = Array.isArray(projects.value) ? projects.value : []
+  if (!q) return list
+  return list.filter(p =>
+    p.name?.toLowerCase().includes(q) ||
+    p.description?.toLowerCase().includes(q) ||
+    p.integration?.toLowerCase().includes(q) ||
+    p.website?.toLowerCase().includes(q)
+  )
+})
 
 const form = ref({ name: '', website: '', logo: '', description: '', integration: '', contact: '' })
 const submitting = ref(false)
@@ -15,7 +28,7 @@ async function loadProjects() {
   loading.value = true
   try {
     const res = await axios.get('/ecosystem')
-    projects.value = res.data
+    projects.value = Array.isArray(res.data) ? res.data : (res.data?.projects ?? [])
   } catch {
     projects.value = []
   } finally {
@@ -69,13 +82,33 @@ onMounted(loadProjects)
       <div v-if="loading" class="empty-state"><p>Loading...</p></div>
 
       <div v-else-if="projects.length === 0" class="form-section" style="text-align:center;padding:2.5rem 1.5rem">
-        <Globe :size="32" style="color:#333;margin-bottom:1rem" />
-        <p style="color:#555;margin-bottom:1.5rem;font-size:0.9rem">No integrations listed yet.</p>
+        <Globe :size="32" style="color:#888;margin-bottom:1rem" />
+        <p style="color:#888;margin-bottom:1.5rem;font-size:0.9rem">No integrations listed yet.</p>
         <button class="submit-listing-btn" @click="view = 'apply'">Be the first →</button>
       </div>
 
-      <div v-else class="eco-grid">
-        <div v-for="p in projects" :key="p.id" class="form-section eco-card">
+      <div v-else>
+        <div class="eco-search-wrap">
+          <svg class="eco-search-icon" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" stroke-width="1.4"/>
+            <path d="M10 10l3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          </svg>
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="Search projects…"
+            class="eco-search-input"
+            autocomplete="off"
+          />
+          <button v-if="searchQuery" class="eco-search-clear" @click="searchQuery = ''">×</button>
+        </div>
+
+        <div v-if="filteredProjects.length === 0" class="eco-no-results">
+          No projects match "{{ searchQuery }}"
+        </div>
+
+        <div v-else class="eco-grid">
+        <div v-for="p in filteredProjects" :key="p.id" class="form-section eco-card">
           <div class="eco-card-top">
             <div class="eco-logo">
               <img v-if="p.logo" :src="p.logo" :alt="p.name" class="eco-logo-img" @error="e => e.target.style.display='none'" />
@@ -93,6 +126,7 @@ onMounted(loadProjects)
             <span class="form-section-label">Integration</span>
           </div>
           <p class="eco-card-text eco-card-integration">{{ p.integration }}</p>
+        </div>
         </div>
       </div>
     </template>
@@ -160,7 +194,55 @@ onMounted(loadProjects)
 
 <style scoped>
 .field-required { color: #e05050; }
-.field-hint-inline { color: #2e2e2e; font-weight: 400; margin-left: 0.3rem; font-size: 0.68rem; }
+.field-hint-inline {
+  color: #2e2e2e;
+  font-weight: 400;
+  margin-left: 0.3rem;
+  font-size: 0.68rem;
+  display: contents;
+}
+
+/* Search */
+.eco-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #060606;
+  border: 1px solid #1a1a1a;
+  border-radius: 8px;
+  padding: 0 0.75rem;
+  margin-bottom: 1rem;
+  transition: border-color 0.15s;
+}
+.eco-search-wrap:focus-within { border-color: #2a2a2a; }
+.eco-search-icon { width: 14px; height: 14px; color: #333; flex-shrink: 0; }
+.eco-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #aaa;
+  font-size: 0.82rem;
+  padding: 0.6rem 0;
+}
+.eco-search-input::placeholder { color: #2e2e2e; }
+.eco-search-clear {
+  background: none;
+  border: none;
+  color: #333;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.12s;
+}
+.eco-search-clear:hover { color: #666; }
+.eco-no-results {
+  text-align: center;
+  padding: 2rem;
+  font-size: 0.82rem;
+  color: #333;
+}
 
 /* Partner grid */
 .eco-grid { display: flex; flex-direction: column; gap: 0.75rem; }
@@ -192,7 +274,7 @@ onMounted(loadProjects)
   align-items: center;
   gap: 2px;
   font-size: 0.73rem;
-  color: #555;
+  color: #888;
   text-decoration: none;
   transition: color 0.15s;
 }

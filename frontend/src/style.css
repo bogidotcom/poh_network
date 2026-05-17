@@ -6,7 +6,7 @@
   --border-mid: #2a2a2a;
   --text-primary: #fff;
   --text-secondary: #666;
-  --text-muted: #3a3a3a;
+  --text-muted: #888;
   --green: #22c55e;
   --red: #ef4444;
 
@@ -131,7 +131,7 @@ h1, h2, h3 { font-weight: 600; letter-spacing: -0.03em; }
 }
 
 .result-empty {
-  color: #333;
+  color: #888;
   font-size: 0.85rem;
   padding: 0.5rem 0;
 }
@@ -184,7 +184,7 @@ h1, h2, h3 { font-weight: 600; letter-spacing: -0.03em; }
 }
 .form-section-label {
   font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.16em; color: #3a3a3a;
+  letter-spacing: 0.16em; color: #888;
 }
 .field-label {
   display: block; font-size: 0.72rem; font-weight: 500;
@@ -217,7 +217,7 @@ h1, h2, h3 { font-weight: 600; letter-spacing: -0.03em; }
 .submit-listing-btn:hover:not(:disabled) { opacity: 0.88; }
 .submit-listing-btn:disabled { opacity: 0.2; cursor: not-allowed; }
 
-.empty-state { text-align: center; padding: 4rem 1rem; color: #555; }
+.empty-state { text-align: center; padding: 4rem 1rem; color: #888; }
 .prompt-text  { color: #808080; margin-bottom: 1.25rem; font-size: 1rem; }
 
 ::-webkit-scrollbar { width: 5px; }

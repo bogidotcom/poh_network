@@ -102,6 +102,20 @@ export function useVoting({ walletAddress, connected, adapterSignMessage }) {
     } catch {}
   }
 
+  // Navigate to a specific method by id — inserts it at the front if not already in list
+  async function jumpToMethod(methodId) {
+    const existing = votingList.value.findIndex(m => m.id === methodId)
+    if (existing !== -1) {
+      voteIndex.value = existing
+      return
+    }
+    try {
+      const { data } = await axios.get(`/methods/verifyer/${methodId}`)
+      votingList.value = [data, ...votingList.value]
+      voteIndex.value = 0
+    } catch {}
+  }
+
   return {
     votingList,
     voteIndex,
@@ -118,5 +132,6 @@ export function useVoting({ walletAddress, connected, adapterSignMessage }) {
     confirmVote,
     loadMyVotes,
     fetchMethodsForGraph,
+    jumpToMethod,
   }
 }

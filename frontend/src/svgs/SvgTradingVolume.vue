@@ -89,6 +89,6 @@
                 <text x="162" y="140" fill="#22c55e80" font-size="7" font-family="monospace" opacity="0">
                   <animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.3s" fill="freeze"/>REAL</text>
                 <!-- baseline -->
-                <line x1="20" y1="160" x2="220" y2="160" stroke="#333" stroke-width="1"/>
+                <line x1="20" y1="160" x2="220" y2="160" stroke="#888" stroke-width="1"/>
               </svg>
 </template>
