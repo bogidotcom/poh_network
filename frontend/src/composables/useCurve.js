@@ -1,50 +1,75 @@
 import { ref } from 'vue'
 import axios from 'axios'
-import { Connection, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL } from '@solana/web3.js'
+import {
+  Connection, PublicKey, LAMPORTS_PER_SOL,
+} from '@solana/web3.js'
+import {
+  DynamicBondingCurveClient,
+  swapQuote,
+  getPriceFromSqrtPrice,
+} from '@meteora-ag/dynamic-bonding-curve-sdk'
+import BN from 'bn.js'
+import { getAssociatedTokenAddressSync } from '@solana/spl-token'
 
-// Base58 encoder (mirrors useVoting.js approach — no extra dep)
-const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
-function encodeBase58(bytes) {
-  let n = BigInt('0x' + Array.from(bytes, b => b.toString(16).padStart(2, '0')).join(''))
-  let result = ''
-  while (n > 0n) { result = B58[Number(n % 58n)] + result; n /= 58n }
-  for (const b of bytes) { if (b !== 0) break; result = '1' + result }
-  return result
-}
-
-export function useCurve({ walletAddress, walletProvider, adapterSignMessage, SOLANA_RPC, FEE_RECIPIENT }) {
-  const curveState   = ref(null)
+export function useCurve({ walletAddress, walletProvider, SOLANA_RPC, pohFeeRecipient, referralWallet }) {
+  const curveState   = ref(null)   // { poolAddress, mintAddress, currentPriceSol, ... }
   const chartCandles = ref([])
   const solBalance   = ref(0)
-  const ownedTokens  = ref(0)
+  const ownedTokens  = ref(0)      // user's signal token balance (on-chain SPL)
   const quoteResult  = ref(null)
   const loading      = ref(false)
   const error        = ref(null)
 
-  // ── Helpers ─────────────────────────────────────────────────────────────────
+  // ── Referral — resolves WSOL ATA of referral wallet or POH fee recipient ──────
+  // Meteora requires an SPL token account (WSOL ATA), not a wallet address.
+  // Returns null if the ATA doesn't exist on-chain (safe — skips referral fee).
+  const WSOL_MINT = new PublicKey('So11111111111111111111111111111111111111112')
+
+  async function getReferralTokenAccount(conn) {
+    const addr = referralWallet?.value || pohFeeRecipient?.value
+    if (!addr) return null
+    try {
+      const wallet = new PublicKey(addr)
+      const ata    = getAssociatedTokenAddressSync(WSOL_MINT, wallet)
+      const info   = await conn.getAccountInfo(ata)
+      return info ? ata : null   // only pass ATA if it already exists on-chain
+    } catch { return null }
+  }
+
+  // ── Connection helper ────────────────────────────────────────────────────────
+
+  function getConn() {
+    return new Connection(SOLANA_RPC.value || 'https://api.devnet.solana.com', 'confirmed')
+  }
+
+  // ── Balance ──────────────────────────────────────────────────────────────────
 
   async function loadSolBalance() {
     if (!walletAddress.value || !SOLANA_RPC.value) return
     try {
-      const conn = new Connection(SOLANA_RPC.value, 'confirmed')
-      const bal  = await conn.getBalance(new PublicKey(walletAddress.value))
+      const bal = await getConn().getBalance(new PublicKey(walletAddress.value))
       solBalance.value = bal / LAMPORTS_PER_SOL
     } catch { solBalance.value = 0 }
   }
+
+  async function loadTokenBalance(mintAddress) {
+    if (!walletAddress.value || !mintAddress) { ownedTokens.value = 0; return }
+    try {
+      const ata  = getAssociatedTokenAddressSync(new PublicKey(mintAddress), new PublicKey(walletAddress.value))
+      const info = await getConn().getTokenAccountBalance(ata)
+      ownedTokens.value = parseInt(info.value.amount) // raw units (6 decimals)
+    } catch { ownedTokens.value = 0 }
+  }
+
+  // ── Curve state ──────────────────────────────────────────────────────────────
 
   async function loadCurveState(methodId) {
     if (!methodId) return
     try {
       const { data } = await axios.get(`/curves/${methodId}`)
       curveState.value = data
+      await loadTokenBalance(data.mintAddress)
     } catch { curveState.value = null }
-    // Load owned tokens from profile
-    if (walletAddress.value) {
-      try {
-        const { data } = await axios.get(`/profile/${walletAddress.value}`)
-        ownedTokens.value = data?.profile?.signalTokens?.[methodId] || 0
-      } catch { ownedTokens.value = 0 }
-    }
   }
 
   async function loadChart(methodId) {
@@ -55,81 +80,148 @@ export function useCurve({ walletAddress, walletProvider, adapterSignMessage, SO
     } catch { chartCandles.value = [] }
   }
 
-  async function getQuote(methodId, action, tokenAmount) {
+  // ── Quote (via backend, which reads on-chain pool) ───────────────────────────
+  // amount: SOL lamports (for buy) or raw token units (for sell)
+  async function getQuote(methodId, action, amount) {
     quoteResult.value = null
-    if (!methodId || !tokenAmount || tokenAmount <= 0) return
+    if (!methodId || !amount || amount <= 0) return
     try {
       const { data } = await axios.get(`/curves/${methodId}/quote`, {
-        params: { action, amount: tokenAmount, wallet: walletAddress.value || undefined },
+        params: { action, amount },
       })
       quoteResult.value = data
-    } catch (err) {
-      quoteResult.value = null
-    }
+    } catch { quoteResult.value = null }
   }
 
-  // ── Buy: send SOL → receive signal tokens ───────────────────────────────────
-  async function buySignal(methodId, tokenAmount) {
+  // ── Buy: SOL → signal tokens (on-chain Meteora swap) ─────────────────────────
+  async function buySignal(methodId, solLamports) {
     if (!walletAddress.value || !walletProvider.value)
       throw new Error('Wallet not connected')
-    if (!FEE_RECIPIENT.value)
-      throw new Error('FEE_RECIPIENT not configured')
 
     loading.value = true
     error.value   = null
     try {
-      // Fetch quote for gross SOL cost
-      const { data: quote } = await axios.get(`/curves/${methodId}/quote`, {
-        params: { action: 'buy', amount: tokenAmount },
+      const { data: poolInfo } = await axios.get(`/curves/${methodId}`)
+      if (!poolInfo?.poolAddress) throw new Error('Pool not found on server')
+
+      const conn   = getConn()
+      const client = DynamicBondingCurveClient.create(conn)
+      const owner  = new PublicKey(walletAddress.value)
+      const pool   = new PublicKey(poolInfo.poolAddress)
+
+      // Get minimum amount out with 1 % slippage
+      const referralTokenAccount = await getReferralTokenAccount(conn)
+      const poolState  = await client.state.getPool(pool)
+      const configState = await client.state.getPoolConfig(poolState.config)
+      const quote       = swapQuote(poolState, configState, false /* buy base */, new BN(solLamports.toString()), 100 /* 1% slippage */, !!referralTokenAccount)
+
+      const tx = await client.pool.swap({
+        pool,
+        amountIn:         new BN(solLamports.toString()),
+        minimumAmountOut: quote.minimumAmountOut ?? quote.minimumOutputAmount,
+        swapBaseForQuote: false,  // buying signal tokens with SOL
+        owner,
+        payer:            owner,
+        referralTokenAccount,
       })
-      const lamports = quote.grossCostLamports
 
-      // Build and send SOL transfer tx
-      const conn = new Connection(SOLANA_RPC.value, 'confirmed')
-      const { blockhash } = await conn.getLatestBlockhash()
-      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: new PublicKey(walletAddress.value) }).add(
-        SystemProgram.transfer({
-          fromPubkey: new PublicKey(walletAddress.value),
-          toPubkey:   new PublicKey(FEE_RECIPIENT.value),
-          lamports:   BigInt(lamports),
-        })
-      )
-      const signed  = await walletProvider.value.signTransaction(tx)
-      const txHash  = await conn.sendRawTransaction(signed.serialize())
-      await conn.confirmTransaction(txHash, 'confirmed')
+      const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash()
+      tx.recentBlockhash = blockhash
+      tx.feePayer        = owner
 
-      // Notify backend to credit tokens
-      await axios.post(`/curves/${methodId}/buy`, { txHash, walletAddress: walletAddress.value, tokenAmount })
+      const signed = await walletProvider.value.signTransaction(tx)
+      const sig    = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: false })
+      await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed')
 
       await Promise.all([loadCurveState(methodId), loadChart(methodId), loadSolBalance()])
-      return txHash
+      return sig
     } finally {
       loading.value = false
     }
   }
 
-  // ── Sell: burn signal tokens → receive SOL ──────────────────────────────────
+  // ── Sell: signal tokens → SOL (on-chain Meteora swap) ────────────────────────
   async function sellSignal(methodId, tokenAmount) {
-    if (!walletAddress.value || !adapterSignMessage.value)
-      throw new Error('Wallet not connected or signing not supported')
+    if (!walletAddress.value || !walletProvider.value)
+      throw new Error('Wallet not connected')
 
     loading.value = true
     error.value   = null
     try {
-      const ts      = Date.now()
-      const message = `poh-sell-v1:${methodId}:${tokenAmount}:${walletAddress.value}:${ts}`
-      const sigBytes = await adapterSignMessage.value(new TextEncoder().encode(message))
-      const signature = encodeBase58(sigBytes)
+      const { data: poolInfo } = await axios.get(`/curves/${methodId}`)
+      if (!poolInfo?.poolAddress) throw new Error('Pool not found on server')
 
-      const { data } = await axios.post(`/curves/${methodId}/sell`, {
-        walletAddress: walletAddress.value,
-        tokenAmount,
-        signature,
-        message,
+      const conn   = getConn()
+      const client = DynamicBondingCurveClient.create(conn)
+      const owner  = new PublicKey(walletAddress.value)
+      const pool   = new PublicKey(poolInfo.poolAddress)
+
+      // Get minimum SOL out with 1 % slippage
+      const referralTokenAccount = await getReferralTokenAccount(conn)
+      const poolState   = await client.state.getPool(pool)
+      const configState = await client.state.getPoolConfig(poolState.config)
+      const quote        = swapQuote(poolState, configState, true /* sell base */, new BN(tokenAmount.toString()), 100 /* 1% slippage */, !!referralTokenAccount)
+
+      const tx = await client.pool.swap({
+        pool,
+        amountIn:         new BN(tokenAmount.toString()),
+        minimumAmountOut: quote.minimumAmountOut ?? quote.minimumOutputAmount,
+        swapBaseForQuote: true,   // selling signal tokens for SOL
+        owner,
+        payer:            owner,
+        referralTokenAccount,
       })
 
+      const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash()
+      tx.recentBlockhash = blockhash
+      tx.feePayer        = owner
+
+      const signed = await walletProvider.value.signTransaction(tx)
+      const sig    = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: false })
+      await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed')
+
       await Promise.all([loadCurveState(methodId), loadChart(methodId), loadSolBalance()])
-      return data.txHash
+      return sig
+    } finally {
+      loading.value = false
+    }
+  }
+
+  // ── Claim creator trading fees ────────────────────────────────────────────────
+  async function claimCreatorFees(methodId) {
+    if (!walletAddress.value || !walletProvider.value)
+      throw new Error('Wallet not connected')
+
+    loading.value = true
+    error.value   = null
+    try {
+      const { data: poolInfo } = await axios.get(`/curves/${methodId}`)
+      if (!poolInfo?.poolAddress) throw new Error('Pool not found')
+
+      const conn   = getConn()
+      const client = DynamicBondingCurveClient.create(conn)
+      const owner  = new PublicKey(walletAddress.value)
+      const pool   = new PublicKey(poolInfo.poolAddress)
+
+      const tx = await client.creator.claimCreatorTradingFee({
+        pool,
+        creator:         owner,
+        receiver:        owner,
+        payer:           owner,
+        maxBaseAmount:   BigInt('18446744073709551615'), // u64::MAX — claim all
+        maxQuoteAmount:  BigInt('18446744073709551615'),
+      })
+
+      const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash()
+      tx.recentBlockhash = blockhash
+      tx.feePayer        = owner
+
+      const signed = await walletProvider.value.signTransaction(tx)
+      const sig    = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: false })
+      await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed')
+
+      await loadSolBalance()
+      return sig
     } finally {
       loading.value = false
     }
@@ -137,6 +229,7 @@ export function useCurve({ walletAddress, walletProvider, adapterSignMessage, SO
 
   return {
     curveState, chartCandles, solBalance, ownedTokens, quoteResult, loading, error,
-    loadSolBalance, loadCurveState, loadChart, getQuote, buySignal, sellSignal,
+    loadSolBalance, loadCurveState, loadTokenBalance, loadChart, getQuote,
+    buySignal, sellSignal, claimCreatorFees,
   }
 }
