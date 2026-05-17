@@ -356,6 +356,7 @@ function signalStrength(item) {
           <span class="vqs-detail-label">Expression</span>
           <code class="vqs-detail-code">{{ currentVoteItem.expression }}</code>
         </div>
+
       </div>
 
       <!-- Chart -->
