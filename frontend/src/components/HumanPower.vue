@@ -457,9 +457,6 @@ onUnmounted(() => {
         <button :class="['nav-btn', { active: currentSection === 'votes' }]" @click="showSection('votes'); loadVoting()">
           <Vote class="icon" :size="14" /> Vote
         </button>
-        <button :class="['nav-btn', { active: currentSection === 'staking' }]" @click="showSection('staking')">
-          <SquareArrowDown class="icon" :size="14" /> Stake
-        </button>
         <button :class="['nav-btn', { active: currentSection === 'ecosystem' }]" @click="showSection('ecosystem')">
           <Globe class="icon" :size="14" /> Ecosystem
         </button>
@@ -502,7 +499,6 @@ onUnmounted(() => {
         <button :class="['mobile-nav-btn', { active: currentSection === 'listing' }]" @click="showSection('listing')">Train</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'votes' }]" @click="showSection('votes'); loadVoting()">Feedback</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'ecosystem' }]" @click="showSection('ecosystem')">Ecosystem</button>
-        <button :class="['mobile-nav-btn', { active: currentSection === 'staking' }]" @click="showSection('staking')">Stake</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'about' }]" @click="showSection('about')">About</button>
         <div class="mobile-menu-divider"></div>
         <button v-if="!connected" @click="showWalletModal = true; mobileMenuOpen = false" class="mobile-nav-btn mobile-connect">
@@ -1466,8 +1462,8 @@ const results = await pollJob(jobId)</pre>
         </div>
       </div>
 
-      <!-- Staking -->
-      <div v-if="currentSection === 'staking'" class="staking-page">
+      <!-- Staking (hidden until mainnet contract deployed) -->
+      <div v-if="false && currentSection === 'staking'" class="staking-page">
         <div class="scan-hero">
           <div class="scan-tag">STAKING</div>
           <h2 class="scan-title">Stake POH</h2>
