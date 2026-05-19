@@ -3,6 +3,7 @@ import { Connection, PublicKey, SystemProgram, SYSVAR_RENT_PUBKEY } from '@solan
 import {
   getAssociatedTokenAddress,
   TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
   createAssociatedTokenAccountInstruction,
 } from '@solana/spl-token'
 import IDL from './poh_staking_idl.json'
@@ -58,10 +59,11 @@ export async function getPohBalance(walletAddress, pohMint, rpcUrl) {
     const conn = new Connection(rpcUrl, 'confirmed')
     const mint = new PublicKey(pohMint)
     const user = new PublicKey(walletAddress)
-    const ata  = await getAssociatedTokenAddress(mint, user)
+    const ata  = await getAssociatedTokenAddress(mint, user, false, TOKEN_2022_PROGRAM_ID)
     const info = await conn.getTokenAccountBalance(ata)
     return parseFloat(info.value.uiAmount || 0)
-  } catch {
+  } catch (e) {
+    console.warn('[getPohBalance] failed:', e?.message)
     return 0
   }
 }

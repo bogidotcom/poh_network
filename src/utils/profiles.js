@@ -66,7 +66,7 @@ function consumeFreeScan(address) {
 }
 
 // ── Bulk pricing curve ────────────────────────────────────────────────────────
-// Returns cost in POH tokens (6 decimals, integer) for `count` addresses
+// Returns cost in POH tokens (9 decimals, integer) for `count` addresses
 function calcScanCost(count) {
   let rate;
   if (count >= 500)      rate = 0.40;
@@ -74,7 +74,7 @@ function calcScanCost(count) {
   else if (count >= 50)  rate = 0.70;
   else if (count >= 10)  rate = 0.85;
   else                   rate = 1.00;
-  const total = Math.ceil(count * rate * 1_000_000); // 6 decimals, round up
+  const total = Math.ceil(count * rate * 1_000_000_000); // 9 decimals, round up
   return { total, rate, perAddress: rate };
 }
 

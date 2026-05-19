@@ -21,7 +21,11 @@ export default defineConfig({
       '/profile': 'http://localhost:3000',
       '/evm':     'http://localhost:3000',
       '/rest':    'http://localhost:3000',
-      '/abi':     'http://localhost:3000',
+      '/abi':       'http://localhost:3000',
+      '/ecosystem': 'http://localhost:3000',
+      '/verifyer':  'http://localhost:3000',
+      '/listing':   'http://localhost:3000',
+      '/curves':    'http://localhost:3000',
     }
   }
 })

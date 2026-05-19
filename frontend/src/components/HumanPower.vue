@@ -37,7 +37,7 @@ import {
 } from '../pohProgram.js'
 
 // ── Devnet network suggestion — set to false to disable ───────────────────────
-const SUGGEST_DEVNET_NETWORK = true
+const SUGGEST_DEVNET_NETWORK = false
 
 // ── UI State ──────────────────────────────────────────────────────────────────
 const currentSection = ref('landing')
@@ -69,7 +69,7 @@ const {
   SOLANA_RPC,
   onConnect: () => {
     loadProfile()
-    if (POH_MINT.value) loadPohBalance()
+    loadPohBalance()
     if (currentSection.value === 'votes') loadVoting()
     if (SUGGEST_DEVNET_NETWORK) suggestDevnetNetwork()
   },
@@ -261,7 +261,7 @@ const totalStaked    = ref(0)
 const claimLoading   = ref(false)
 
 async function loadPohBalance() {
-  if (!walletAddress.value || !POH_MINT.value) return
+  if (!walletAddress.value || !POH_MINT.value || !SOLANA_RPC.value) return
   pohBalance.value = await getPohBalance(walletAddress.value, POH_MINT.value, SOLANA_RPC.value)
   const info = await getStakeInfo(walletAddress.value, SOLANA_RPC.value)
   stakedBalance.value = info.staked
@@ -375,14 +375,14 @@ function autoExpand(e) {
 
 // ── Watchers ──────────────────────────────────────────────────────────────────
 watch(walletAddress, (addr) => {
-  if (addr && POH_MINT.value) loadPohBalance()
+  if (addr) loadPohBalance()
   if (addr) loadProfile()
 })
 
 onMounted(async () => {
   await fetchConfig()
   if (currentSection.value === 'votes') loadVoting()
-  if (connected.value) loadPohBalance()
+  if (connected.value || walletAddress.value) loadPohBalance()
   fetchMethodsForGraph()
   startNetAnim()
 })
@@ -394,8 +394,8 @@ onUnmounted(() => {
 
 <template>
   <div class="app-container">
-    <!-- Devnet banner -->
-    <div class="devnet-bar">
+    <!-- Devnet banner (hidden on mainnet) -->
+    <div v-if="false" class="devnet-bar">
       <span class="devnet-label">DEVNET</span>
       <span class="devnet-sep">·</span>
       <span class="devnet-hint">Test environment — Not priced by markets. Valued by people.</span>
