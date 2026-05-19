@@ -8,6 +8,7 @@ import VoteQueueSection from './VoteQueueSection.vue'
 import ProfileSection from './ProfileSection.vue'
 import ApiDocsSection from './ApiDocsSection.vue'
 import EcosystemSection from './EcosystemSection.vue'
+import AboutSection from './AboutSection.vue'
 import {
   Search, PlusSquare, Vote,
   Activity, SquareArrowDown, PersonStanding, FolderCode, CreditCard, Bitcoin, Waypoints, FingerprintPattern, CandlestickChart,
@@ -462,6 +463,9 @@ onUnmounted(() => {
         <button :class="['nav-btn', { active: currentSection === 'ecosystem' }]" @click="showSection('ecosystem')">
           <Globe class="icon" :size="14" /> Ecosystem
         </button>
+        <button :class="['nav-btn', { active: currentSection === 'about' }]" @click="showSection('about')">
+          About
+        </button>
       </nav>
 
       <div class="header-right">
@@ -499,6 +503,7 @@ onUnmounted(() => {
         <button :class="['mobile-nav-btn', { active: currentSection === 'votes' }]" @click="showSection('votes'); loadVoting()">Feedback</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'ecosystem' }]" @click="showSection('ecosystem')">Ecosystem</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'staking' }]" @click="showSection('staking')">Stake</button>
+        <button :class="['mobile-nav-btn', { active: currentSection === 'about' }]" @click="showSection('about')">About</button>
         <div class="mobile-menu-divider"></div>
         <button v-if="!connected" @click="showWalletModal = true; mobileMenuOpen = false" class="mobile-nav-btn mobile-connect">
           Connect Wallet
@@ -1563,6 +1568,9 @@ const results = await pollJob(jobId)</pre>
 
       <!-- Ecosystem -->
       <EcosystemSection v-if="currentSection === 'ecosystem'" />
+
+      <!-- About / Yellow Paper -->
+      <AboutSection v-if="currentSection === 'about'" />
 
     </main>
 
