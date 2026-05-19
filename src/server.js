@@ -3,6 +3,8 @@
 require('dotenv').config();
 const express = require('express');
 const app = express();
+const cors = require('cors');
+app.use(cors({ origin: '*', methods: ['GET','POST','OPTIONS'], allowedHeaders: ['Content-Type','x-api-key','Authorization'] }));
 const path = require('path');
 
 app.use(express.json());

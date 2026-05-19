@@ -227,7 +227,8 @@ async function scanWallet(rawInput, { allMethods, chainFilter }) {
 router.post('/', upload.single('csv'), async (req, res, next) => {
   console.log('[checker] Received scan request');
   try {
-    const { input, walletAddress, chainIds: chainFilter, txHash, apiKey } = req.body;
+    const { input, walletAddress, chainIds: chainFilter, txHash } = req.body;
+    const apiKey = req.body.apiKey || req.headers['x-api-key'];
     const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim()
                   || req.socket?.remoteAddress || null;
 
