@@ -1,7 +1,17 @@
 import { ref } from 'vue'
 import axios from 'axios'
 import { Connection, PublicKey, Transaction } from '@solana/web3.js'
-import { getAssociatedTokenAddress, createTransferInstruction } from '@solana/spl-token'
+import {
+  getAssociatedTokenAddress,
+  createTransferInstruction,
+  createAssociatedTokenAccountInstruction,
+} from '@solana/spl-token'
+
+// Solana mainnet stablecoin mints (standard SPL, 6 decimals)
+const STABLE_MINTS = {
+  USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+  USDT: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+}
 
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 export function encodeBase58(bytes) {
@@ -19,6 +29,7 @@ export function useProfile({ walletAddress, connected, adapterSignMessage, POH_M
   const signupLoading    = ref(false)
   const showDepositModal = ref(false)
   const depositAmount    = ref('')
+  const depositToken     = ref('USDC')   // 'USDC' | 'USDT'
   const depositLoading   = ref(false)
   const depositMsg       = ref(null)
   const offchainClaimLoading = ref(false)
@@ -75,17 +86,36 @@ export function useProfile({ walletAddress, connected, adapterSignMessage, POH_M
     depositMsg.value = null
     try {
       const connection = new Connection(SOLANA_RPC.value, 'confirmed')
-      const mintPubkey = new PublicKey(POH_MINT.value)
+      const mintPubkey = new PublicKey(STABLE_MINTS[depositToken.value])
       const walletPubkey = new PublicKey(walletAddress.value)
       const recipientPubkey = new PublicKey(FEE_RECIPIENT.value)
+      // USDC/USDT use standard SPL TOKEN_PROGRAM_ID (no 4th arg needed)
       const fromAta = await getAssociatedTokenAddress(mintPubkey, walletPubkey)
-      const toAta = await getAssociatedTokenAddress(mintPubkey, recipientPubkey)
-      const tx = new Transaction().add(
+      const toAta   = await getAssociatedTokenAddress(mintPubkey, recipientPubkey)
+
+      // Verify sender ATA exists (gives a clearer error than InvalidAccountData)
+      const fromAtaInfo = await connection.getAccountInfo(fromAta)
+      if (!fromAtaInfo) throw new Error(`You don't have a ${depositToken.value} token account. Send some ${depositToken.value} to your wallet first.`)
+
+      const tx = new Transaction()
+
+      // Create recipient ATA if it doesn't exist yet (e.g. first USDT deposit ever)
+      const toAtaInfo = await connection.getAccountInfo(toAta)
+      if (!toAtaInfo) {
+        tx.add(createAssociatedTokenAccountInstruction(
+          walletPubkey,    // payer (sender covers the rent)
+          toAta,           // ATA address to create
+          recipientPubkey, // owner of the new ATA
+          mintPubkey,      // token mint
+        ))
+      }
+
+      tx.add(
         createTransferInstruction(fromAta, toAta, walletPubkey, BigInt(Math.floor(amount * 1_000_000)))
       )
       const txHash = await signAndSendTransaction(tx)
       const res = await axios.post('/profile/deposit', { address: walletAddress.value, txHash, amount })
-      depositMsg.value = `Deposited ${amount} POH ✓`
+      depositMsg.value = `Deposited $${amount} ${depositToken.value} ✓`
       if (profileData.value?.profile) profileData.value.profile.balance = res.data.balance
       depositAmount.value = ''
     } catch (err) {
@@ -101,8 +131,8 @@ export function useProfile({ walletAddress, connected, adapterSignMessage, POH_M
     stakeMessage.value = null
     try {
       const res = await axios.post('/profile/claim', { address: walletAddress.value })
-      const poh = (res.data.claimed / 1e6).toFixed(2)
-      stakeMessage.value = `Claimed ${poh} POH off-chain rewards ✓`
+      const usd = (res.data.claimed / 1e6).toFixed(2)
+      stakeMessage.value = `Claimed $${usd} off-chain rewards ✓`
       await loadProfile()
       if (loadPohBalance) await loadPohBalance()
     } catch (err) {
@@ -120,6 +150,7 @@ export function useProfile({ walletAddress, connected, adapterSignMessage, POH_M
     signupLoading,
     showDepositModal,
     depositAmount,
+    depositToken,
     depositLoading,
     depositMsg,
     offchainClaimLoading,
