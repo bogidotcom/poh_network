@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import axios from 'axios'
 import BrainGraph from './BrainGraph.vue'
+import WalletProfile from './WalletProfile.vue'
 import ScannerSection from './ScannerSection.vue'
 import ListingSection from './ListingSection.vue'
 import VoteQueueSection from './VoteQueueSection.vue'
@@ -40,9 +41,11 @@ import {
 const SUGGEST_DEVNET_NETWORK = false
 
 // ── UI State ──────────────────────────────────────────────────────────────────
-const currentSection = ref('landing')
-const mobileMenuOpen  = ref(false)
-const walletDropOpen  = ref(false)
+const currentSection    = ref('landing')
+const mobileMenuOpen    = ref(false)
+const walletDropOpen    = ref(false)
+const desktopDropOpen   = ref(false)
+const desktopDropRef    = ref(null)
 const loading = ref(false)
 const error = ref(null)
 const showSection = (id) => { currentSection.value = id; mobileMenuOpen.value = false }
@@ -137,7 +140,7 @@ function dismissNetworkSuggestion() {
 // ── Checker ───────────────────────────────────────────────────────────────────
 const checker = useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, SOLANA_RPC, signAndSendTransaction })
 const {
-  scanInput, resolvedInputDisplay, checkerResults, showEvidence,
+  scanInput, resolvedInputDisplay, checkerResults, ofacResult, showEvidence,
   brainVerdict, brainPolling, brainKey, batchFile, batchRowCount, batchRows,
   isResolving, detectedChain, faucetLoading, faucetMsg,
   runCheck, handleFileSelect, claimFaucet,
@@ -145,8 +148,38 @@ const {
   loading: checkerLoading,
 } = checker
 
-const showEvidencePass = ref(true)
+const showEvidencePass = ref(false)
 const showEvidenceFail = ref(false)
+
+// ── Wallet profile (loaded after verdict arrives) ─────────────────────────────
+const walletProfile        = ref(null)
+const walletProfileLoading = ref(false)
+
+async function loadWalletProfile(address) {
+  walletProfile.value        = null
+  walletProfileLoading.value = true
+  try {
+    const res = await axios.get(`/checker/profile/${address}`)
+    walletProfile.value = res.data
+  } catch (err) {
+    console.warn('[profile] failed to load:', err.message)
+  } finally {
+    walletProfileLoading.value = false
+  }
+}
+
+// Load profile in parallel with brain analysis — starts as soon as scan results arrive
+watch(checkerResults, (results) => {
+  walletProfile.value = null
+  if (!results?.length) return
+  const addr = resolvedInputDisplay.value || scanInput.value?.trim()
+  if (addr) loadWalletProfile(addr)
+})
+
+function handleProfileScan(addr) {
+  scanInput.value = addr
+  runCheck()
+}
 
 // ── Verdict feedback ──────────────────────────────────────────────────────────
 const feedbackSent      = ref(false)
@@ -337,7 +370,7 @@ const profile = useProfile({
 })
 const {
   profileData, profileLoading, profileError, signupLoading,
-  showDepositModal, depositAmount, depositLoading, depositMsg,
+  showDepositModal, depositAmount, depositToken, depositLoading, depositMsg,
   offchainClaimLoading,
   loadProfile, signupProfile, rotateApiKey, submitDeposit, claimOffchainBalance,
 } = profile
@@ -379,16 +412,24 @@ watch(walletAddress, (addr) => {
   if (addr) loadProfile()
 })
 
+function onDocClick(e) {
+  if (desktopDropOpen.value && desktopDropRef.value && !desktopDropRef.value.contains(e.target)) {
+    desktopDropOpen.value = false
+  }
+}
+
 onMounted(async () => {
   await fetchConfig()
   if (currentSection.value === 'votes') loadVoting()
   if (connected.value || walletAddress.value) loadPohBalance()
   fetchMethodsForGraph()
   startNetAnim()
+  document.addEventListener('click', onDocClick)
 })
 
 onUnmounted(() => {
   if (_netTimer) clearInterval(_netTimer)
+  document.removeEventListener('click', onDocClick)
 })
 </script>
 
@@ -451,11 +492,11 @@ onUnmounted(() => {
         <button :class="['nav-btn', { active: currentSection === 'checker' }]" @click="showSection('checker')">
           <Search class="icon" :size="14" /> Scan
         </button>
-        <button :class="['nav-btn', { active: currentSection === 'listing' }]" @click="showSection('listing')">
-          <PlusSquare class="icon" :size="14" /> Train
-        </button>
         <button :class="['nav-btn', { active: currentSection === 'votes' }]" @click="showSection('votes'); loadVoting()">
-          <Vote class="icon" :size="14" /> Vote
+          <Vote class="icon" :size="14" /> Convictions
+        </button>
+        <button :class="['nav-btn', { active: currentSection === 'listing' }]" @click="showSection('listing')">
+          <PlusSquare class="icon" :size="14" /> Add signal
         </button>
         <button :class="['nav-btn', { active: currentSection === 'ecosystem' }]" @click="showSection('ecosystem')">
           <Globe class="icon" :size="14" /> Ecosystem
@@ -471,15 +512,15 @@ onUnmounted(() => {
           <button v-if="!connected" @click="showWalletModal = true" class="select-wallet-btn">
             Connect Wallet
           </button>
-          <div v-else class="wallet-dropdown-wrapper">
-            <div class="connected-status">
+          <div v-else class="wallet-dropdown-wrapper" ref="desktopDropRef">
+            <button class="connected-status" @click="desktopDropOpen = !desktopDropOpen">
               <div class="status-indicator"></div>
               <span class="address-text">{{ shortAddress }}</span>
-            </div>
-            <div class="wallet-dropdown">
-              <button class="wallet-drop-item" @click="showSection('profile'); loadProfile(); loadMyVotes()">Profile</button>
-              <button class="wallet-drop-item" @click="showSection('api')">API</button>
-              <button class="wallet-drop-item wallet-drop-disconnect" @click="disconnectWallet">Disconnect</button>
+            </button>
+            <div class="wallet-dropdown" v-show="desktopDropOpen">
+              <button class="wallet-drop-item" @click="showSection('profile'); loadProfile(); loadMyVotes(); desktopDropOpen = false">Profile</button>
+              <button class="wallet-drop-item" @click="showSection('dev'); desktopDropOpen = false">Dev</button>
+              <button class="wallet-drop-item wallet-drop-disconnect" @click="disconnectWallet; desktopDropOpen = false">Disconnect</button>
             </div>
           </div>
         </div>
@@ -496,8 +537,8 @@ onUnmounted(() => {
       <div class="mobile-menu-inner">
         <button :class="['mobile-nav-btn', { active: currentSection === 'landing' }]" @click="showSection('landing')">POH</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'checker' }]" @click="showSection('checker')">Scan</button>
-        <button :class="['mobile-nav-btn', { active: currentSection === 'listing' }]" @click="showSection('listing')">Train</button>
-        <button :class="['mobile-nav-btn', { active: currentSection === 'votes' }]" @click="showSection('votes'); loadVoting()">Feedback</button>
+        <button :class="['mobile-nav-btn', { active: currentSection === 'votes' }]" @click="showSection('votes'); loadVoting()">Convictions</button>
+        <button :class="['mobile-nav-btn', { active: currentSection === 'listing' }]" @click="showSection('listing')">Add signal</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'ecosystem' }]" @click="showSection('ecosystem')">Ecosystem</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'about' }]" @click="showSection('about')">About</button>
         <div class="mobile-menu-divider"></div>
@@ -512,7 +553,7 @@ onUnmounted(() => {
           </button>
           <div v-if="walletDropOpen" class="mobile-wallet-drop">
             <button class="mobile-wallet-drop-item" @click="showSection('profile'); loadProfile(); loadMyVotes(); mobileMenuOpen = false; walletDropOpen = false">Profile</button>
-            <button class="mobile-wallet-drop-item" @click="showSection('api'); mobileMenuOpen = false; walletDropOpen = false">API</button>
+            <button class="mobile-wallet-drop-item" @click="showSection('dev'); mobileMenuOpen = false; walletDropOpen = false">Dev</button>
             <button class="mobile-wallet-drop-item mobile-wallet-drop-disconnect" @click="disconnectWallet(); mobileMenuOpen = false; walletDropOpen = false">Disconnect</button>
           </div>
         </template>
@@ -566,17 +607,21 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Deposit POH Modal -->
+    <!-- Deposit Modal -->
     <div v-if="showDepositModal" class="modal-overlay" @click.self="showDepositModal = false">
       <div class="glass-panel modal">
-        <h3 class="modal-title">Deposit POH</h3>
-        <p class="modal-desc">Send POH to your off-chain API balance. Useful for API calls without wallet interaction.</p>
-        <div class="flex-input" style="margin:1rem 0">
-          <input type="number" v-model="depositAmount" placeholder="Amount in POH" class="premium-input flex-grow" min="1" step="1" />
+        <h3 class="modal-title">Deposit to API Balance</h3>
+        <p class="modal-desc">Top up your off-chain scan credits. 1,000 scans = $1.</p>
+        <div class="token-toggle" style="display:flex;gap:0.5rem;margin-bottom:0.75rem">
+          <button :class="['token-btn', depositToken === 'USDC' && 'token-btn--active']" @click="depositToken = 'USDC'">USDC</button>
+          <button :class="['token-btn', depositToken === 'USDT' && 'token-btn--active']" @click="depositToken = 'USDT'">USDT</button>
+        </div>
+        <div class="flex-input" style="margin:0.5rem 0 1rem">
+          <input type="number" v-model="depositAmount" :placeholder="`Amount in ${depositToken}`" class="premium-input flex-grow" min="0.001" step="0.001" />
         </div>
         <div v-if="depositMsg" :class="['deposit-msg', depositMsg.includes('✓') ? 'deposit-ok' : 'deposit-err']">{{ depositMsg }}</div>
         <button class="submit-listing-btn" :disabled="depositLoading || !depositAmount" @click="submitDeposit()">
-          {{ depositLoading ? 'Sending...' : 'Send POH' }}
+          {{ depositLoading ? 'Sending...' : `Send ${depositToken}` }}
         </button>
         <button class="modal-close" @click="showDepositModal = false; depositMsg = null">Cancel</button>
       </div>
@@ -690,7 +735,7 @@ onUnmounted(() => {
           <div class="feat-left">
             <div class="feat-tag">COMMUNITY</div>
             <h2 class="feat-title">You decide what<br>counts as human</h2>
-            <p class="feat-body">Every detection method goes through community consensus.</p>
+            <p class="feat-body">Every detection signal goes through community consensus.</p>
             <button class="feat-cta" @click="showSection('votes'); loadVoting()">Open Vote Queue →</button>
           </div>
         </section>
@@ -784,7 +829,7 @@ onUnmounted(() => {
         <div class="scan-hero">
           <div class="scan-tag">WALLET SCANNER</div>
           <h2 class="scan-title">Human or AI</h2>
-          <p class="scan-sub">Run all registered detection methods simultaneously and get an AI verdict.</p>
+          <p class="scan-sub">Run all registered detection signals simultaneously and get an AI verdict.</p>
         </div>
 
         <div class="scan-box">
@@ -822,54 +867,33 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div v-if="checkerResults" class="results-accordion">
-          <div class="evidence-header">
-            <div class="accordion-dots">
-              <span v-for="r in checkerResults.slice(0, 12)" :key="r.methodId"
-                :class="['acc-dot', r.result ? 'pass' : 'fail']"></span>
-            </div>
-            <span class="evidence-title">Evidence</span>
-            <span class="accordion-summary">{{ checkerResults.filter(r => r.result).length }}/{{ checkerResults.length }} passed</span>
-          </div>
-
-          <!-- Pass accordion -->
-          <button class="results-accordion-header sub" @click="showEvidencePass = !showEvidencePass">
-            <div class="accordion-left">
-              <div class="result-dot pass"></div>
-              <span class="accordion-summary">Pass ({{ checkerResults.filter(r => r.result).length }})</span>
-            </div>
-            <span class="accordion-chevron" :class="{ open: showEvidencePass }">›</span>
-          </button>
-          <div v-show="showEvidencePass" class="results-list">
-            <div v-for="res in checkerResults.filter(r => r.result)" :key="res.methodId" class="result-row">
-              <div class="result-dot pass"></div>
-              <span class="result-desc">{{ res.description }}</span>
-              <span class="status-badge human">PASS</span>
-            </div>
-            <div v-if="!checkerResults.filter(r => r.result).length" class="result-row result-empty">No signals passed</div>
-          </div>
-
-          <!-- Fail accordion -->
-          <button class="results-accordion-header sub" @click="showEvidenceFail = !showEvidenceFail">
-            <div class="accordion-left">
-              <div class="result-dot fail"></div>
-              <span class="accordion-summary">Fail ({{ checkerResults.filter(r => !r.result).length }})</span>
-            </div>
-            <span class="accordion-chevron" :class="{ open: showEvidenceFail }">›</span>
-          </button>
-          <div v-show="showEvidenceFail" class="results-list">
-            <div v-for="res in checkerResults.filter(r => !r.result)" :key="res.methodId" class="result-row">
-              <div class="result-dot fail"></div>
-              <span class="result-desc">{{ res.description }}</span>
-              <span class="status-badge ai">FAIL</span>
-            </div>
-            <div v-if="!checkerResults.filter(r => !r.result).length" class="result-row result-empty">No signals failed</div>
-          </div>
-        </div>
-
         <div v-if="brainPolling && !brainVerdict" class="brain-card brain-pending">
           <span class="brain-label">AI Analysis</span>
           <span class="brain-analyzing">processing evidence...</span>
+        </div>
+
+        <div v-if="checkerLoading || batchPolling" class="evidence-loading">
+          <div class="evidence-loading-bar"></div>
+          <span class="evidence-loading-label">Running signals…</span>
+        </div>
+
+        <!-- OFAC sanctions warning — shown whenever ofacResult.sanctioned is true -->
+        <div v-if="ofacResult?.sanctioned" class="ofac-card">
+          <div class="ofac-row">
+            <span class="ofac-icon">⛔</span>
+            <span class="ofac-title">OFAC SANCTIONED</span>
+          </div>
+          <p class="ofac-body">
+            <template v-if="ofacResult.type === 'counterparty'">
+              Counterparty <code class="ofac-addr">{{ ofacResult.matchedAddress }}</code> appears on the U.S. Treasury SDN list.
+            </template>
+            <template v-else>
+              This address appears on the U.S. Treasury SDN list.
+            </template>
+          </p>
+          <div class="ofac-meta">
+            Entity: <strong>{{ ofacResult.name }}</strong> &nbsp;·&nbsp; Program: <strong>{{ ofacResult.program }}</strong>
+          </div>
         </div>
 
         <div v-if="brainVerdict && brainVerdict.status !== 'not_found'" class="brain-card" :class="brainVerdict.verdict === 'HUMAN' ? 'brain-human' : 'brain-bot'">
@@ -904,13 +928,28 @@ onUnmounted(() => {
             </template>
           </div>
         </div>
+
+        <!-- Wallet Profile — shown after verdict, loads async -->
+        <div v-if="walletProfileLoading && brainVerdict" class="profile-loading">
+          <span class="profile-loading-dot" /><span class="profile-loading-dot" /><span class="profile-loading-dot" />
+          <span style="color:#6b7280;font-size:13px;margin-left:8px;">Loading profile…</span>
+        </div>
+        <div v-if="walletProfile && brainVerdict" class="profile-card-wrap">
+          <WalletProfile
+            :profile="walletProfile"
+            :verdict="brainVerdict"
+            :ofac="ofacResult"
+            :signals="checkerResults"
+            @scan="handleProfileScan"
+          />
+        </div>
       </div>
 
       <!-- Listing -->
       <div v-if="currentSection === 'listing'" class="content-section">
         <div class="listing-header">
           <div class="scan-tag">METHOD LISTING</div>
-          <h2 class="scan-title">Submit a detection method</h2>
+          <h2 class="scan-title">Submit a detection signal</h2>
           <p class="scan-sub">Define a signal and pay 1000 POH to register it. 500 POH goes to stakers immediately, 500 to the protocol. Earn rewards when your method is used in scans.</p>
         </div>
         <div class="form-section">
@@ -1105,7 +1144,7 @@ onUnmounted(() => {
       <div v-if="currentSection === 'votes'" class="votes-page">
         <div class="votes-header">
           <div class="scan-tag">CONSENSUS QUEUE</div>
-          <h2 class="scan-title">Review detection methods</h2>
+          <h2 class="scan-title">Review detection signals</h2>
           <p class="scan-sub">Vote on whether each method reliably distinguishes humans from bots. Your POH stake weight determines your influence.</p>
         </div>
 
@@ -1217,12 +1256,12 @@ onUnmounted(() => {
                 <div class="pstat-val">{{ profileData.profile?.totalScans ?? 0 }}</div>
                 <div class="pstat-label">Total Scans</div>
               </div>
-              <div class="pstat-card deposit-stat" @click="showDepositModal = true" title="Click to deposit POH">
-                <div class="pstat-val">{{ ((profileData.profile?.balance ?? 0) / 1e6).toFixed(2) }}</div>
-                <div class="pstat-label">Account Balance (POH) <br><span class="pstat-deposit-hint">Tap to Deposit</span></div>
+              <div class="pstat-card deposit-stat" @click="showDepositModal = true" title="Click to deposit">
+                <div class="pstat-val">${{ ((profileData.profile?.balance ?? 0) / 1e6).toFixed(2) }}</div>
+                <div class="pstat-label">Account Balance <br><span class="pstat-deposit-hint">Tap to Deposit</span></div>
               </div>
               <div class="pstat-card">
-                <div class="pstat-val">{{ profileData.earned ? (profileData.earned / 1e6).toFixed(2) : '0.00' }}</div>
+                <div class="pstat-val">${{ profileData.earned ? (profileData.earned / 1e6).toFixed(2) : '0.00' }}</div>
                 <div class="pstat-label">Total Earned</div>
               </div>
             </div>
@@ -1231,7 +1270,7 @@ onUnmounted(() => {
             <div v-if="(profileData.pending ?? 0) > 0" class="profile-card profile-claim-card">
               <div class="profile-card-header">
                 <span class="profile-card-title">Scan Earnings</span>
-                <span class="claim-amount">{{ (profileData.pending / 1e6).toFixed(4) }} POH</span>
+                <span class="claim-amount">${{ (profileData.pending / 1e6).toFixed(4) }}</span>
               </div>
               <p class="profile-hint">Your methods earned this from paid scans. Claim to receive tokens on-chain.</p>
               <button class="submit-listing-btn claim-btn" :disabled="offchainClaimLoading" @click="claimOffchainBalance()">
@@ -1270,7 +1309,7 @@ onUnmounted(() => {
                   </div>
                   <div class="mlist-meta">
                     <span class="mlist-score">score {{ m.score?.toFixed(1) ?? '0.0' }}</span>
-                    <span class="mlist-earned">{{ ((profileData.pending || 0) / 1e6).toFixed(4) }} POH pending</span>
+                    <span class="mlist-earned">{{ ((profileData.pending || 0) / 1e9).toFixed(4) }} POH pending</span>
                   </div>
                 </div>
               </div>
@@ -1311,7 +1350,7 @@ onUnmounted(() => {
         <div class="scan-hero">
           <div class="scan-tag">API REFERENCE</div>
           <h2 class="scan-title">Integrate POH</h2>
-          <p class="scan-sub">Simple HTTP API. First 100 scans free per wallet. Authenticate with an API key from your profile.</p>
+          <p class="scan-sub">Simple HTTP API. First 100 scans free per wallet. $1 per 1,000 scans after that — paid in USDC or USDT.</p>
         </div>
 
         <!-- Pricing table -->
@@ -1319,25 +1358,13 @@ onUnmounted(() => {
           <div class="api-section-title">Pricing</div>
           <div class="pricing-table">
             <div class="pt-row pt-head">
-              <span>Batch size</span><span>Rate</span><span>Example</span>
+              <span>Volume</span><span>Rate</span><span>Example</span>
             </div>
             <div class="pt-row">
-              <span>1 – 9 addresses</span><span>1.00 POH / addr</span><span>5 addrs = 5 POH</span>
-            </div>
-            <div class="pt-row">
-              <span>10 – 49 addresses</span><span>0.85 POH / addr</span><span>20 addrs = 17 POH</span>
-            </div>
-            <div class="pt-row">
-              <span>50 – 99 addresses</span><span>0.70 POH / addr</span><span>70 addrs = 49 POH</span>
-            </div>
-            <div class="pt-row">
-              <span>100 – 499 addresses</span><span>0.55 POH / addr</span><span>200 addrs = 110 POH</span>
-            </div>
-            <div class="pt-row">
-              <span>500+ addresses</span><span>0.40 POH / addr</span><span>1000 addrs = 400 POH</span>
+              <span>Any volume</span><span>$0.001 / scan</span><span>1,000 scans = $1 USDC/USDT</span>
             </div>
             <div class="pt-row pt-free">
-              <span>Free tier</span><span>0 POH</span><span>First 100 scans per wallet</span>
+              <span>Free tier</span><span>$0</span><span>First 100 scans per wallet</span>
             </div>
           </div>
         </div>
@@ -1346,12 +1373,12 @@ onUnmounted(() => {
         <div class="api-section">
           <div class="api-section-title">POST /checker</div>
           <div class="api-card">
-            <div class="api-desc">Scan one or more wallet addresses against all registered detection methods. Single address → synchronous result with <code>brainKey</code>. Multiple addresses or CSV upload → async job with <code>jobId</code> to poll.</div>
+            <div class="api-desc">Scan one or more wallet addresses against all registered detection signals. Single address → synchronous result with <code>brainKey</code>. Multiple addresses or CSV upload → async job with <code>jobId</code> to poll.</div>
             <div class="api-params">
               <div class="param-row"><code>input</code><span>string or array — wallet address(es) to scan</span></div>
               <div class="param-row"><code>walletAddress</code><span>your Solana wallet (for free tier tracking)</span></div>
               <div class="param-row"><code>apiKey</code><span>API key from your profile (alternative to walletAddress)</span></div>
-              <div class="param-row"><code>txHash</code><span>POH burn transaction hash (required for paid scans)</span></div>
+              <div class="param-row"><code>txHash</code><span>USDC/USDT payment transaction hash (required for paid scans)</span></div>
               <div class="param-row"><code>chainIds</code><span>comma-separated chain IDs to filter EVM methods (optional)</span></div>
               <div class="param-row"><code>csv</code><span>multipart file upload — CSV with address column (bulk mode)</span></div>
             </div>
@@ -1440,8 +1467,8 @@ const results = await pollJob(jobId)</pre>
             <div class="api-desc">Returns cost breakdown for a given batch size before committing.</div>
             <div class="code-block">
               <div class="code-lang">curl</div>
-              <pre class="code-pre">curl "https://proofofhuman.ge/checker/pricing?count=100"
-# → { count: 100, perAddress: 0.55, total: 55000000, tiers: [...] }</pre>
+              <pre class="code-pre">curl "https://proofofhuman.ge/checker/pricing?count=1000"
+# → { count: 1000, perAddress: 0.001, total: 1000000, currency: "USDC/USDT" }</pre>
             </div>
           </div>
         </div>
@@ -1467,14 +1494,14 @@ const results = await pollJob(jobId)</pre>
         <div class="scan-hero">
           <div class="scan-tag">STAKING</div>
           <h2 class="scan-title">Stake POH</h2>
-          <p class="scan-sub">Your staked POH balance determines your vote weight when scoring detection methods. Higher stake = more signal in the consensus.</p>
+          <p class="scan-sub">Your staked POH balance determines your vote weight when scoring detection signals. Higher stake = more signal in the consensus.</p>
         </div>
 
         <div class="staking-grid">
           <div class="staking-info-card">
             <div class="si-title">How staking works</div>
             <ul class="si-list">
-              <li>Stake POH → get more voting power on which detection methods are best</li>
+              <li>Stake POH → get more voting power on which detection signals are best</li>
               <li>The more you stake, the more your votes count</li>
               <li>Unstake any time — no lockup</li>
             </ul>
@@ -1548,9 +1575,9 @@ const results = await pollJob(jobId)</pre>
 
             <!-- Claim off-chain rewards (listing fees + scan revenue distributed by backend) -->
             <div v-if="(profileData?.profile?.balance ?? 0) > 0" class="stake-claim-row">
-              <span class="claim-desc">{{ ((profileData.profile.balance) / 1e6).toFixed(4) }} POH off-chain rewards</span>
+              <span class="claim-desc">${{ ((profileData.profile.balance) / 1e6).toFixed(4) }} off-chain rewards</span>
               <button class="outline-btn" :disabled="offchainClaimLoading" @click="claimOffchainBalance()">
-                {{ offchainClaimLoading ? 'Claiming...' : 'Claim POH' }}
+                {{ offchainClaimLoading ? 'Claiming...' : 'Claim Rewards' }}
               </button>
             </div>
 
@@ -1559,6 +1586,105 @@ const results = await pollJob(jobId)</pre>
               Contract: <code>{{ STAKING_CONTRACT }}</code>
             </p>
           </template>
+        </div>
+      </div>
+
+      <!-- Dev / SDK hub -->
+      <div v-if="currentSection === 'dev'" class="dev-page">
+        <div class="scan-hero">
+          <div class="scan-tag">DEVELOPER HUB</div>
+          <h2 class="scan-title">Build with POH</h2>
+          <p class="scan-sub">Drop-in SDKs for every platform. Verify humanness in minutes.</p>
+        </div>
+
+        <div class="dev-grid">
+          <a class="dev-card" href="https://central.sonatype.com/artifact/ge.proofofhuman/proofofhuman" target="_blank" rel="noopener">
+            <div class="dev-card-icon dev-icon-android">
+              <img src="https://cdn.simpleicons.org/android/3ddc84" width="28" height="28" alt="Android" loading="lazy">
+            </div>
+            <div class="dev-card-body">
+              <div class="dev-card-title">Android</div>
+              <div class="dev-card-sub">Kotlin · Maven Central</div>
+            </div>
+            <div class="dev-card-arrow">→</div>
+          </a>
+
+          <a class="dev-card" href="https://swiftpackageindex.com/Proof-of-Human-Network/sdk-ios" target="_blank" rel="noopener">
+            <div class="dev-card-icon dev-icon-ios">
+              <img src="https://cdn.simpleicons.org/apple/a0aaff" width="28" height="28" alt="iOS" loading="lazy">
+            </div>
+            <div class="dev-card-body">
+              <div class="dev-card-title">iOS</div>
+              <div class="dev-card-sub">Swift · Swift Package Index</div>
+            </div>
+            <div class="dev-card-arrow">→</div>
+          </a>
+
+          <a class="dev-card" href="https://www.npmjs.com/package/@poh_network/sdk" target="_blank" rel="noopener">
+            <div class="dev-card-icon dev-icon-js">
+              <img src="https://cdn.simpleicons.org/javascript/f7df1e" width="28" height="28" alt="JavaScript" loading="lazy">
+            </div>
+            <div class="dev-card-body">
+              <div class="dev-card-title">JavaScript</div>
+              <div class="dev-card-sub">TypeScript · npm</div>
+            </div>
+            <div class="dev-card-arrow">→</div>
+          </a>
+
+          <a class="dev-card" href="https://pypi.org/project/poh-sdk/" target="_blank" rel="noopener">
+            <div class="dev-card-icon dev-icon-python">
+              <img src="https://cdn.simpleicons.org/python/4b9cd3" width="28" height="28" alt="Python" loading="lazy">
+            </div>
+            <div class="dev-card-body">
+              <div class="dev-card-title">Python</div>
+              <div class="dev-card-sub">PyPI · pip install poh-sdk</div>
+            </div>
+            <div class="dev-card-arrow">→</div>
+          </a>
+
+          <a class="dev-card" href="https://crates.io/crates/poh-sdk" target="_blank" rel="noopener">
+            <div class="dev-card-icon dev-icon-rust">
+              <img src="https://cdn.simpleicons.org/rust/ce422b" width="28" height="28" alt="Rust" loading="lazy">
+            </div>
+            <div class="dev-card-body">
+              <div class="dev-card-title">Rust</div>
+              <div class="dev-card-sub">crates.io · cargo add poh-sdk</div>
+            </div>
+            <div class="dev-card-arrow">→</div>
+          </a>
+
+          <a class="dev-card" href="https://github.com/Proof-of-Human-Network/widget" target="_blank" rel="noopener">
+            <div class="dev-card-icon dev-icon-web">
+              <img src="https://cdn.simpleicons.org/github/22d3ee" width="28" height="28" alt="GitHub" loading="lazy">
+            </div>
+            <div class="dev-card-body">
+              <div class="dev-card-title">Web Widget</div>
+              <div class="dev-card-sub">Drop-in · GitHub</div>
+            </div>
+            <div class="dev-card-arrow">→</div>
+          </a>
+
+          <a class="dev-card" href="#" @click.prevent="showSection('api')">
+            <div class="dev-card-icon dev-icon-api">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="32" height="32"><path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5"/></svg>
+            </div>
+            <div class="dev-card-body">
+              <div class="dev-card-title">REST API</div>
+              <div class="dev-card-sub">HTTP · Full reference →</div>
+            </div>
+            <div class="dev-card-arrow">→</div>
+          </a>
+
+          <div class="dev-card dev-card--mystery">
+            <div class="dev-card-icon dev-icon-mystery">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="32" height="32"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
+            </div>
+            <div class="dev-card-body">
+              <div class="dev-card-title">Coming soon</div>
+              <div class="dev-card-sub">Something is brewing...</div>
+            </div>
+            <div class="dev-card-arrow">?</div>
+          </div>
         </div>
       </div>
 
@@ -2426,9 +2552,52 @@ const results = await pollJob(jobId)</pre>
   border-left: 3px solid #222;
 }
 
-.brain-pending { border-left-color: #808080; }
-.brain-human   { border-left-color: var(--green); }
-.brain-bot     { border-left-color: var(--red); }
+.brain-pending   { border-left-color: #808080; }
+.brain-human     { border-left-color: var(--green); }
+.brain-bot       { border-left-color: var(--red); }
+.brain-uncertain { border-left-color: #ca8a04; }
+
+/* ── OFAC sanctions card ───────────────────────────────────────────────────── */
+.ofac-card {
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.5);
+  border-left: 4px solid #dc2626;
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin: 1rem 0;
+}
+.ofac-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+.ofac-icon { font-size: 1.2rem; }
+.ofac-title {
+  font-weight: 700;
+  font-size: 1rem;
+  color: #ef4444;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.ofac-body {
+  font-size: 0.9rem;
+  color: #fca5a5;
+  margin: 0.25rem 0 0.5rem;
+  line-height: 1.5;
+}
+.ofac-addr {
+  font-family: monospace;
+  font-size: 0.8rem;
+  background: rgba(220,38,38,0.15);
+  padding: 1px 4px;
+  border-radius: 3px;
+  word-break: break-all;
+}
+.ofac-meta {
+  font-size: 0.8rem;
+  color: #f87171;
+}
 
 .brain-row {
   display: flex;
@@ -2964,7 +3133,11 @@ const results = await pollJob(jobId)</pre>
   border: 1px solid #1e1e1e;
   padding: 0.45rem 0.9rem;
   border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  transition: border-color 0.15s;
 }
+.connected-status:hover { border-color: #333; }
 
 .status-indicator {
   width: 5px;
@@ -2996,7 +3169,9 @@ const results = await pollJob(jobId)</pre>
   position: relative;
 }
 .wallet-dropdown {
-  display: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
@@ -3006,10 +3181,7 @@ const results = await pollJob(jobId)</pre>
   padding: 0.3rem;
   min-width: 140px;
   z-index: 200;
-  flex-direction: column;
-  gap: 0;
 }
-.wallet-dropdown-wrapper:hover .wallet-dropdown { display: flex; }
 .wallet-drop-item {
   background: none;
   border: none;
@@ -3157,6 +3329,23 @@ const results = await pollJob(jobId)</pre>
 }
 
 .modal-close:hover { color: #aaa; border-color: #808080; }
+
+.token-btn {
+  flex: 1;
+  padding: 0.5rem 1rem;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  color: #808080;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.15s;
+}
+.token-btn--active {
+  background: rgba(99,102,241,0.15);
+  border-color: #6366f1;
+  color: #a5b4fc;
+}
 
 .modal-actions {
   display: flex;
@@ -3515,6 +3704,12 @@ const results = await pollJob(jobId)</pre>
   background: rgba(239,68,68,0.08);
   color: var(--red);
   border: 1px solid rgba(239,68,68,0.15);
+}
+
+.status-badge.uncertain {
+  background: rgba(202,138,4,0.08);
+  color: #ca8a04;
+  border: 1px solid rgba(202,138,4,0.2);
 }
 
 /* ── Brain card ──────────────────────────────────────────────────────────── */
@@ -4117,5 +4312,140 @@ const results = await pollJob(jobId)</pre>
   .stake-balance-row { grid-template-columns: 1fr 1fr; }
   .stake-action-row { flex-wrap: wrap; }
   .stake-claim-row { flex-direction: column; align-items: flex-start; }
+}
+
+/* ── Dev / SDK Hub ─────────────────────────────────────────────────────────── */
+.dev-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem 1rem 4rem;
+}
+
+.dev-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.dev-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.25rem 1.2rem;
+  background: #0c0c0c;
+  border: 1px solid #1e1e1e;
+  border-radius: 10px;
+  text-decoration: none;
+  color: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.dev-card:hover {
+  border-color: #444;
+  background: #111;
+}
+
+.dev-card--mystery {
+  border-style: dashed;
+  border-color: #2a2a2a;
+  cursor: default;
+  opacity: 0.6;
+}
+
+.dev-card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.dev-icon-android { background: #1a2e1a; color: #3ddc84; }
+.dev-icon-ios     { background: #1a1a2e; color: #a0aaff; }
+.dev-icon-js      { background: #2e2a00; color: #f7df1e; }
+.dev-icon-python  { background: #00182e; color: #4b9cd3; }
+.dev-icon-rust    { background: #2e1a0a; color: #ce422b; }
+.dev-icon-web     { background: #0a2e2a; color: #22d3ee; }
+.dev-icon-api     { background: #1a1a1a; color: #888; }
+.dev-icon-mystery { background: #1a1a1a; color: #555; }
+
+.dev-card-body { flex: 1; min-width: 0; }
+.dev-card-title { font-size: 1rem; font-weight: 600; }
+.dev-card-sub   { font-size: 0.8rem; color: #666; margin-top: 0.15rem; }
+.dev-card-arrow { color: #444; font-size: 1.1rem; flex-shrink: 0; }
+
+@media (max-width: 600px) {
+  .dev-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Wallet Profile ──────────────────────────────────────────────────────────── */
+.profile-card-wrap {
+  margin-top: 20px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid #1f2937;
+  border-radius: 14px;
+  padding: 22px;
+}
+
+.evidence-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 0 0.5rem;
+}
+
+.evidence-loading-bar {
+  flex: 1;
+  height: 2px;
+  background: #1a1a1a;
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+}
+
+.evidence-loading-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, #444 50%, transparent 100%);
+  animation: evidence-sweep 1.4s ease-in-out infinite;
+}
+
+@keyframes evidence-sweep {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+.evidence-loading-label {
+  font-size: 0.75rem;
+  color: #444;
+  white-space: nowrap;
+}
+
+.profile-loading {
+  display: flex;
+  align-items: center;
+  margin-top: 16px;
+  padding: 14px;
+}
+
+.profile-loading-dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #4b5563;
+  margin: 0 3px;
+  animation: profile-pulse 1.2s ease-in-out infinite;
+}
+.profile-loading-dot:nth-child(2) { animation-delay: 0.2s; }
+.profile-loading-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes profile-pulse {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+  40%           { opacity: 1;   transform: scale(1); }
 }
 </style>
