@@ -90,14 +90,20 @@ async function callContract(rpcUrl, address, hexMethod, abiTypes, returnTypes, p
     : new ethers.JsonRpcProvider(rpcUrl);
 
   // ABI-encode input params (empty if no params)
+  // Normalize any address-type params to checksummed form so AbiCoder doesn't reject them
+  const normalizedParams = (params || []).map((p, i) =>
+    abiTypes[i] === 'address' && typeof p === 'string' ? ethers.getAddress(p.toLowerCase()) : p
+  );
   let calldata = hexMethod;
   if (abiTypes && abiTypes.length > 0) {
-    const encoded = ethers.AbiCoder.defaultAbiCoder().encode(abiTypes, params);
+    const encoded = ethers.AbiCoder.defaultAbiCoder().encode(abiTypes, normalizedParams);
     // encoded starts with 0x, strip it and append to method selector
     calldata = hexMethod + encoded.slice(2);
   }
 
-  const raw = await provider.call({ to: address, data: calldata });
+  // Normalize contract address to valid EIP-55 checksum — ethers v6 rejects wrong-case addresses
+  const normalizedTo = ethers.getAddress(address.toLowerCase());
+  const raw = await provider.call({ to: normalizedTo, data: calldata });
 
   if (!raw || raw === '0x') {
     return [];

@@ -408,7 +408,7 @@
   {
     "type": "evm",
     "chainId": 56,
-    "address": "0x2B09d47D550061f995A3b5C6F212c897d8571916",
+    "address": "0x2B09d47D550061f995A3b5C6F0Fd58005215D7c8",
     "method": "balanceOf",
     "abiTypes": "[\"address\"]",
     "returnTypes": "[\"uint256\"]",
@@ -516,7 +516,7 @@
   {
     "type": "evm",
     "chainId": 204,
-    "address": "0x2B09d47D550061f995A3b5C6F212c897d8571916",
+    "address": "0x2B09d47D550061f995A3b5C6F0Fd58005215D7c8",
     "method": "balanceOf",
     "abiTypes": "[\"address\"]",
     "returnTypes": "[\"uint256\"]",
@@ -1253,8 +1253,9 @@
     "returnTypes": "[\"uint256\"]",
     "headers": "{}",
     "id": "1777507200021Goldfin",
-    "score": 0,
-    "created_at": "2026-04-30T00:00:00.000Z"
+    "score": 1.09,
+    "created_at": "2026-04-30T00:00:00.000Z",
+    "voteCount": 1
   },
   {
     "type": "evm",
@@ -2308,5 +2309,99 @@
     "score": 0,
     "ownerWallet": null,
     "created_at": "2026-05-15T00:00:00.000Z"
+  },
+  {
+    "type": "rest",
+    "address": "https://app.brightid.org/node/v6/verifications/ethereum/{address}",
+    "method": "GET",
+    "description": "BrightID verified \u2014 wallet is linked to a unique BrightID social identity. BrightID uses a social graph to ensure one human = one account.",
+    "expression": "status === 200 && data && data.data && data.data.unique === true",
+    "lang": "js",
+    "abiTypes": "",
+    "returnTypes": "",
+    "headers": "{}",
+    "body": "{}",
+    "id": "1779294207587brightid_ethereum",
+    "score": 0,
+    "created_at": "2026-05-19T00:00:00.000Z",
+    "voteCount": 0
+  },
+  {
+    "id": "1779495401084l49x3dwl7o",
+    "type": "labeled",
+    "file": "offramp15k",
+    "description": "Off-ramp > $15k \u2014 wallet made a withdrawal from a crypto exchange exceeding $15,000. Strong signal of a real economic actor.",
+    "expression": "result === true",
+    "lang": "js",
+    "addressType": "evm",
+    "score": 0,
+    "voteCount": 0,
+    "created_at": "2026-05-23T00:00:00.000Z"
+  },
+  {
+    "id": "177949540108435rymnftcq",
+    "type": "labeled",
+    "file": "offramp5k",
+    "description": "Off-ramp > $5k \u2014 wallet made a withdrawal from a crypto exchange exceeding $5,000.",
+    "expression": "result === true",
+    "lang": "js",
+    "addressType": "evm",
+    "score": 0,
+    "voteCount": 0,
+    "created_at": "2026-05-23T00:00:00.000Z"
+  },
+  {
+    "id": "1779495401084vfepvlmcfq",
+    "type": "labeled",
+    "file": "cex",
+    "description": "CEX hot wallet \u2014 address is a known centralised exchange deposit or hot wallet (company, not a human).",
+    "expression": "result === false",
+    "lang": "js",
+    "addressType": "evm",
+    "score": 0,
+    "voteCount": 0,
+    "created_at": "2026-05-23T00:00:00.000Z"
+  },
+  {
+    "id": "1779496204325farcaster_acct",
+    "type": "rest",
+    "method": "GET",
+    "address": "https://api.neynar.com/v2/farcaster/user/bulk-by-address?addresses={address}",
+    "headers": "{\"api_key\":\"NEYNAR_API_DOCS\"}",
+    "description": "Farcaster account \u2014 wallet is registered on Farcaster (decentralised social). Requires connecting wallet to a social identity.",
+    "expression": "status === 200 && data && !data.code && Object.values(data).length > 0",
+    "lang": "js",
+    "score": 0,
+    "voteCount": 0,
+    "created_at": "2026-05-23T00:00:00.000Z"
+  },
+  {
+    "id": "1779496204325farcaster_multw",
+    "type": "rest",
+    "method": "GET",
+    "address": "https://api.neynar.com/v2/farcaster/user/bulk-by-address?addresses={address}",
+    "headers": "{\"api_key\":\"NEYNAR_API_DOCS\"}",
+    "description": "Farcaster multi-wallet \u2014 user linked 2+ verified addresses to their Farcaster account, proving consistent cross-wallet identity.",
+    "expression": "(()=>{ if(status!==200||!data||data.code) return false; const u=(Object.values(data)[0]||[])[0]; return !!(u && u.verifications && u.verifications.length > 1); })()",
+    "lang": "js",
+    "addressType": "evm",
+    "score": 0,
+    "voteCount": 0,
+    "created_at": "2026-05-23T00:00:00.000Z"
+  },
+  {
+    "id": "1779496204325lens_v3_handle",
+    "type": "rest",
+    "method": "POST",
+    "address": "https://api.lens.xyz/graphql",
+    "headers": "{\"Content-Type\":\"application/json\"}",
+    "body": "{\"query\":\"query { account(request: { address: \\\"{address}\\\" }) { address username { localName } } }\"}",
+    "description": "Lens Protocol handle \u2014 wallet has a registered Lens handle (social graph identity on Polygon). Users must actively set a username.",
+    "expression": "status === 200 && data && data.data && data.data.account && data.data.account.username !== null && data.data.account.username !== undefined",
+    "lang": "js",
+    "addressType": "evm",
+    "score": 0,
+    "voteCount": 0,
+    "created_at": "2026-05-23T00:00:00.000Z"
   }
 ]
