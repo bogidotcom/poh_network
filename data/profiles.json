@@ -1,74 +1,1282 @@
 {
   "6bvB3PTz48wozyPJeuTB77axexWu9MfUSjBYbQzEgK88": {
     "ips": [
-      "::ffff:127.0.0.1"
+      "0.0.0.0",
+      "80.83.141.66",
+      "185.115.4.101",
+      "185.70.55.203",
+      "185.115.7.183",
+      "185.70.53.212",
+      "149.3.71.241"
     ],
     "address": "6bvB3PTz48wozyPJeuTB77axexWu9MfUSjBYbQzEgK88",
-    "updatedAt": "2026-05-23T03:50:15.214Z",
-    "freeScansLeft": 0,
-    "totalScans": 100,
+    "updatedAt": "2026-05-19T13:59:48.665Z",
+    "freeScansLeft": 17,
+    "totalScans": 83,
     "votes": {
-      "1776780461277Base_—_t": {
+      "1777400000005solanaprog": {
+        "vote": false,
+        "at": "2026-05-05T17:25:40.865Z"
+      },
+      "1777400zns_2020_0x55b8": {
         "vote": true,
-        "at": "2026-04-24T09:35:38.692Z"
+        "at": "2026-05-05T17:27:01.041Z",
+        "feedback": "No reasons for AI to buy this tier-3 domain. HUMAN"
       },
-      "1777035613182kxp1tsqyh": {
-        "vote": false,
-        "at": "2026-04-24T13:29:12.208Z"
-      },
-      "1776688380812assetux_stake": {
-        "vote": false,
-        "at": "2026-04-24T13:35:07.802Z"
-      },
-      "1776689122827sol_balance": {
-        "vote": false,
-        "at": "2026-04-24T13:38:48.123Z"
-      },
-      "1777507200021Goldfin": {
+      "1777148092539gwovtuj55": {
         "vote": true,
-        "at": "2026-05-19T17:53:54.544Z",
-        "feedback": "Human"
+        "at": "2026-05-05T21:00:41.143Z",
+        "feedback": "Uncertain, but more towards human"
+      },
+      "1777507200171Arianee": {
+        "vote": true,
+        "at": "2026-05-05T21:01:37.467Z",
+        "feedback": "Human, because it appeared before AI. However, it could been boted to show higher KPIs"
+      },
+      "1777600000002galxe_notb": {
+        "vote": true,
+        "at": "2026-05-10T14:17:57.930Z",
+        "feedback": "Yes, this is human signal"
+      },
+      "1777400zns_130_0xf180": {
+        "vote": true,
+        "at": "2026-05-10T14:28:49.505Z",
+        "feedback": "This is human"
       }
     },
-    "apiKey": "606ceb7b-92d2-4831-a4bb-517b8307ddbb",
-    "balance": 475000
+    "apiKey": "96e3f137-6819-4374-928c-20a8e964fb77"
   },
-  "TestWallet123": {
-    "apiKey": "40c915ad-f093-4b6d-a010-cbc58caec6f9",
-    "address": "TestWallet123",
-    "updatedAt": "2026-04-23T09:25:13.827Z"
+  "FHxH1X8pZ9fsXwMBaJeLd4GwYbKUVZV6pzENA61WzPDH": {
+    "ips": [
+      "193.42.98.22"
+    ],
+    "address": "FHxH1X8pZ9fsXwMBaJeLd4GwYbKUVZV6pzENA61WzPDH",
+    "updatedAt": "2026-05-05T16:09:38.408Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
   },
-  "G8bFssuQsNxmMopW9bjYgA4iuUZ7z8uELiNL6UKvSjyy": {
+  "453XP9wx2SPEVSTCaRvyjoWaxZMryAnQJrwQFYoU1D3x": {
+    "registeredAt": "2026-05-05T16:15:23.863Z",
+    "apiKey": "f38e2f5c-bb5f-4f5c-ab18-e040420c46ea",
+    "balance": 0,
+    "freeScansLeft": 97,
+    "totalScans": 3,
+    "stakedAmount": 0,
+    "address": "453XP9wx2SPEVSTCaRvyjoWaxZMryAnQJrwQFYoU1D3x",
+    "updatedAt": "2026-05-05T16:26:19.190Z",
     "votes": {
-      "1776688380812assetux_stake": {
-        "vote": false,
-        "at": "2026-04-24T09:50:25.564Z"
-      },
       "1776689122827sol_balance": {
-        "vote": false,
-        "at": "2026-04-24T09:50:54.980Z"
-      },
-      "1776780461277Base_—_t": {
-        "vote": false,
-        "at": "2026-04-24T09:51:07.325Z"
-      },
-      "1776780461291Ethersca": {
         "vote": true,
-        "at": "2026-04-24T13:15:28.034Z"
+        "at": "2026-05-05T16:19:58.843Z"
+      },
+      "1776689122829sol_usdc": {
+        "vote": true,
+        "at": "2026-05-05T16:20:07.322Z"
+      },
+      "1776780461282Polygon_": {
+        "vote": true,
+        "at": "2026-05-05T16:20:28.289Z"
+      },
+      "1776780461274Ethereum": {
+        "vote": true,
+        "at": "2026-05-05T16:20:39.737Z"
+      },
+      "1777721412789hstegt": {
+        "vote": true,
+        "at": "2026-05-05T16:20:48.655Z"
+      },
+      "1777507300003Artrade": {
+        "vote": true,
+        "at": "2026-05-05T16:20:53.750Z"
+      },
+      "poh_gitpoap_contrib_1776849825388": {
+        "vote": true,
+        "at": "2026-05-05T16:20:58.672Z"
+      },
+      "1777507300129w3bBio": {
+        "vote": true,
+        "at": "2026-05-05T16:21:03.357Z"
+      },
+      "1777507300067w3bFarc": {
+        "vote": true,
+        "at": "2026-05-05T16:21:07.679Z"
+      },
+      "1777939200003friendtech_creator": {
+        "vote": true,
+        "at": "2026-05-05T16:21:12.495Z"
+      },
+      "1777939200019blockv_vee": {
+        "vote": true,
+        "at": "2026-05-05T16:21:16.163Z"
+      },
+      "1777400zns_999_0x55b8": {
+        "vote": true,
+        "at": "2026-05-05T16:21:20.403Z"
+      },
+      "1777600000003galxe_twit": {
+        "vote": true,
+        "at": "2026-05-05T16:21:24.921Z"
+      },
+      "1776780461266Berachai": {
+        "vote": true,
+        "at": "2026-05-05T16:21:29.097Z"
+      },
+      "1777507200153Tangibl": {
+        "vote": true,
+        "at": "2026-05-05T16:21:32.734Z"
+      },
+      "1777400zns_80094_0xfb2c": {
+        "vote": true,
+        "at": "2026-05-05T16:21:36.339Z"
+      },
+      "1777400000008zora": {
+        "vote": true,
+        "at": "2026-05-05T16:21:40.234Z"
+      },
+      "1777400zns_146_0xfb2c": {
+        "vote": true,
+        "at": "2026-05-05T16:21:44.118Z"
+      },
+      "1777507300015HeliumH": {
+        "vote": true,
+        "at": "2026-05-05T16:21:47.608Z"
+      },
+      "1777400zns_1440002_0xf180": {
+        "vote": true,
+        "at": "2026-05-05T16:21:51.791Z"
+      },
+      "1776780461276Base_—_n": {
+        "vote": true,
+        "at": "2026-05-05T16:21:56.495Z"
+      },
+      "1777939200013illuvium_ilv": {
+        "vote": true,
+        "at": "2026-05-05T16:22:00.218Z"
+      },
+      "poh_galxe_oat_count_1776849825388": {
+        "vote": true,
+        "at": "2026-05-05T16:22:04.086Z"
+      },
+      "1777939200004audius_music": {
+        "vote": true,
+        "at": "2026-05-05T16:22:08.692Z"
+      },
+      "1777400zns_167000_0xfb2c": {
+        "vote": true,
+        "at": "2026-05-05T16:22:13.730Z"
+      },
+      "1777507200105BlockBa": {
+        "vote": true,
+        "at": "2026-05-05T16:22:17.315Z"
+      },
+      "1777400000003smartctbnb": {
+        "vote": true,
+        "at": "2026-05-05T16:22:20.681Z"
+      },
+      "1776780461289Farcaste": {
+        "vote": true,
+        "at": "2026-05-05T16:22:24.296Z"
+      },
+      "1776780461281Arbitrum": {
+        "vote": true,
+        "at": "2026-05-05T16:22:28.309Z"
+      },
+      "1777400zns_137_0x8ccd": {
+        "vote": true,
+        "at": "2026-05-05T16:22:32.105Z"
+      },
+      "1776780461283Polygon_": {
+        "vote": true,
+        "at": "2026-05-05T16:22:36.522Z"
+      },
+      "1777939200018piratenation_token": {
+        "vote": true,
+        "at": "2026-05-05T16:22:40.213Z"
       }
     },
-    "address": "G8bFssuQsNxmMopW9bjYgA4iuUZ7z8uELiNL6UKvSjyy",
-    "updatedAt": "2026-04-24T13:40:33.506Z",
-    "balance": 0
+    "ips": [
+      "2404:c0:202b:e9b5:1e8c:5e09:4b2b:8f7b"
+    ]
   },
-  "E1spgozw4CMdvnSBrxFTp3v35DUqmt7dFPuVN5xBjpFw": {
-    "registeredAt": "2026-05-05T13:52:12.818Z",
-    "apiKey": "8f4caeb0-17e5-4e5e-b13e-07f11d7ba085",
+  "Hi2DC8zoyi7htSidgtqAd1Pmz9QDRGczFCxGSG4oYaF5": {
+    "ips": [
+      "2404:c0:be02:3c7e:cb8a:d67e:c67d:cbea"
+    ],
+    "address": "Hi2DC8zoyi7htSidgtqAd1Pmz9QDRGczFCxGSG4oYaF5",
+    "updatedAt": "2026-05-05T16:19:58.305Z",
+    "freeScansLeft": 99,
+    "totalScans": 1,
+    "votes": {
+      "1776689122827sol_balance": {
+        "vote": true,
+        "at": "2026-05-05T16:19:35.232Z"
+      },
+      "1776780461282Polygon_": {
+        "vote": true,
+        "at": "2026-05-05T16:19:58.305Z"
+      }
+    }
+  },
+  "ESjxDsMvG2SkPpK1FdcD6Lce4RUfMM8Bvg6sfFBUsXkT": {
+    "ips": [
+      "45.85.105.20"
+    ],
+    "address": "ESjxDsMvG2SkPpK1FdcD6Lce4RUfMM8Bvg6sfFBUsXkT",
+    "updatedAt": "2026-05-05T16:24:49.667Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
+  },
+  "95RXCoyu4FRC5RJMtoXWy8oBocnKJgpZT1Ysruco15i6": {
+    "ips": [
+      "2001:8a0:e3f4:9f00:e9e1:40b6:795f:8300",
+      "2001:8a0:e3f4:9f00:b9aa:320a:8e17:6b7e",
+      "2001:8a0:e3f4:9f00:4d26:ae12:e14c:4911",
+      "2001:8a0:e3f4:9f00:746e:fe0b:4e0:984",
+      "2001:8a0:e3f4:9f00:e8bd:640:4392:a397",
+      "2001:8a0:e3f4:9f00:acbb:ebcf:e2c8:dc7b"
+    ],
+    "address": "95RXCoyu4FRC5RJMtoXWy8oBocnKJgpZT1Ysruco15i6",
+    "updatedAt": "2026-05-22T16:46:33.160Z",
+    "freeScansLeft": 80,
+    "totalScans": 20,
+    "votes": {
+      "1776689122827sol_balance": {
+        "vote": true,
+        "at": "2026-05-05T18:32:21.877Z"
+      },
+      "1776780461270Berachai": {
+        "vote": false,
+        "at": "2026-05-05T18:33:40.516Z",
+        "feedback": "Don't agree. Have lot's of trabnsactions in berachain and failed by this criteria."
+      },
+      "1777400zns_57073_0xfb2c": {
+        "vote": true,
+        "at": "2026-05-05T18:33:51.357Z"
+      },
+      "1776780461271Ethereum": {
+        "vote": false,
+        "at": "2026-05-05T18:34:34.340Z",
+        "feedback": "Don't agree. Have less but lot's of transactions on eth chain..."
+      },
+      "poh_bab_opbnb_1776849825388": {
+        "vote": true,
+        "at": "2026-05-05T18:34:55.234Z"
+      },
+      "1777939200006aurory_aury": {
+        "vote": true,
+        "at": "2026-05-18T16:23:21.275Z"
+      },
+      "1777507200006OndoOUS": {
+        "vote": true,
+        "at": "2026-05-18T16:23:48.211Z",
+        "feedback": "cause it proves is a human"
+      },
+      "1777939200005stepn_gmt": {
+        "vote": true,
+        "at": "2026-05-19T13:35:27.639Z"
+      },
+      "1777939200015godsunchained_gods": {
+        "vote": true,
+        "at": "2026-05-19T13:35:44.038Z"
+      },
+      "1777939200020mavia_token": {
+        "vote": true,
+        "at": "2026-05-19T13:35:55.388Z"
+      },
+      "poh_galxe_id_1776849825388": {
+        "vote": false,
+        "at": "2026-05-19T13:36:06.924Z"
+      },
+      "1778823783091xvl4a7cel": {
+        "vote": true,
+        "at": "2026-05-19T13:36:17.187Z"
+      },
+      "1778823783091h7ya5pfw3": {
+        "vote": true,
+        "at": "2026-05-19T13:36:27.250Z"
+      },
+      "1777939200017bigtime_token": {
+        "vote": true,
+        "at": "2026-05-19T13:36:38.141Z"
+      },
+      "1777939200012grape_token": {
+        "vote": true,
+        "at": "2026-05-19T13:37:25.831Z"
+      },
+      "1777939200010cryowar_cwar": {
+        "vote": true,
+        "at": "2026-05-19T13:38:02.260Z"
+      },
+      "1777507300054w3bGitH": {
+        "vote": true,
+        "at": "2026-05-19T13:38:28.552Z"
+      },
+      "1777507200078Omnihor": {
+        "vote": true,
+        "at": "2026-05-19T13:38:47.183Z"
+      },
+      "1776780461286NFT_owne": {
+        "vote": true,
+        "at": "2026-05-19T13:39:04.293Z"
+      },
+      "17788237830918xcdrsfow": {
+        "vote": true,
+        "at": "2026-05-19T13:39:16.925Z"
+      },
+      "1777939200016godsunchained_cards": {
+        "vote": true,
+        "at": "2026-05-19T13:39:32.505Z"
+      },
+      "17788237830918s1qt0b7u": {
+        "vote": true,
+        "at": "2026-05-19T13:39:47.657Z"
+      },
+      "1777400000021farcaster_followers": {
+        "vote": true,
+        "at": "2026-05-19T13:39:56.213Z"
+      },
+      "1778823783091uyvkv3hcj": {
+        "vote": true,
+        "at": "2026-05-19T13:40:17.372Z"
+      },
+      "1778823783091de6lhj73a": {
+        "vote": true,
+        "at": "2026-05-19T13:40:26.048Z"
+      },
+      "1777507200045CargoX": {
+        "vote": true,
+        "at": "2026-05-19T13:40:44.619Z"
+      },
+      "1777400zns_1868_0x2253": {
+        "vote": true,
+        "at": "2026-05-19T13:40:52.220Z"
+      },
+      "177882378309119r9pr2gy": {
+        "vote": true,
+        "at": "2026-05-19T13:41:00.979Z"
+      },
+      "1777507200010OndoUSD": {
+        "vote": true,
+        "at": "2026-05-19T13:41:14.686Z"
+      },
+      "1777507200028RealT": {
+        "vote": true,
+        "at": "2026-05-19T13:41:30.622Z"
+      },
+      "17791855391682q8ssb4qq": {
+        "vote": true,
+        "at": "2026-05-19T13:41:52.718Z"
+      },
+      "1776780461272Ethereum": {
+        "vote": true,
+        "at": "2026-05-19T13:42:36.297Z"
+      },
+      "1777939200001farcaster_idreg": {
+        "vote": true,
+        "at": "2026-05-19T13:43:04.449Z"
+      },
+      "1777600000001galxe_huma": {
+        "vote": false,
+        "at": "2026-05-19T13:44:17.602Z",
+        "feedback": "Galxe has classified as sybils true human users so don't believe their system."
+      },
+      "1777507200066Agrotok": {
+        "vote": true,
+        "at": "2026-05-19T13:45:06.753Z"
+      },
+      "1776780461288NFT_owne": {
+        "vote": true,
+        "at": "2026-05-20T16:17:42.246Z"
+      },
+      "1776780461287NFT_owne": {
+        "vote": true,
+        "at": "2026-05-20T16:17:57.917Z"
+      },
+      "1777400zns_7771_0x4293": {
+        "vote": true,
+        "at": "2026-05-20T16:18:14.585Z"
+      },
+      "1777400zns_7777777_0xf180": {
+        "vote": true,
+        "at": "2026-05-22T16:45:03.355Z"
+      },
+      "1776780461275Ethereum": {
+        "vote": true,
+        "at": "2026-05-22T16:46:06.849Z"
+      },
+      "1776780461290ENS_reve": {
+        "vote": true,
+        "at": "2026-05-22T16:46:21.461Z"
+      },
+      "1777400zns_534352_0xb009": {
+        "vote": true,
+        "at": "2026-05-22T16:46:33.159Z"
+      }
+    },
+    "apiKey": "e4ba330c-b802-48ab-a648-d6ffcbf522b7"
+  },
+  "7gXUF5nEcXYgVuz8CkuBEXo4kaBcJhNcrSozD4ok7EHN": {
+    "ips": [
+      "109.172.176.214"
+    ],
+    "address": "7gXUF5nEcXYgVuz8CkuBEXo4kaBcJhNcrSozD4ok7EHN",
+    "updatedAt": "2026-05-07T08:55:10.600Z",
+    "freeScansLeft": 98,
+    "totalScans": 2
+  },
+  "2vxYoyZMnsx4T2oVNSbM3HgtRzu6QGXKNYfuWDJX2dQ1": {
+    "votes": {
+      "1777400000005solanaprog": {
+        "vote": true,
+        "at": "2026-05-06T09:13:14.530Z"
+      }
+    },
+    "address": "2vxYoyZMnsx4T2oVNSbM3HgtRzu6QGXKNYfuWDJX2dQ1",
+    "updatedAt": "2026-05-06T09:13:14.530Z"
+  },
+  "VTcQC1VQtjHECJd1zyDMy76huAy2Hxg8mzF1CTnqcWh": {
+    "registeredAt": "2026-05-06T15:33:11.793Z",
+    "apiKey": "eb3488c4-c4e6-4e6d-8a2e-1319407152b6",
+    "balance": 0,
+    "freeScansLeft": 98,
+    "totalScans": 2,
+    "stakedAmount": 0,
+    "address": "VTcQC1VQtjHECJd1zyDMy76huAy2Hxg8mzF1CTnqcWh",
+    "updatedAt": "2026-05-08T16:05:34.898Z",
+    "ips": [
+      "2400:c600:4724:6eb7:5216:cac5:1ab9:181e",
+      "2400:c600:4711:1504:f99f:3546:591:11f1"
+    ]
+  },
+  "DruKuBzWUSav1HJJqvinKx1TK1jLHAap8VSXKG9fL5Jv": {
+    "registeredAt": "2026-05-06T15:50:36.302Z",
+    "apiKey": "15f722ac-2dbb-4a5e-8d52-96f172f2ac1f",
     "balance": 0,
     "freeScansLeft": 100,
     "totalScans": 0,
     "stakedAmount": 0,
+    "address": "DruKuBzWUSav1HJJqvinKx1TK1jLHAap8VSXKG9fL5Jv",
+    "updatedAt": "2026-05-06T15:50:36.302Z"
+  },
+  "ABo3KEppPgXRHa6dEC3Boy6Dn78xFcxjHYRvZxZfVu1R": {
+    "ips": [
+      "2405:acc0:1306:350c:117a:bb58:8bd3:d4d1"
+    ],
+    "address": "ABo3KEppPgXRHa6dEC3Boy6Dn78xFcxjHYRvZxZfVu1R",
+    "updatedAt": "2026-05-07T05:14:17.804Z",
+    "freeScansLeft": 97,
+    "totalScans": 3,
+    "votes": {
+      "1776780461271Ethereum": {
+        "vote": true,
+        "at": "2026-05-07T04:55:48.568Z",
+        "feedback": "If wallet is funded by cex . Then there is a chance that is not a bot, also check transaction time and date . Like transaction starting time and ending time gap. Human use regular time but bot use at"
+      },
+      "1777400000005solanaprog": {
+        "vote": true,
+        "at": "2026-05-07T04:56:15.467Z"
+      },
+      "1776689122827sol_balance": {
+        "vote": true,
+        "at": "2026-05-07T04:56:57.878Z",
+        "feedback": "Must check transaction time gap."
+      },
+      "1777507300112w3bFoll": {
+        "vote": true,
+        "at": "2026-05-07T05:01:57.286Z"
+      },
+      "poh_nomis_eth_1776849825388": {
+        "vote": false,
+        "at": "2026-05-07T05:02:17.345Z"
+      },
+      "1776780461267Berachai": {
+        "vote": true,
+        "at": "2026-05-07T05:02:25.208Z"
+      },
+      "poh_coinbase_eas_base_1776849825388": {
+        "vote": true,
+        "at": "2026-05-07T05:02:32.342Z"
+      },
+      "1777148092542qod7ia5ge": {
+        "vote": true,
+        "at": "2026-05-07T05:02:41.663Z"
+      },
+      "1777400000006agentreg": {
+        "vote": false,
+        "at": "2026-05-07T05:03:04.897Z"
+      }
+    }
+  },
+  "28fNW7xVScivET9ThHM5SBXivML1n97ap23Yy6bkH2r9": {
+    "registeredAt": "2026-05-07T08:43:08.878Z",
+    "apiKey": "5331b974-0242-4b5b-88b4-e7d7f3fc4f05",
+    "balance": 0,
+    "freeScansLeft": 100,
+    "totalScans": 0,
+    "stakedAmount": 0,
+    "address": "28fNW7xVScivET9ThHM5SBXivML1n97ap23Yy6bkH2r9",
+    "updatedAt": "2026-05-07T08:43:08.879Z"
+  },
+  "devtest": {
+    "ips": [
+      "::1"
+    ],
+    "address": "devtest",
+    "updatedAt": "2026-05-08T08:00:53.699Z",
+    "freeScansLeft": 92,
+    "totalScans": 8
+  },
+  "G8bFssuQsNxmMopW9bjYgA4iuUZ7z8uELiNL6UKvSjyy": {
+    "registeredAt": "2026-05-08T07:41:18.052Z",
+    "apiKey": "09bc12a3-95ab-4f7d-856f-462d7a26b2f7",
+    "balance": 0,
+    "freeScansLeft": 100,
+    "totalScans": 0,
+    "stakedAmount": 0,
+    "address": "G8bFssuQsNxmMopW9bjYgA4iuUZ7z8uELiNL6UKvSjyy",
+    "updatedAt": "2026-05-08T07:41:18.053Z"
+  },
+  "E1spgozw4CMdvnSBrxFTp3v35DUqmt7dFPuVN5xBjpFw": {
+    "ips": [
+      "0.0.0.0"
+    ],
     "address": "E1spgozw4CMdvnSBrxFTp3v35DUqmt7dFPuVN5xBjpFw",
-    "updatedAt": "2026-05-05T13:52:12.818Z"
+    "updatedAt": "2026-05-10T11:59:32.989Z",
+    "freeScansLeft": 98,
+    "totalScans": 2,
+    "apiKey": "6ab4f2cb-95b8-4a2e-b7ec-6c1b28294585",
+    "votes": {
+      "1776780461271Ethereum": {
+        "vote": false,
+        "at": "2026-05-10T11:59:32.988Z",
+        "feedback": "Not accurate"
+      }
+    }
+  },
+  "84MuYwbZiPXzt7qHoXwt1eyv1kZw7e8FrXYBKenMeLrx": {
+    "ips": [
+      "149.3.9.25"
+    ],
+    "address": "84MuYwbZiPXzt7qHoXwt1eyv1kZw7e8FrXYBKenMeLrx",
+    "updatedAt": "2026-05-12T08:18:27.635Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
+  },
+  "JA7JPFPd5wcE21A6jTmd1gCaUDvMTejLzrZmeXCRSSm2": {
+    "ips": [
+      "156.232.97.183"
+    ],
+    "address": "JA7JPFPd5wcE21A6jTmd1gCaUDvMTejLzrZmeXCRSSm2",
+    "updatedAt": "2026-05-12T09:03:16.875Z",
+    "freeScansLeft": 99,
+    "totalScans": 1,
+    "votes": {
+      "1776780461271Ethereum": {
+        "vote": true,
+        "at": "2026-05-12T09:03:16.874Z"
+      }
+    }
+  },
+  "H3Q1yzaB5zT24TpgxmAtSqYFmtrq7n316YzBE1B8FbK7": {
+    "ips": [
+      "167.179.65.154"
+    ],
+    "address": "H3Q1yzaB5zT24TpgxmAtSqYFmtrq7n316YzBE1B8FbK7",
+    "updatedAt": "2026-05-13T11:41:07.328Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
+  },
+  "J4dwgp9ahWd3Mm4zjo34hx3EkLUNZiH3av9aKEqKbDJV": {
+    "ips": [
+      "108.136.64.102"
+    ],
+    "address": "J4dwgp9ahWd3Mm4zjo34hx3EkLUNZiH3av9aKEqKbDJV",
+    "updatedAt": "2026-05-13T11:43:02.304Z",
+    "freeScansLeft": 98,
+    "totalScans": 2
+  },
+  "null": {
+    "ips": [
+      "91.184.123.189",
+      "197.211.63.186",
+      "105.112.231.165",
+      "105.117.33.126",
+      "2605:59c0:e41:8d10:ccc4:9f1b:2c96:7578",
+      "66.163.113.73",
+      "119.252.198.122",
+      "105.112.188.144",
+      "51.89.149.59",
+      "105.112.23.178",
+      "197.211.57.30"
+    ],
+    "address": "null",
+    "updatedAt": "2026-05-20T07:25:56.107Z",
+    "freeScansLeft": 80,
+    "totalScans": 20
+  },
+  "BGQFTnzjiw4qgea4jnYp7nGUAv1v8jCY7Cvgf6fYJW88": {
+    "ips": [
+      "182.252.77.215"
+    ],
+    "address": "BGQFTnzjiw4qgea4jnYp7nGUAv1v8jCY7Cvgf6fYJW88",
+    "updatedAt": "2026-05-13T16:22:51.927Z",
+    "freeScansLeft": 97,
+    "totalScans": 3
+  },
+  "Bq3HNqGS4bWRxgEgtvNWTvChesoMZtvAa4a26FAKidbW": {
+    "ips": [
+      "102.90.80.183"
+    ],
+    "address": "Bq3HNqGS4bWRxgEgtvNWTvChesoMZtvAa4a26FAKidbW",
+    "updatedAt": "2026-05-13T23:55:14.037Z",
+    "freeScansLeft": 98,
+    "totalScans": 2
+  },
+  "3ESepZGdkocwMrzAsjShj14c4yaiiLjjV98WDpQ91jSD": {
+    "ips": [
+      "169.150.197.166"
+    ],
+    "address": "3ESepZGdkocwMrzAsjShj14c4yaiiLjjV98WDpQ91jSD",
+    "updatedAt": "2026-05-14T06:00:33.046Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
+  },
+  "3aDyUDhRYNoSDVN763ACWWB6pqvHCSz622aV11nAVuKN": {
+    "ips": [
+      "2405:201:6803:3d25:95ce:f022:6775:b360"
+    ],
+    "address": "3aDyUDhRYNoSDVN763ACWWB6pqvHCSz622aV11nAVuKN",
+    "updatedAt": "2026-05-14T07:55:19.984Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
+  },
+  "BWxC79iaAmdegk6AgNxHBn8WP6ttW3uw5zu8j7afXhx6": {
+    "ips": [
+      "102.89.69.71"
+    ],
+    "address": "BWxC79iaAmdegk6AgNxHBn8WP6ttW3uw5zu8j7afXhx6",
+    "updatedAt": "2026-05-14T09:25:30.738Z",
+    "freeScansLeft": 97,
+    "totalScans": 3
+  },
+  "73bbxpwrnXUPvsPGz7cf36opQ4vvgrnLLmKTrdf2ZuWc": {
+    "ips": [
+      "102.89.84.30"
+    ],
+    "address": "73bbxpwrnXUPvsPGz7cf36opQ4vvgrnLLmKTrdf2ZuWc",
+    "updatedAt": "2026-05-14T09:29:52.877Z",
+    "freeScansLeft": 98,
+    "totalScans": 2
+  },
+  "9366uqF3dDrjnPy4HPdaghmoCAMo3GRJuftWJ3nzQpBs": {
+    "ips": [
+      "185.132.178.101"
+    ],
+    "address": "9366uqF3dDrjnPy4HPdaghmoCAMo3GRJuftWJ3nzQpBs",
+    "updatedAt": "2026-05-14T09:51:48.134Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
+  },
+  "8gvtVp3EpYPSZWAanP3nRxaqGBjFZ6gzG2X6wpdJYed4": {
+    "ips": [
+      "2001:448a:7080:2fda:786f:a5fa:758e:33f9"
+    ],
+    "address": "8gvtVp3EpYPSZWAanP3nRxaqGBjFZ6gzG2X6wpdJYed4",
+    "updatedAt": "2026-05-14T13:50:46.353Z",
+    "freeScansLeft": 98,
+    "totalScans": 2
+  },
+  "3FvW5QKxp5qErjC4m7okPQVXZ6XoKMK7B9tbHhAJcgvN": {
+    "ips": [
+      "102.89.83.144"
+    ],
+    "address": "3FvW5QKxp5qErjC4m7okPQVXZ6XoKMK7B9tbHhAJcgvN",
+    "updatedAt": "2026-05-14T13:48:23.693Z",
+    "freeScansLeft": 95,
+    "totalScans": 5
+  },
+  "Dz8SWAJ9r3BGsFjQ6hzbbhQ99Xr9UwfZ585ZMxECmWPz": {
+    "ips": [
+      "41.207.248.234"
+    ],
+    "address": "Dz8SWAJ9r3BGsFjQ6hzbbhQ99Xr9UwfZ585ZMxECmWPz",
+    "updatedAt": "2026-05-14T15:43:19.599Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
+  },
+  "4JwaZaYHHW2qhLkuxDRnSvctRWxSNQqJ3KKy869DYZhE": {
+    "ips": [
+      "182.48.89.28"
+    ],
+    "address": "4JwaZaYHHW2qhLkuxDRnSvctRWxSNQqJ3KKy869DYZhE",
+    "updatedAt": "2026-05-14T18:38:45.410Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
+  },
+  "Eq7jT3arEu4TdVA633bMrRL6DsbAkeSxErCQNdhG81Yv": {
+    "ips": [
+      "102.91.93.217"
+    ],
+    "address": "Eq7jT3arEu4TdVA633bMrRL6DsbAkeSxErCQNdhG81Yv",
+    "updatedAt": "2026-05-15T00:54:58.554Z",
+    "freeScansLeft": 98,
+    "totalScans": 2
+  },
+  "GZ4bWJpmLymuzChssLPsLy8Y7Zbbtj9ewhM2nJrNCsaJ": {
+    "ips": [
+      "102.89.83.165",
+      "102.89.75.99"
+    ],
+    "address": "GZ4bWJpmLymuzChssLPsLy8Y7Zbbtj9ewhM2nJrNCsaJ",
+    "updatedAt": "2026-05-15T03:04:31.466Z",
+    "freeScansLeft": 97,
+    "totalScans": 3
+  },
+  "FnrBtH4uj5P2UbR68tedm5C5B2ewrzBDrAcRGxedwRZD": {
+    "ips": [
+      "102.188.219.14"
+    ],
+    "address": "FnrBtH4uj5P2UbR68tedm5C5B2ewrzBDrAcRGxedwRZD",
+    "updatedAt": "2026-05-15T02:39:56.073Z",
+    "freeScansLeft": 98,
+    "totalScans": 2
+  },
+  "9kvFsE6j7WSP66tXWt1ZjyWXr9JtLs83r5cuRMvvfVFt": {
+    "ips": [
+      "39.45.83.117"
+    ],
+    "address": "9kvFsE6j7WSP66tXWt1ZjyWXr9JtLs83r5cuRMvvfVFt",
+    "updatedAt": "2026-05-15T05:46:46.333Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
+  },
+  "UeFDhvvq4GMPhw5c7R2yMmxvMXF7XVmjZ1Gb4zHwhPf": {
+    "ips": [
+      "103.246.79.173"
+    ],
+    "address": "UeFDhvvq4GMPhw5c7R2yMmxvMXF7XVmjZ1Gb4zHwhPf",
+    "updatedAt": "2026-05-15T10:39:06.601Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
+  },
+  "GcB9dRo7TtcUp2xa8pwMQvivu3pMTkvCx7SdYXfNHRej": {
+    "ips": [
+      "190.2.152.228"
+    ],
+    "address": "GcB9dRo7TtcUp2xa8pwMQvivu3pMTkvCx7SdYXfNHRej",
+    "updatedAt": "2026-05-15T13:32:33.062Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
+  },
+  "9YSYFAQsfvceRcgjXC5ZxQHaoF6n8zyHPJXCUkkv9Dw": {
+    "ips": [
+      "2404:c0:c201:e7b7:b21c:3ee7:23fa:70bd"
+    ],
+    "address": "9YSYFAQsfvceRcgjXC5ZxQHaoF6n8zyHPJXCUkkv9Dw",
+    "updatedAt": "2026-05-15T15:13:19.051Z",
+    "freeScansLeft": 98,
+    "totalScans": 2
+  },
+  "JBtfv3vYJPBJiSP7zodaKBZvA2zLNExNbG8Mw34GftD5": {
+    "registeredAt": "2026-05-15T16:44:01.226Z",
+    "apiKey": "fe72c428-3f98-46eb-acc0-fa39b52a3504",
+    "balance": 0,
+    "freeScansLeft": 97,
+    "totalScans": 3,
+    "stakedAmount": 0,
+    "address": "JBtfv3vYJPBJiSP7zodaKBZvA2zLNExNbG8Mw34GftD5",
+    "updatedAt": "2026-05-20T07:07:20.433Z",
+    "votes": {
+      "1776780461280Arbitrum": {
+        "vote": false,
+        "at": "2026-05-15T16:44:26.433Z",
+        "feedback": "Really enjoyed testing @poh_network.\n\nThe AI-powered wallet analysis and trust signal system make it easier to understand wallet behavior beyond normal on-chain activity.\n\nClean UI, fast scans."
+      },
+      "1777400zns_8217_0x59b9b": {
+        "vote": false,
+        "at": "2026-05-15T16:44:39.221Z"
+      },
+      "1777939200002lens_hub_nft": {
+        "vote": false,
+        "at": "2026-05-15T16:45:01.731Z",
+        "feedback": "Really enjoyed testing @poh_network.\n\nThe AI-powered wallet analysis and trust signal system make it easier to understand wallet behavior beyond normal on-chain activity.\n\nClean UI, fast scans."
+      },
+      "1777400zns_2741_0xe097": {
+        "vote": true,
+        "at": "2026-05-18T16:55:58.900Z"
+      },
+      "1777939200011monkeyball_mbs": {
+        "vote": true,
+        "at": "2026-05-20T07:06:49.805Z"
+      }
+    },
+    "ips": [
+      "105.112.231.137",
+      "105.113.25.221"
+    ]
+  },
+  "DVHDEzyFhVHjkQT3nxzavAvT2j6VE29RNMtux3X7VdbQ": {
+    "ips": [
+      "129.222.206.174",
+      "98.97.76.94",
+      "102.91.4.229",
+      "98.97.79.132",
+      "102.91.72.87",
+      "98.97.77.9",
+      "149.36.51.13",
+      "102.91.71.71",
+      "197.210.77.160"
+    ],
+    "address": "DVHDEzyFhVHjkQT3nxzavAvT2j6VE29RNMtux3X7VdbQ",
+    "updatedAt": "2026-05-22T06:52:17.511Z",
+    "freeScansLeft": 74,
+    "totalScans": 26,
+    "votes": {
+      "1777939200014illuvitar_nft": {
+        "vote": false,
+        "at": "2026-05-16T14:25:40.996Z"
+      },
+      "1777507300042w3bTwit": {
+        "vote": true,
+        "at": "2026-05-16T14:26:40.506Z",
+        "feedback": "It's Linked to an account, giving high chances of Human behaviour"
+      },
+      "1777400000007farcaster": {
+        "vote": true,
+        "at": "2026-05-16T16:18:01.590Z"
+      },
+      "poh_bab_bsc_1776849825388": {
+        "vote": true,
+        "at": "2026-05-16T16:18:25.017Z"
+      },
+      "1777939300002skr_domain": {
+        "vote": false,
+        "at": "2026-05-16T16:18:49.017Z"
+      },
+      "1777507300010Solayer": {
+        "vote": false,
+        "at": "2026-05-16T16:19:02.568Z"
+      },
+      "1777507200003PropyPR": {
+        "vote": false,
+        "at": "2026-05-16T16:19:22.972Z"
+      }
+    }
+  },
+  "63MPL1MkvLpNu9hGXiaYsNR5vbTmV5Z9aLoUsnasGuFp": {
+    "ips": [
+      "197.211.63.162"
+    ],
+    "address": "63MPL1MkvLpNu9hGXiaYsNR5vbTmV5Z9aLoUsnasGuFp",
+    "updatedAt": "2026-05-15T23:48:54.032Z",
+    "freeScansLeft": 97,
+    "totalScans": 3,
+    "votes": {
+      "1777600000006galxe_worl": {
+        "vote": true,
+        "at": "2026-05-15T23:48:54.032Z",
+        "feedback": "Can you teach me anything"
+      }
+    }
+  },
+  "E6Kxv2MaT2YPPHW6avbp2MtMAUbu9ghPwsgTcdoxexMu": {
+    "ips": [
+      "135.136.39.6"
+    ],
+    "address": "E6Kxv2MaT2YPPHW6avbp2MtMAUbu9ghPwsgTcdoxexMu",
+    "updatedAt": "2026-05-16T07:33:01.460Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
+  },
+  "EUvNZmnyJBa4hEu9aZJwG1sGe8jHEtq5QzaUGdtT8Ko3": {
+    "ips": [
+      "102.90.102.194"
+    ],
+    "address": "EUvNZmnyJBa4hEu9aZJwG1sGe8jHEtq5QzaUGdtT8Ko3",
+    "updatedAt": "2026-05-16T10:43:08.303Z",
+    "freeScansLeft": 97,
+    "totalScans": 3
+  },
+  "BKj4Le1svVjcDQfq8mA2BZHD5GmTtiKiKoXktWJXjj3C": {
+    "ips": [
+      "2409:40d2:2150:851e:9dc8:6e64:af63:cb23"
+    ],
+    "address": "BKj4Le1svVjcDQfq8mA2BZHD5GmTtiKiKoXktWJXjj3C",
+    "updatedAt": "2026-05-16T11:40:39.611Z",
+    "freeScansLeft": 94,
+    "totalScans": 6
+  },
+  "AyeYKPVJHDgYBd9uTQGzD9wqwZSnRKnu2H2g6nBJZ3tJ": {
+    "ips": [
+      "105.112.233.223"
+    ],
+    "address": "AyeYKPVJHDgYBd9uTQGzD9wqwZSnRKnu2H2g6nBJZ3tJ",
+    "updatedAt": "2026-05-16T14:08:01.083Z",
+    "freeScansLeft": 98,
+    "totalScans": 2
+  },
+  "jAkX7VtKQmULTTqEZEDSACW1KVRXkWNbqLd96GRNtEF": {
+    "votes": {
+      "1777939200008genopets_gene": {
+        "vote": true,
+        "at": "2026-05-16T14:51:13.758Z"
+      },
+      "1777507200055Agrotok": {
+        "vote": true,
+        "at": "2026-05-16T14:51:58.552Z"
+      }
+    },
+    "address": "jAkX7VtKQmULTTqEZEDSACW1KVRXkWNbqLd96GRNtEF",
+    "updatedAt": "2026-05-16T14:51:58.553Z"
+  },
+  "6SKG6uWtZBVhenwVUDfWHBegr9eNiNjxFEZB7jDBTq1x": {
+    "ips": [
+      "102.88.112.25"
+    ],
+    "address": "6SKG6uWtZBVhenwVUDfWHBegr9eNiNjxFEZB7jDBTq1x",
+    "updatedAt": "2026-05-16T14:53:57.859Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
+  },
+  "HJiuBKDLpnWu8XChvw7ivfQjDvFTMnPyniiAbv2nVRVX": {
+    "ips": [
+      "102.90.118.60"
+    ],
+    "address": "HJiuBKDLpnWu8XChvw7ivfQjDvFTMnPyniiAbv2nVRVX",
+    "updatedAt": "2026-05-16T15:51:58.738Z",
+    "freeScansLeft": 98,
+    "totalScans": 2
+  },
+  "ETSCVaS8c8cgK6MMJ1rS32MvoEoTqYgNLEwkjhwVtwtC": {
+    "ips": [
+      "91.241.112.134"
+    ],
+    "address": "ETSCVaS8c8cgK6MMJ1rS32MvoEoTqYgNLEwkjhwVtwtC",
+    "updatedAt": "2026-05-16T16:24:44.767Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
+  },
+  "3SPJEntZUE4uz3CxT5WqExZHR1S3Xux3nDZcFSmhGrtm": {
+    "registeredAt": "2026-05-17T10:12:46.172Z",
+    "apiKey": "09b68651-a9a3-4b14-842f-033954008cff",
+    "balance": 0,
+    "freeScansLeft": 99,
+    "totalScans": 1,
+    "stakedAmount": 0,
+    "address": "3SPJEntZUE4uz3CxT5WqExZHR1S3Xux3nDZcFSmhGrtm",
+    "updatedAt": "2026-05-17T10:21:00.114Z",
+    "ips": [
+      "102.93.10.143"
+    ]
+  },
+  "FQCiNnYvJfSF8ajmqmsRaBGabvbj9TDS4LLc9qMECmyj": {
+    "ips": [
+      "118.167.4.191"
+    ],
+    "address": "FQCiNnYvJfSF8ajmqmsRaBGabvbj9TDS4LLc9qMECmyj",
+    "updatedAt": "2026-05-17T12:23:01.047Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
+  },
+  "FftKdViX8YgWWtyEmkUGM4rPpUmK6SbnXNakEKqEy1jZ": {
+    "ips": [
+      "105.112.212.250"
+    ],
+    "address": "FftKdViX8YgWWtyEmkUGM4rPpUmK6SbnXNakEKqEy1jZ",
+    "updatedAt": "2026-05-17T19:57:00.031Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
+  },
+  "CMZnK4QCty3eHNAf7hn7d2esBjf1MAWR64vB8LKnM6tF": {
+    "ips": [
+      "102.93.10.160"
+    ],
+    "address": "CMZnK4QCty3eHNAf7hn7d2esBjf1MAWR64vB8LKnM6tF",
+    "updatedAt": "2026-05-17T23:18:54.480Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
+  },
+  "4AHYJTLJM3tyEscVzZiRCAggFshGQuiAETKzeWkde67x": {
+    "ips": [
+      "2605:59c0:e41:8d10:4cae:b64d:2d49:e179",
+      "2605:59c0:e41:8d10:ba7f:bcd0:7cfd:2a28",
+      "2605:59c0:e41:8d10:7481:d438:aec4:4ba2"
+    ],
+    "address": "4AHYJTLJM3tyEscVzZiRCAggFshGQuiAETKzeWkde67x",
+    "updatedAt": "2026-05-19T00:41:08.620Z",
+    "freeScansLeft": 91,
+    "totalScans": 9,
+    "votes": {
+      "1777400000021farcaster_followers": {
+        "vote": true,
+        "at": "2026-05-18T18:33:04.291Z"
+      },
+      "1776780461285BSC_—_tx": {
+        "vote": true,
+        "at": "2026-05-18T18:33:45.279Z"
+      },
+      "1776689122828sol_txcount": {
+        "vote": true,
+        "at": "2026-05-18T18:34:42.129Z"
+      }
+    },
+    "balance": 0,
+    "apiKey": "e8c51151-cecd-45de-9601-263aabc5181e"
+  },
+  "7RfdRj3V6p5iaRmiBvhmA4LcafzUsP6K81oFR8FdDh3E": {
+    "ips": [
+      "102.90.102.127"
+    ],
+    "address": "7RfdRj3V6p5iaRmiBvhmA4LcafzUsP6K81oFR8FdDh3E",
+    "updatedAt": "2026-05-18T20:32:33.858Z",
+    "freeScansLeft": 99,
+    "totalScans": 1,
+    "votes": {
+      "1777939300001seeker_genesis": {
+        "vote": true,
+        "at": "2026-05-18T20:32:33.858Z"
+      }
+    }
+  },
+  "5NNdnA2CEryCt6waTuQ2ASEtL2LzUxExGcWBzoL4cEnB": {
+    "ips": [
+      "2409:40f3:1d:f8a0:8000::"
+    ],
+    "address": "5NNdnA2CEryCt6waTuQ2ASEtL2LzUxExGcWBzoL4cEnB",
+    "updatedAt": "2026-05-18T17:10:58.579Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
+  },
+  "9xjPK6VNw3VG8sSXVJK9ePUSDh3hZxWqYDbfKKDLsy2T": {
+    "ips": [
+      "102.89.68.78"
+    ],
+    "address": "9xjPK6VNw3VG8sSXVJK9ePUSDh3hZxWqYDbfKKDLsy2T",
+    "updatedAt": "2026-05-18T19:26:27.376Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
+  },
+  "HbaS2KhUVL9reJgSTuPDEW6bkFQsprQzqw3phPqNhSku": {
+    "ips": [
+      "105.117.9.211"
+    ],
+    "address": "HbaS2KhUVL9reJgSTuPDEW6bkFQsprQzqw3phPqNhSku",
+    "updatedAt": "2026-05-18T20:23:14.600Z",
+    "freeScansLeft": 96,
+    "totalScans": 4,
+    "votes": {
+      "1778823783091iu7shgg5w": {
+        "vote": true,
+        "at": "2026-05-18T20:22:47.463Z",
+        "feedback": "Onboarding is smooth and wallet connect is fast. AI verdicts are interesting but need clearer explanations of scoring factors. UI is clean but navigation between Vote/Train could be improved."
+      },
+      "1777400000022farcaster_casts": {
+        "vote": true,
+        "at": "2026-05-18T20:23:14.599Z",
+        "feedback": "Onboarding is smooth and wallet connect is fast. AI verdicts are interesting but need clearer explanations of scoring factors. UI is clean but navigation between Vote/Train could be improved."
+      }
+    }
+  },
+  "ELBSweidyFUuiVaxhqZKZt9E8ANYr5iwj6yF4LCt9gUP": {
+    "ips": [
+      "102.89.47.137"
+    ],
+    "address": "ELBSweidyFUuiVaxhqZKZt9E8ANYr5iwj6yF4LCt9gUP",
+    "updatedAt": "2026-05-18T22:16:41.857Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
+  },
+  "DzmFiSMcg5D53x4rfbP1aQsFFyDV2Dr3QmUzJVivEBKF": {
+    "ips": [
+      "2404:8000:104e:170:6d8a:d61e:e241:9631"
+    ],
+    "address": "DzmFiSMcg5D53x4rfbP1aQsFFyDV2Dr3QmUzJVivEBKF",
+    "updatedAt": "2026-05-19T00:25:48.086Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
+  },
+  "CUbFaCqJMeP7fKrjRqeety6B3Q89NxMDeM3kEvCyy1fz": {
+    "ips": [
+      "102.89.83.65"
+    ],
+    "address": "CUbFaCqJMeP7fKrjRqeety6B3Q89NxMDeM3kEvCyy1fz",
+    "updatedAt": "2026-05-19T00:47:08.963Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
+  },
+  "FS2EybijC8YQcc5QRLwZD7Sk8KGCkLRm3oJSNGAB1Q9w": {
+    "ips": [
+      "102.89.32.200"
+    ],
+    "address": "FS2EybijC8YQcc5QRLwZD7Sk8KGCkLRm3oJSNGAB1Q9w",
+    "updatedAt": "2026-05-19T01:28:07.626Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
+  },
+  "J9X6NhJPPsUvxPoDGbkkyyU33wJr5hyQzhsvWAFS2rQ2": {
+    "ips": [
+      "102.90.100.172"
+    ],
+    "address": "J9X6NhJPPsUvxPoDGbkkyyU33wJr5hyQzhsvWAFS2rQ2",
+    "updatedAt": "2026-05-19T13:18:50.242Z",
+    "freeScansLeft": 98,
+    "totalScans": 2
+  },
+  "EyiSAX8Ww5aemfsYpxjiMLzJbcsT4Toqm9HxWZVcS74t": {
+    "ips": [
+      "2c0f:2280:51:be7c:d6b3:eab7:7a62:ba95"
+    ],
+    "address": "EyiSAX8Ww5aemfsYpxjiMLzJbcsT4Toqm9HxWZVcS74t",
+    "updatedAt": "2026-05-19T20:09:53.452Z",
+    "freeScansLeft": 98,
+    "totalScans": 2,
+    "votes": {
+      "1777600000004galxe_disc": {
+        "vote": true,
+        "at": "2026-05-19T20:09:53.451Z"
+      }
+    }
+  },
+  "75v7Y5rvHG8krT9xuCt3TbvsQcNHHZNR7C8K2LEVx5Vu": {
+    "registeredAt": "2026-05-19T21:56:01.138Z",
+    "apiKey": "a9c60fde-6bcb-462b-b083-64e23df6582e",
+    "balance": 0,
+    "freeScansLeft": 95,
+    "totalScans": 5,
+    "stakedAmount": 0,
+    "address": "75v7Y5rvHG8krT9xuCt3TbvsQcNHHZNR7C8K2LEVx5Vu",
+    "updatedAt": "2026-05-20T11:27:54.495Z",
+    "ips": [
+      "105.112.231.78",
+      "102.91.30.21",
+      "105.117.7.168"
+    ],
+    "votes": {
+      "1777507200091ClubdVI": {
+        "vote": true,
+        "at": "2026-05-20T10:07:24.247Z"
+      }
+    }
+  },
+  "ARQaNjCyZnxq2QshizZrP5eCupsyRXihtDQjdenmx25f": {
+    "ips": [
+      "105.112.11.41"
+    ],
+    "address": "ARQaNjCyZnxq2QshizZrP5eCupsyRXihtDQjdenmx25f",
+    "updatedAt": "2026-05-19T21:58:49.916Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
+  },
+  "Ffo3jdFF9Tkg3Qh2r4fQxVWGW7vNAYa8MgiALmH9rn4s": {
+    "ips": [
+      "92.53.57.2"
+    ],
+    "address": "Ffo3jdFF9Tkg3Qh2r4fQxVWGW7vNAYa8MgiALmH9rn4s",
+    "updatedAt": "2026-05-19T22:53:38.400Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
+  },
+  "ALXTBBYzByEbHgWkwXhjtV8SyrMLeiHRBTZTv6KBUv4x": {
+    "ips": [
+      "102.91.96.13"
+    ],
+    "address": "ALXTBBYzByEbHgWkwXhjtV8SyrMLeiHRBTZTv6KBUv4x",
+    "updatedAt": "2026-05-19T23:29:36.034Z",
+    "freeScansLeft": 98,
+    "totalScans": 2
+  },
+  "Ej8rYaHoN7X1HSTvcXs1aDaSxRT2jmhKya2uFodj3qKW": {
+    "ips": [
+      "197.211.63.94",
+      "197.211.63.31"
+    ],
+    "address": "Ej8rYaHoN7X1HSTvcXs1aDaSxRT2jmhKya2uFodj3qKW",
+    "updatedAt": "2026-05-20T09:17:22.501Z",
+    "freeScansLeft": 98,
+    "totalScans": 2
+  },
+  "65U8ZJZNvWBZzzamRT2zMb9kr6eyZQLkAb8Mfs9wYFyF": {
+    "ips": [
+      "102.91.92.204"
+    ],
+    "address": "65U8ZJZNvWBZzzamRT2zMb9kr6eyZQLkAb8Mfs9wYFyF",
+    "updatedAt": "2026-05-20T10:05:43.542Z",
+    "freeScansLeft": 96,
+    "totalScans": 4,
+    "votes": {
+      "1777400000004smartctbase": {
+        "vote": true,
+        "at": "2026-05-20T09:57:46.897Z",
+        "feedback": "Weak signal. Domain ownership doesn’t reliably prove human behavior and may exclude real users without Web3 identity assets."
+      },
+      "1778823783091xk7mhwq6f": {
+        "vote": true,
+        "at": "2026-05-20T09:58:59.726Z",
+        "feedback": "Weak signal. Domain ownership doesn’t reliably prove human behavior and may exclude real users without Web3 identity assets."
+      }
+    }
+  },
+  "Aav2yeeUmrCJ71u9Bri5xrgxaXwhbEADkeYT4dkChiER": {
+    "ips": [
+      "102.91.92.34"
+    ],
+    "address": "Aav2yeeUmrCJ71u9Bri5xrgxaXwhbEADkeYT4dkChiER",
+    "updatedAt": "2026-05-20T10:40:49.945Z",
+    "freeScansLeft": 97,
+    "totalScans": 3
+  },
+  "C5tzMHamEgrt61z2PUMiS8hq3KfHpRK3babbbXtmTGFz": {
+    "ips": [
+      "102.91.77.97"
+    ],
+    "address": "C5tzMHamEgrt61z2PUMiS8hq3KfHpRK3babbbXtmTGFz",
+    "updatedAt": "2026-05-20T09:53:35.697Z",
+    "freeScansLeft": 99,
+    "totalScans": 1
+  },
+  "8gh7KgvuzGm1TUCh2Sa6bWimjJXY5TLyvhipXx8QcCC2": {
+    "ips": [
+      "197.211.52.65"
+    ],
+    "address": "8gh7KgvuzGm1TUCh2Sa6bWimjJXY5TLyvhipXx8QcCC2",
+    "updatedAt": "2026-05-20T11:29:33.803Z",
+    "freeScansLeft": 96,
+    "totalScans": 4
+  },
+  "jjXKMj8Ug885SYjQtX3yiVHAkinM7HNVTmQTVaPjrqX": {
+    "registeredAt": "2026-05-20T10:57:12.052Z",
+    "apiKey": "f17c4090-355c-4f13-9579-e811add72a6f",
+    "balance": 0,
+    "freeScansLeft": 98,
+    "totalScans": 2,
+    "stakedAmount": 0,
+    "address": "jjXKMj8Ug885SYjQtX3yiVHAkinM7HNVTmQTVaPjrqX",
+    "updatedAt": "2026-05-20T11:20:43.833Z",
+    "ips": [
+      "105.116.7.251"
+    ],
+    "votes": {
+      "1777507300096w3bENS": {
+        "vote": true,
+        "at": "2026-05-20T11:20:43.832Z",
+        "feedback": "I feel the way to track bot Wallet activities is when the wallet makes 5 transactions in 1 or 5 seconds"
+      }
+    }
+  },
+  "4aayLVcoASwgYXD5qYLEt44qbN1a46qDYf8jfb48Xeem": {
+    "ips": [
+      "2a02:a313:a0b5:ff80:4c16:e87c:5a78:8aba",
+      "46.134.41.189"
+    ],
+    "address": "4aayLVcoASwgYXD5qYLEt44qbN1a46qDYf8jfb48Xeem",
+    "updatedAt": "2026-05-20T11:53:36.727Z",
+    "freeScansLeft": 96,
+    "totalScans": 4,
+    "votes": {
+      "1777400zns_98865_0xf180": {
+        "vote": true,
+        "at": "2026-05-20T11:34:11.540Z"
+      }
+    }
   }
 }
