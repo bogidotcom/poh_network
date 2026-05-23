@@ -121,20 +121,33 @@ function extractJSON(text) {
   let clean = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
   // Strip markdown code fences (```json ... ``` or ``` ... ```)
   clean = clean.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
-  // Find the first complete {...} block
-  const match = clean.match(/\{[\s\S]*\}/);
-  if (!match) return null;
-  try { return JSON.parse(match[0]); }
-  catch {
-    // Try to recover truncated JSON by finding the last valid close
-    const s = match[0];
-    for (let i = s.length - 1; i >= 0; i--) {
-      if (s[i] === '}') {
-        try { return JSON.parse(s.slice(0, i + 1)); } catch { continue; }
-      }
+  // Find the opening brace — grab everything from there
+  const start = clean.indexOf('{');
+  if (start === -1) return null;
+  const fragment = clean.slice(start);
+
+  // 1. Try direct parse (covers complete JSON)
+  try { return JSON.parse(fragment); } catch { /* fall through */ }
+
+  // 2. Try truncated-JSON recovery: walk back from end to find last valid `}`
+  for (let i = fragment.length - 1; i >= 0; i--) {
+    if (fragment[i] === '}') {
+      try { return JSON.parse(fragment.slice(0, i + 1)); } catch { continue; }
     }
-    return null;
   }
+
+  // 3. Handle case where JSON was cut mid-string value (no closing `}` at all).
+  //    Re-assemble by stripping the incomplete last key-value pair and closing the object.
+  try {
+    // Remove everything from the last complete comma (or opening brace) onwards
+    const trimmed = fragment.replace(/,?\s*"[^"]*"\s*:\s*"[^"]*$/, '').replace(/,\s*$/, '');
+    const closed = trimmed.endsWith('}') ? trimmed : trimmed + '}';
+    const parsed = JSON.parse(closed);
+    // Only accept if it has at least one key
+    if (Object.keys(parsed).length > 0) return parsed;
+  } catch { /* fall through */ }
+
+  return null;
 }
 
 async function ollamaChatJSON(prompt, requiredKeys, opts = {}) {
@@ -314,8 +327,8 @@ async function analyzeHumanness(address, methodResults, methods) {
 Signals (${passed.length} passed, ${failed.length} failed shown):
 ${signalsStr}
 ${correctionBlock}
-Return ONLY valid JSON with verdict HUMAN|AI|UNCERTAIN, confidence 0.0-1.0, and reasoning:
-{"verdict":"...","confidence":0.0,"reasoning":"..."}`;
+Return ONLY valid JSON. No text outside the JSON object.
+{"verdict":"HUMAN","confidence":0.95,"reasoning":"..."}`;
 
   const backend = usingQvac ? 'Qvac' : 'Ollama';
   console.log(`[brain] Evaluating ${address} via ${backend}`);
@@ -323,7 +336,7 @@ Return ONLY valid JSON with verdict HUMAN|AI|UNCERTAIN, confidence 0.0-1.0, and 
   const result = await evaluatorChatJSON(
     prompt,
     ['verdict', 'confidence', 'reasoning'],
-    { maxTokens: 256, timeLimit: usingQvac ? 120000 : 40000 }
+    { maxTokens: 200, timeLimit: 60000 }
   );
 
   if (!result) {
@@ -338,33 +351,10 @@ Return ONLY valid JSON with verdict HUMAN|AI|UNCERTAIN, confidence 0.0-1.0, and 
     };
   }
 
-  // Double-pass verification — skip for Qvac (small model, no concurrent jobs)
-  let final = result;
-  if (!usingQvac) {
-    const verifyPrompt = `Review and correct this verdict if wrong.
-
-Wallet: ${address}
-Signals:
-${signalsStr}
-Previous: ${JSON.stringify(result)}
-
-Return corrected JSON only:
-{"verdict":"HUMAN or AI or UNCERTAIN","confidence":0.0_to_1.0,"reasoning":"explanation"}`;
-
-    const verified = await evaluatorChatJSON(
-      verifyPrompt,
-      ['verdict', 'confidence', 'reasoning'],
-      { maxTokens: 400, timeLimit: 30000 }
-    );
-    final = verified || result;
-  }
-
   return {
-    verdict: (final.verdict || 'UNKNOWN').toUpperCase(),
-    confidence: Math.min(1, Math.max(0, parseFloat(final.confidence) || 0.5)),
-    reasoning: final.reasoning || '',
-    signal_contributions: final.signal_contributions || {},
-    conflicts: final.conflicts || []
+    verdict:    (result.verdict || 'UNKNOWN').toUpperCase(),
+    confidence: Math.min(1, Math.max(0, parseFloat(result.confidence) || 0.5)),
+    reasoning:  result.reasoning || '',
   };
 }
 
