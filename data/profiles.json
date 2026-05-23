@@ -4,7 +4,7 @@
       "::ffff:127.0.0.1"
     ],
     "address": "6bvB3PTz48wozyPJeuTB77axexWu9MfUSjBYbQzEgK88",
-    "updatedAt": "2026-04-27T07:30:51.922Z",
+    "updatedAt": "2026-05-23T03:50:15.214Z",
     "freeScansLeft": 0,
     "totalScans": 100,
     "votes": {
@@ -23,10 +23,15 @@
       "1776689122827sol_balance": {
         "vote": false,
         "at": "2026-04-24T13:38:48.123Z"
+      },
+      "1777507200021Goldfin": {
+        "vote": true,
+        "at": "2026-05-19T17:53:54.544Z",
+        "feedback": "Human"
       }
     },
     "apiKey": "606ceb7b-92d2-4831-a4bb-517b8307ddbb",
-    "balance": 500000
+    "balance": 475000
   },
   "TestWallet123": {
     "apiKey": "40c915ad-f093-4b6d-a010-cbc58caec6f9",

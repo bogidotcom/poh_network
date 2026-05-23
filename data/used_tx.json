@@ -4,5 +4,11 @@
     "action": "vote",
     "wallet": "6bvB3PTz48wozyPJeuTB77axexWu9MfUSjBYbQzEgK88",
     "methodId": "poh_human_protocol_1776849825388"
+  },
+  "A3y46UDxzXv4tMYQeo5g3FSkpjYSUfCEeP8L6QePrSgrVGMtK48T4adBRAoAgrRrcYTKP3UkFkQcyiHAPCQLbgd": {
+    "at": "2026-05-19T17:53:54.544Z",
+    "action": "vote",
+    "wallet": "6bvB3PTz48wozyPJeuTB77axexWu9MfUSjBYbQzEgK88",
+    "methodId": "1777507200021Goldfin"
   }
 }

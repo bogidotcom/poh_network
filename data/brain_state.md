@@ -23,3 +23,10 @@ Voter assessments for methods:
 
 **Previous State:**
 # Brain State — Last updated: 2026-04-27T08:00:56.959Z
+
+### Vote: Goldfinch FIDU balance > 0 — Senior Pool LP token, active participation in real-world credit | Can this detect human behavior? → YES (stake: 0.010) — 2026-05-19T17:54:02.722Z
+
+### Verdict Correction — 2026-05-22T23:07:30.633Z
+Address: 0xe529BDa2eEB600C812e5cD5cA1fb9E906d47FC42
+AI said: AI → User says: HUMAN
+Insight: USDC balance > 10
