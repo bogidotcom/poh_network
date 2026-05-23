@@ -10,7 +10,7 @@
   --green: #22c55e;
   --red: #ef4444;
 
-  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+  font-family: 'Iceland', sans-serif;
   line-height: 1.5;
   font-weight: 400;
   color-scheme: dark;
@@ -23,6 +23,7 @@
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
+button, input, select, textarea { font-family: inherit; }
 
 body, html {
   margin: 0px;

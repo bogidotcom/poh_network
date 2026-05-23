@@ -3,12 +3,19 @@ import axios from 'axios'
 import { Connection, PublicKey, Transaction } from '@solana/web3.js'
 import { getAssociatedTokenAddress, createTransferInstruction } from '@solana/spl-token'
 
+// Solana mainnet stablecoin mints (standard SPL TOKEN_PROGRAM_ID, 6 decimals)
+const STABLE_MINTS = {
+  USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+  USDT: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+}
+
 export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, SOLANA_RPC, signAndSendTransaction }) {
   const scanInput            = ref('')
   // Auto-lowercase domain names (anything with a dot — never a raw wallet address)
   watch(scanInput, v => { if (v.includes('.') && v !== v.toLowerCase()) scanInput.value = v.toLowerCase() })
   const resolvedInputDisplay = ref('')
   const checkerResults       = ref(null)
+  const ofacResult           = ref(null) // top-level OFAC field from single scans
   const showEvidence         = ref(false)
   const brainVerdict         = ref(null)
   const brainPolling         = ref(false)
@@ -110,6 +117,13 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
 
   const runCheck = async () => {
     if (!connected.value) return
+    checkerResults.value = null
+    ofacResult.value     = null
+    brainVerdict.value   = null
+    brainPolling.value   = false
+    brainKey.value       = null
+    batchProgress.value  = null
+    batchPolling.value   = false
     loading.value = true
     isResolving.value = true
     error.value = null
@@ -132,14 +146,16 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
       const freeScanData = await axios.get('/profile/' + walletAddress.value).catch(() => null)
       const freeScansLeft = freeScanData?.data?.profile?.freeScansLeft ?? 100
 
-      if (freeScansLeft < resolvedInputs.length && POH_MINT.value && !POH_MINT.value.startsWith('YOUR_')) {
-        const costRaw = pricingData.total
-        const connection = new Connection(SOLANA_RPC.value, 'confirmed')
-        const mintPubkey = new PublicKey(POH_MINT.value)
+      if (freeScansLeft < resolvedInputs.length && FEE_RECIPIENT.value) {
+        // Payment in USDC (standard SPL — no TOKEN_2022_PROGRAM_ID needed)
+        const costRaw      = pricingData.total   // raw 6-decimal USDC units
+        const connection   = new Connection(SOLANA_RPC.value, 'confirmed')
+        const mintPubkey   = new PublicKey(STABLE_MINTS.USDC)
         const walletPubkey = new PublicKey(walletAddress.value)
         const recipientPubkey = new PublicKey(FEE_RECIPIENT.value)
+        // Default getAssociatedTokenAddress uses TOKEN_PROGRAM_ID — correct for USDC
         const fromAta = await getAssociatedTokenAddress(mintPubkey, walletPubkey)
-        const toAta = await getAssociatedTokenAddress(mintPubkey, recipientPubkey)
+        const toAta   = await getAssociatedTokenAddress(mintPubkey, recipientPubkey)
         const payTx = new Transaction().add(
           createTransferInstruction(fromAta, toAta, walletPubkey, BigInt(costRaw))
         )
@@ -181,6 +197,7 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
         setTimeout(() => { clearInterval(jobPoll); batchPolling.value = false }, 2 * 60 * 60 * 1000)
       } else {
         checkerResults.value = res.data.result
+        ofacResult.value   = res.data.ofac || null
         brainVerdict.value = null
         brainKey.value     = null
         showEvidence.value = false
@@ -215,6 +232,7 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
     scanInput,
     resolvedInputDisplay,
     checkerResults,
+    ofacResult,
     showEvidence,
     brainVerdict,
     brainPolling,

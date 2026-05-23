@@ -23,7 +23,7 @@ const emit = defineEmits([
   <div class="votes-page">
     <div class="votes-header">
       <div class="scan-tag">CONSENSUS QUEUE</div>
-      <h2 class="scan-title">Review detection methods</h2>
+      <h2 class="scan-title">Review detection signals</h2>
       <p class="scan-sub">Vote on whether each method reliably distinguishes humans from bots. Your POH stake weight determines your influence.</p>
     </div>
 

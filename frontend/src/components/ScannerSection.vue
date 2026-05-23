@@ -36,7 +36,7 @@ const emit = defineEmits([
     <div class="scan-hero">
       <div class="scan-tag">WALLET SCANNER</div>
       <h2 class="scan-title">Verify any wallet</h2>
-      <p class="scan-sub">Run all registered detection methods simultaneously and get an AI verdict.</p>
+      <p class="scan-sub">Run all registered detection signals simultaneously and get an AI verdict.</p>
     </div>
 
     <div class="scan-box">
@@ -122,11 +122,11 @@ const emit = defineEmits([
       <span class="brain-analyzing">processing evidence...</span>
     </div>
 
-    <div v-if="brainVerdict && brainVerdict.status !== 'not_found'" class="brain-card" :class="brainVerdict.verdict === 'HUMAN' ? 'brain-human' : 'brain-bot'">
+    <div v-if="brainVerdict && brainVerdict.status !== 'not_found'" class="brain-card" :class="brainVerdict.verdict === 'HUMAN' ? 'brain-human' : brainVerdict.verdict === 'UNCERTAIN' ? 'brain-uncertain' : 'brain-bot'">
       <div class="brain-row">
         <span class="brain-label">AI Verdict</span>
-        <span :class="['status-badge', brainVerdict.verdict === 'HUMAN' ? 'human' : 'ai']">
-          {{ brainVerdict.verdict === 'HUMAN' ? 'VERIFIED HUMAN' : 'SUSPECTED BOT' }}
+        <span :class="['status-badge', brainVerdict.verdict === 'HUMAN' ? 'human' : brainVerdict.verdict === 'UNCERTAIN' ? 'uncertain' : 'ai']">
+          {{ brainVerdict.verdict === 'HUMAN' ? 'VERIFIED HUMAN' : brainVerdict.verdict === 'UNCERTAIN' ? 'UNCERTAIN' : 'SUSPECTED BOT' }}
         </span>
       </div>
       <p class="brain-reasoning">{{ brainVerdict.reasoning }}</p>

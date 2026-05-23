@@ -96,7 +96,7 @@ Scans one or more wallet addresses against all registered methods.
 | `input` | EVM address, Solana base58, ZNS domain (`.eth`, `.bnb`, `.defi`…), or array |
 | `walletAddress` | Connected wallet (for free-tier tracking) |
 | `apiKey` | API key from profile (alternative to `walletAddress`) |
-| `txHash` | POH burn transaction hash (required for paid scans) |
+| `txHash` | USDC/USDT payment transaction hash (required for paid scans) |
 | `chainIds` | Optional EVM chain filter, e.g. `1,56` |
 | `csv` | Multipart CSV upload with `address` column (bulk mode) |
 
@@ -146,10 +146,10 @@ Poll for the async AI verdict after a single-wallet scan. `brainKey` is returned
 ```
 
 ### `GET /checker/pricing?count=N`
-Returns cost breakdown for a given batch size before committing.
+Returns cost breakdown for a given batch size before committing. Pricing is flat: **$1 per 1,000 scans** ($0.001/scan), paid in USDC or USDT on Solana. First 100 scans per wallet are free.
 
 ```json
-{ "count": 100, "perAddress": 0.55, "total": 55000000, "tiers": [...] }
+{ "count": 1000, "perAddress": 0.001, "total": 1000000, "currency": "USDC/USDT", "tiers": [...] }
 ```
 
 ### `POST /methods/listing`

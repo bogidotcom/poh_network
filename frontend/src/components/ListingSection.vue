@@ -69,8 +69,8 @@ async function runPreview() {
 <template>
   <div class="content-section">
     <div class="listing-header">
-      <div class="scan-tag">METHOD LISTING</div>
-      <h2 class="scan-title">Submit a detection method</h2>
+      <div class="scan-tag">SIGNAL LISTING</div>
+      <h2 class="scan-title">Submit a detection signal</h2>
       <p class="scan-sub">Define a signal and pay 1000 POH to register it. 500 POH goes to stakers immediately, 500 to the protocol. Earn rewards when your method is used in scans.</p>
     </div>
 

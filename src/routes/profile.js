@@ -7,7 +7,7 @@ const bs58  = require('bs58');
 const fs    = require('fs');
 const path  = require('path');
 const { getProfile, upsertProfile, getRewards, saveRewards, getProfiles, getMyVotes } = require('../utils/profiles');
-const { verifyPohTransfer, sendPohTokens } = require('../utils/solana');
+const { verifyStablecoinTransfer, sendPohTokens } = require('../utils/solana');
 
 const METHODS_PATH = path.join(__dirname, '../../data/methods.json');
 function getMethods() {
@@ -105,8 +105,8 @@ router.post('/deposit', async (req, res, next) => {
     const amountRaw = Math.floor(parseFloat(amount) * 1_000_000);
     if (amountRaw <= 0) return res.status(400).json({ error: 'Invalid amount' });
 
-    const isValid = await verifyPohTransfer(txHash, amountRaw, address);
-    if (!isValid) return res.status(402).json({ error: 'POH transfer not verified' });
+    const isValid = await verifyStablecoinTransfer(txHash, amountRaw, address);
+    if (!isValid) return res.status(402).json({ error: 'USDC/USDT transfer not verified' });
 
     const p = getProfile(address) || {};
     const updated = upsertProfile(address, { balance: (p.balance || 0) + amountRaw });

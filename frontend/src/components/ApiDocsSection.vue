@@ -7,20 +7,16 @@ const emit = defineEmits(['show-section', 'load-profile', 'load-my-votes'])
     <div class="scan-hero">
       <div class="scan-tag">API REFERENCE</div>
       <h2 class="scan-title">Integrate POH</h2>
-      <p class="scan-sub">Simple HTTP API. First 100 scans free per wallet. Authenticate with an API key from your profile.</p>
+      <p class="scan-sub">Simple HTTP API. First 100 scans free per wallet. $1 per 1,000 scans after that — paid in USDC or USDT.</p>
     </div>
 
     <!-- Pricing table -->
     <div class="api-section">
       <div class="api-section-title">Pricing</div>
       <div class="pricing-table">
-        <div class="pt-row pt-head"><span>Batch size</span><span>Rate</span><span>Example</span></div>
-        <div class="pt-row"><span>1 – 9 addresses</span><span>1.00 POH / addr</span><span>5 addrs = 5 POH</span></div>
-        <div class="pt-row"><span>10 – 49 addresses</span><span>0.85 POH / addr</span><span>20 addrs = 17 POH</span></div>
-        <div class="pt-row"><span>50 – 99 addresses</span><span>0.70 POH / addr</span><span>70 addrs = 49 POH</span></div>
-        <div class="pt-row"><span>100 – 499 addresses</span><span>0.55 POH / addr</span><span>200 addrs = 110 POH</span></div>
-        <div class="pt-row"><span>500+ addresses</span><span>0.40 POH / addr</span><span>1000 addrs = 400 POH</span></div>
-        <div class="pt-row pt-free"><span>Free tier</span><span>0 POH</span><span>First 100 scans per wallet</span></div>
+        <div class="pt-row pt-head"><span>Volume</span><span>Rate</span><span>Example</span></div>
+        <div class="pt-row"><span>Any volume</span><span>$0.001 / scan</span><span>1,000 scans = $1 USDC/USDT</span></div>
+        <div class="pt-row pt-free"><span>Free tier</span><span>$0</span><span>First 100 scans per wallet</span></div>
       </div>
     </div>
 
@@ -30,12 +26,12 @@ const emit = defineEmits(['show-section', 'load-profile', 'load-my-votes'])
         <span class="api-method api-method--post">POST</span> /checker
       </div>
       <div class="api-card">
-        <div class="api-desc">Scan one or more wallet addresses against all registered detection methods. Single address → synchronous result with <code>brainKey</code>. Multiple addresses or CSV upload → async job with <code>jobId</code> to poll.</div>
+        <div class="api-desc">Scan one or more wallet addresses against all registered detection signals. Single address → synchronous result with <code>brainKey</code>. Multiple addresses or CSV upload → async job with <code>jobId</code> to poll.</div>
         <div class="api-params">
           <div class="param-row"><code>input</code><span>string or array — wallet address(es) to scan</span></div>
           <div class="param-row"><code>walletAddress</code><span>your Solana wallet (for free tier tracking)</span></div>
           <div class="param-row"><code>apiKey</code><span>API key from your profile (alternative to walletAddress)</span></div>
-          <div class="param-row"><code>txHash</code><span>POH burn transaction hash (required for paid scans)</span></div>
+          <div class="param-row"><code>txHash</code><span>USDC/USDT payment transaction hash (required for paid scans)</span></div>
           <div class="param-row"><code>chainIds</code><span>comma-separated chain IDs to filter EVM methods (optional)</span></div>
           <div class="param-row"><code>csv</code><span>multipart file upload — CSV with address column (bulk mode)</span></div>
         </div>
@@ -160,9 +156,10 @@ const emit = defineEmits(['show-section', 'load-profile', 'load-my-votes'])
         <div class="code-block">
           <div class="code-lang-bar"><span class="code-lang-badge code-lang-badge--json">response</span></div>
           <pre class="code-pre">{
-  <span class="json-key">"count"</span>: <span class="json-num">100</span>,
-  <span class="json-key">"perAddress"</span>: <span class="json-num">0.55</span>,
-  <span class="json-key">"total"</span>: <span class="json-num">55000000</span>,
+  <span class="json-key">"count"</span>: <span class="json-num">1000</span>,
+  <span class="json-key">"perAddress"</span>: <span class="json-num">0.001</span>,
+  <span class="json-key">"total"</span>: <span class="json-num">1000000</span>,
+  <span class="json-key">"currency"</span>: <span class="json-str">"USDC/USDT"</span>,
   <span class="json-key">"tiers"</span>: [...]
 }</pre>
         </div>

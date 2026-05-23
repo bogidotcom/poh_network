@@ -79,7 +79,7 @@ export async function getStakeInfo(walletAddress, rpcUrl) {
     const data = raw.data
     const staked        = Number(data.readBigUInt64LE(8 + 32))
     const pendingRewards = Number(data.readBigUInt64LE(8 + 32 + 8 + 8))
-    return { staked: staked / 1e6, pendingRewards: pendingRewards / 1e6 }
+    return { staked: staked / 1e9, pendingRewards: pendingRewards / 1e9 }
   } catch {
     return { staked: 0, pendingRewards: 0 }
   }
@@ -95,7 +95,7 @@ export async function getGlobalState(rpcUrl) {
     // + bumps(3) + total_staked(8) + reward_per_token(16) + deployer_accumulated(8) + total_methods(8)
     const data = raw.data
     const totalMethods = Number(data.readBigUInt64LE(8 + 32*5 + 3 + 8 + 16 + 8))
-    const totalStaked  = Number(data.readBigUInt64LE(8 + 32*5 + 3)) / 1e6
+    const totalStaked  = Number(data.readBigUInt64LE(8 + 32*5 + 3)) / 1e9
     return { totalMethods, totalStaked }
   } catch {
     return null
@@ -128,7 +128,7 @@ export async function stakeTokens(walletProvider, walletAddress, pohMint, rpcUrl
   const user     = new PublicKey(walletAddress)
   const mint     = new PublicKey(pohMint)
   const userAta  = await getAssociatedTokenAddress(mint, user)
-  const rawAmount = new BN(Math.floor(amountPoh * 1e6))
+  const rawAmount = new BN(Math.floor(amountPoh * 1e9))
 
   const txHash = await program.methods
     .stake(rawAmount)
@@ -153,7 +153,7 @@ export async function unstakeTokens(walletProvider, walletAddress, pohMint, rpcU
   const user     = new PublicKey(walletAddress)
   const mint     = new PublicKey(pohMint)
   const userAta  = await getAssociatedTokenAddress(mint, user)
-  const rawAmount = new BN(Math.floor(amountPoh * 1e6))
+  const rawAmount = new BN(Math.floor(amountPoh * 1e9))
 
   const txHash = await program.methods
     .unstake(rawAmount)

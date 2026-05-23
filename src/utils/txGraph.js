@@ -3,8 +3,23 @@
 const axios      = require('axios');
 const { Connection, PublicKey } = require('@solana/web3.js');
 
-const TX_LIMIT = 50;
-const MIN_TXS  = 5;
+const TX_LIMIT       = 50;
+const MIN_TXS        = 5;
+const CP_CACHE_TTL   = 5 * 60 * 1000; // 5 min — shared with OFAC checker
+
+// Counterparty cache: normalised-address → { addrs: Set<string>, ts: number }
+const _cpCache = new Map();
+
+function _cacheSet(address, addrs) {
+  _cpCache.set(address.toLowerCase(), { addrs, ts: Date.now() });
+}
+
+function _cacheGet(address) {
+  const entry = _cpCache.get(address.toLowerCase());
+  if (!entry) return null;
+  if (Date.now() - entry.ts > CP_CACHE_TTL) { _cpCache.delete(address.toLowerCase()); return null; }
+  return entry.addrs;
+}
 
 // Etherscan v2 free tier covers ETH + Arbitrum. Base + BNB require paid plan.
 // Base → Blockscout (free, no key). BNB → Alchemy (existing key via RPC_56).
@@ -130,6 +145,9 @@ function computeMetrics(address, txs) {
     (timingCv === null || timingCv > 0.3)
   );
 
+  // Side-effect: populate counterparty cache for OFAC checker
+  _cacheSet(address, counterparties);
+
   return { txCount: n, uniqueCounterparties: unique, repeatRatio, selfRatio, timingCv, isHuman };
 }
 
@@ -230,6 +248,9 @@ async function analyzeSolana(address) {
     }
     const isHuman = unique >= 8 && repeatRatio < 0.5 && (timingCv === null || timingCv > 0.3);
 
+    // Side-effect: populate counterparty cache for OFAC checker
+    _cacheSet(address, counterparties);
+
     const m = { txCount: n, uniqueCounterparties: unique, repeatRatio, timingCv, isHuman };
     console.log(`[txGraph] Solana: ${m.txCount} txs, ${m.uniqueCounterparties} unique accounts, CV=${m.timingCv}`);
     return [buildResult(address, 'Solana', m)];
@@ -239,7 +260,7 @@ async function analyzeSolana(address) {
   }
 }
 
-// ── Public entry point ────────────────────────────────────────────────────────
+// ── Public entry points ───────────────────────────────────────────────────────
 
 async function analyzeTransactionGraph(address) {
   if (/^0x[0-9a-fA-F]{40}$/.test(address))          return analyzeEvm(address);
@@ -247,4 +268,20 @@ async function analyzeTransactionGraph(address) {
   return [];
 }
 
-module.exports = { analyzeTransactionGraph };
+/**
+ * Return the set of 1-hop counterparty addresses for `address`.
+ * If `analyzeTransactionGraph` already ran for this address within the last 5 min
+ * the result comes from cache — zero extra API calls.
+ *
+ * @param {string} address
+ * @returns {Promise<Set<string>>}
+ */
+async function getCounterparties(address) {
+  const cached = _cacheGet(address);
+  if (cached) return cached;
+  // analyzeTransactionGraph populates the cache as a side-effect
+  await analyzeTransactionGraph(address);
+  return _cacheGet(address) || new Set();
+}
+
+module.exports = { analyzeTransactionGraph, getCounterparties };

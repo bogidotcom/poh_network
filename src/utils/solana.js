@@ -1,7 +1,11 @@
 'use strict';
 
 const { Connection, PublicKey, clusterApiUrl } = require('@solana/web3.js');
-const { getMint, getAccount, getAssociatedTokenAddress } = require('@solana/spl-token');
+const { getMint, getAccount, getAssociatedTokenAddress, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } = require('@solana/spl-token');
+
+// Solana mainnet stablecoin mints (both use standard SPL TOKEN_PROGRAM_ID, 6 decimals)
+const USDC_MINT = new PublicKey(process.env.USDC_MINT || 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
+const USDT_MINT = new PublicKey(process.env.USDT_MINT || 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB');
 
 const connection = new Connection(process.env.SOLANA_RPC || clusterApiUrl('devnet'), 'confirmed');
 
@@ -45,8 +49,8 @@ async function verifyPohTransfer(txHash, expectedAmountRaw, fromWallet) {
     const fromPubkey = new PublicKey(fromWallet);
 
     const [fromAta, toAta] = await Promise.all([
-      getAssociatedTokenAddress(mint, fromPubkey),
-      getAssociatedTokenAddress(mint, recipient),
+      getAssociatedTokenAddress(mint, fromPubkey, false, TOKEN_2022_PROGRAM_ID),
+      getAssociatedTokenAddress(mint, recipient,  false, TOKEN_2022_PROGRAM_ID),
     ]);
 
     const acctKeys = tx.transaction.message.staticAccountKeys ||
@@ -68,10 +72,45 @@ async function verifyPohTransfer(txHash, expectedAmountRaw, fromWallet) {
 }
 
 /**
+ * Verify a USDC or USDT transfer to FEE_RECIPIENT of at least expectedAmountRaw (raw 6-decimal units).
+ * Accepts either stablecoin so callers don't need to specify which one the user sent.
+ */
+async function verifyStablecoinTransfer(txHash, expectedAmountRaw, fromWallet) {
+  try {
+    if (txHash === 'MOCK_BURN' && process.env.NODE_ENV !== 'production') return true;
+    // If FEE_RECIPIENT is not configured, skip on-chain verification (dev/staging convenience)
+    if (!process.env.FEE_RECIPIENT) return true;
+    const tx = await connection.getTransaction(txHash, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
+    if (!tx || tx.meta?.err !== null) return false;
+
+    const recipient   = new PublicKey(process.env.FEE_RECIPIENT);
+    const acctKeys    = tx.transaction.message.staticAccountKeys || tx.transaction.message.accountKeys;
+
+    for (const mint of [USDC_MINT, USDT_MINT]) {
+      const toAta = await getAssociatedTokenAddress(mint, recipient, false, TOKEN_PROGRAM_ID);
+      const toIdx = acctKeys.findIndex(k => k.toString() === toAta.toString());
+      if (toIdx === -1) continue;
+
+      const pre  = tx.meta.preTokenBalances?.find(b => b.accountIndex === toIdx);
+      const post = tx.meta.postTokenBalances?.find(b => b.accountIndex === toIdx);
+      if (!post) continue;
+
+      const preAmt  = pre  ? Number(pre.uiTokenAmount.amount)  : 0;
+      const postAmt = Number(post.uiTokenAmount.amount);
+      if ((postAmt - preAmt) >= expectedAmountRaw) return true;
+    }
+    return false;
+  } catch (err) {
+    console.error('[solana] verifyStablecoinTransfer failed:', err.message);
+    return false;
+  }
+}
+
+/**
  * Verifies if a transaction hash corresponds to a payment of the expected amount.
- * @param {string} txHash 
- * @param {number} expectedAmountInSol 
- * @param {string} recipientAddress 
+ * @param {string} txHash
+ * @param {number} expectedAmountInSol
+ * @param {string} recipientAddress
  * @returns {Promise<boolean>}
  */
 async function verifySolPayment(txHash, expectedAmountInSol, recipientAddress) {
@@ -159,8 +198,8 @@ async function getVoteBalance(walletAddress) {
     if (!mintAddress) return 0;
     const mintPubkey = new PublicKey(mintAddress);
     const walletPubkey = new PublicKey(walletAddress);
-    const ata = await getAssociatedTokenAddress(mintPubkey, walletPubkey);
-    const accountInfo = await getAccount(connection, ata);
+    const ata = await getAssociatedTokenAddress(mintPubkey, walletPubkey, false, TOKEN_2022_PROGRAM_ID);
+    const accountInfo = await getAccount(connection, ata, 'confirmed', TOKEN_2022_PROGRAM_ID);
     return Number(accountInfo.amount);
   } catch (err) {
     return 0;
@@ -270,4 +309,4 @@ function verifyWalletSignature(message, signatureB58, walletAddress) {
   }
 }
 
-module.exports = { verifySolPayment, verifyTxSuccess, verifyPohTransfer, getVoteTokenStake, getSolBalance, getVoteBalance, verifyBurnTransaction, getAllStakers, sendPohTokens, verifyWalletSignature };
+module.exports = { verifySolPayment, verifyTxSuccess, verifyPohTransfer, verifyStablecoinTransfer, getVoteTokenStake, getSolBalance, getVoteBalance, verifyBurnTransaction, getAllStakers, sendPohTokens, verifyWalletSignature };

@@ -65,17 +65,15 @@ function consumeFreeScan(address) {
   return true;
 }
 
-// ── Bulk pricing curve ────────────────────────────────────────────────────────
-// Returns cost in POH tokens (9 decimals, integer) for `count` addresses
+// ── Pricing ───────────────────────────────────────────────────────────────────
+// Flat rate: $1 per 1000 scans = $0.001 per scan.
+// Payment in USDC or USDT (6 decimals). 1 scan = 1000 raw units.
+const SCAN_RATE_USD   = 0.001;          // $ per scan
+const SCAN_RATE_RAW   = 1_000;          // raw stablecoin units per scan (6 decimals)
+
 function calcScanCost(count) {
-  let rate;
-  if (count >= 500)      rate = 0.40;
-  else if (count >= 100) rate = 0.55;
-  else if (count >= 50)  rate = 0.70;
-  else if (count >= 10)  rate = 0.85;
-  else                   rate = 1.00;
-  const total = Math.ceil(count * rate * 1_000_000_000); // 9 decimals, round up
-  return { total, rate, perAddress: rate };
+  const total = Math.ceil(count * SCAN_RATE_RAW); // round up to nearest raw unit
+  return { total, rate: SCAN_RATE_USD, perAddress: SCAN_RATE_USD };
 }
 
 // ── Reward distribution ───────────────────────────────────────────────────────
