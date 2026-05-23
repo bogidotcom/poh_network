@@ -10,14 +10,17 @@ const { evaluate }                = require('../eval/evaluator');
 const multer                      = require('multer');
 const { parse }                   = require('csv-parse/sync');
 const { getCachedResponse, setCachedResponse } = require('../utils/redis');
-const { verifyPohTransfer }       = require('../utils/solana');
+const { verifyStablecoinTransfer } = require('../utils/solana');
 const brain                       = require('../utils/brain');
 const { recordMethodResult }      = require('../utils/methodHealth');
-const { analyzeTransactionGraph } = require('../utils/txGraph');
+const { analyzeTransactionGraph, getCounterparties } = require('../utils/txGraph');
+const { isOfacSanctioned }                          = require('../utils/ofac');
+const { enrichProfile }                             = require('../utils/profileEnrich');
+const { isInList }                                  = require('../utils/labeledWallets');
 const { checkHumanityVerified }   = require('../utils/humanityProtocol');
 const { createJob, getJob }       = require('../utils/jobQueue');
 const {
-  getProfile, getProfiles, consumeFreeScan, calcScanCost,
+  getProfile, getProfiles, upsertProfile, consumeFreeScan, calcScanCost,
   getFreeScansLeft, distributeRewards, isIpAbuse, recordIp,
 } = require('../utils/profiles');
 
@@ -28,6 +31,28 @@ const DATASET_PATH = path.join(__dirname, '../../data/dataset.json');
 
 // Async brain verdicts for single-wallet scans
 const brainPending = {};
+
+// ── OFAC sanctions check ──────────────────────────────────────────────────────
+// 1. Direct address match — O(1) in-memory lookup.
+// 2. 1-hop counterparty check — reuses txGraph cache so no extra API calls if
+//    analyzeTransactionGraph already ran during the same scan.
+async function checkOfacFull(address) {
+  // Direct
+  const direct = isOfacSanctioned(address);
+  if (direct.sanctioned) return { ...direct, type: 'direct', matchedAddress: address };
+
+  // Counterparties (fail-open if fetch errors)
+  try {
+    const cps = await getCounterparties(address);
+    for (const cp of cps) {
+      const r = isOfacSanctioned(cp);
+      if (r.sanctioned) return { ...r, type: 'counterparty', matchedAddress: cp };
+    }
+  } catch (err) {
+    console.warn('[ofac] Counterparty check failed:', err.message);
+  }
+  return { sanctioned: false };
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -151,6 +176,10 @@ async function executeMethod(m, address) {
         result = accounts.length > 0;
       }
       return evaluate(m.expression, { result, decimals }, m.lang || 'js');
+
+    } else if (m.type === 'labeled') {
+      const result = isInList(m.file, address);
+      return evaluate(m.expression, { result }, m.lang || 'js');
     }
     return false;
   })();
@@ -176,14 +205,14 @@ async function scanWallet(rawInput, { allMethods, chainFilter }) {
 
   let methods = [...allMethods];
   if (isEvm) {
-    methods = methods.filter(m => m.type === 'evm' || m.type === 'rest');
+    methods = methods.filter(m => m.type === 'evm' || m.type === 'rest' || m.type === 'labeled');
     methods = methods.filter(m => !m.addressType || m.addressType === 'evm');
     if (chainFilter) {
       const allowed = chainFilter.split(',').map(Number);
       methods = methods.filter(m => m.type === 'rest' || allowed.includes(Number(m.chainId)));
     }
   } else {
-    methods = methods.filter(m => m.type === 'solana' || m.type === 'rest');
+    methods = methods.filter(m => m.type === 'solana' || m.type === 'rest' || m.type === 'labeled');
     methods = methods.filter(m => !m.addressType || m.addressType === 'solana');
   }
   if (methods.length === 0) return [];
@@ -253,17 +282,41 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
       effectiveWallet = match.address;
     }
 
-    // Free tier / payment
+    // ── Free tier / payment ───────────────────────────────────────────────
     const freeLeft = effectiveWallet ? getFreeScansLeft(effectiveWallet) : 0;
     const isFree   = freeLeft >= inputs.length;
+
+    // Track how the scan was paid so we can distribute rewards correctly
+    let paidFromBalance = false;
+
     if (!isFree) {
-      if (!txHash) {
-        const { total, perAddress } = calcScanCost(inputs.length);
-        return res.status(402).json({ error: 'Payment required', required: total, perAddress, count: inputs.length, freeScansLeft: freeLeft });
+      const { total, perAddress } = calcScanCost(inputs.length);
+
+      // 1. Check pre-deposited profile balance first (no on-chain tx needed)
+      const profile        = effectiveWallet ? (getProfile(effectiveWallet) || {}) : {};
+      const profileBalance = profile.balance ?? 0;
+
+      if (profileBalance >= total) {
+        // Deduct from pre-paid credits
+        upsertProfile(effectiveWallet, { balance: profileBalance - total });
+        paidFromBalance = true;
+      } else if (!txHash) {
+        // Neither balance nor tx hash — tell caller how much is needed
+        return res.status(402).json({
+          error:        'Payment required',
+          required:     total,
+          perAddress,
+          count:        inputs.length,
+          freeScansLeft: freeLeft,
+          profileBalance,
+        });
+      } else {
+        // Verify on-chain USDC/USDT transfer
+        const isPaid = await verifyStablecoinTransfer(txHash, total, effectiveWallet);
+        if (!isPaid) return res.status(402).json({
+          error: `Payment not verified — expected $${(total / 1e6).toFixed(4)} USDC/USDT`,
+        });
       }
-      const { total } = calcScanCost(inputs.length);
-      const isPaid = await verifyPohTransfer(txHash, total, effectiveWallet);
-      if (!isPaid) return res.status(402).json({ error: `POH payment not verified — expected ${total / 1e6} POH` });
     } else {
       if (effectiveWallet && isIpAbuse(clientIp, effectiveWallet))
         return res.status(403).json({ error: 'Free tier already used from this IP on another wallet' });
@@ -279,10 +332,33 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
 
     // ── Bulk: job queue ───────────────────────────────────────────────────
     if (inputs.length > 1) {
-      const jobId = createJob(inputs, input => scanWallet(input, scanCtx));
+      const jobId = createJob(inputs, async input => {
+        const results = await scanWallet(input, scanCtx);
+        const ofac    = await checkOfacFull(input);
+        if (ofac.sanctioned) {
+          const cp = ofac.type === 'counterparty';
+          results.unshift({
+            input,
+            methodId:    'ofac_check',
+            description: `⛔ OFAC SDN — ${ofac.name} (${ofac.program})${cp ? ` via counterparty ${ofac.matchedAddress?.slice(0, 10)}…` : ''}`,
+            result:      false,
+            ofac,
+          });
+        }
+        if (isInList('cex', input)) {
+          results.unshift({
+            input,
+            methodId:    'cex_check',
+            description: '🏦 CEX wallet — address belongs to a centralised exchange, not a human',
+            result:      false,
+            cex:         true,
+          });
+        }
+        return results;
+      });
 
       // Distribute rewards after job completes (fire-and-forget)
-      if (!isFree && txHash) {
+      if (!isFree && (txHash || paidFromBalance)) {
         const { total } = calcScanCost(inputs.length);
         const pollRewards = setInterval(() => {
           const job = getJob(jobId);
@@ -303,9 +379,33 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
     }
 
     // ── Single wallet: sync (existing behaviour) ──────────────────────────
-    const results = await scanWallet(inputs[0], scanCtx);
+    const [results, ofac] = await Promise.all([
+      scanWallet(inputs[0], scanCtx),
+      checkOfacFull(inputs[0]),
+    ]);
+    const isCex = isInList('cex', inputs[0]);
 
-    if (!isFree && txHash) {
+    if (ofac.sanctioned) {
+      const cp = ofac.type === 'counterparty';
+      results.unshift({
+        input:       inputs[0],
+        methodId:    'ofac_check',
+        description: `⛔ OFAC SDN — ${ofac.name} (${ofac.program})${cp ? ` via counterparty ${ofac.matchedAddress?.slice(0, 10)}…` : ''}`,
+        result:      false,
+        ofac,
+      });
+    }
+    if (isCex) {
+      results.unshift({
+        input:       inputs[0],
+        methodId:    'cex_check',
+        description: '🏦 CEX wallet — address belongs to a centralised exchange, not a human',
+        result:      false,
+        cex:         true,
+      });
+    }
+
+    if (!isFree && (txHash || paidFromBalance)) {
       const { total } = calcScanCost(1);
       const executedIds = [...new Set(results.map(r => r.methodId).filter(Boolean))];
       distributeRewards(total, executedIds, allMethods, brain.getWeights());
@@ -314,10 +414,12 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
     const scanKey = inputs[0];
     brainPending[scanKey] = { status: 'pending', startedAt: Date.now() };
     res.json({
-      result:  results,
-      count:   results.length,
-      source:  'processed',
+      result:   results,
+      count:    results.length,
+      source:   'processed',
       brainKey: scanKey,
+      ofac:     ofac.sanctioned ? ofac : null,
+      cex:      isCex || null,
       freeScansLeft: effectiveWallet ? getFreeScansLeft(effectiveWallet) : null,
     });
 
@@ -392,12 +494,9 @@ router.get('/pricing', (req, res) => {
   const { total, perAddress } = calcScanCost(count);
   res.json({
     count, perAddress, total,
+    currency: 'USDC/USDT',
     tiers: [
-      { minAddresses: 1,   rate: 1.00, label: '1–9' },
-      { minAddresses: 10,  rate: 0.85, label: '10–49' },
-      { minAddresses: 50,  rate: 0.70, label: '50–99' },
-      { minAddresses: 100, rate: 0.55, label: '100–499' },
-      { minAddresses: 500, rate: 0.40, label: '500+' },
+      { minAddresses: 1, rate: 0.001, label: 'Any volume — $1 per 1000 scans' },
     ],
   });
 });
@@ -506,6 +605,22 @@ router.post('/preview', async (req, res) => {
     res.json(result);
   } catch (err) {
     res.json({ error: err.message });
+  }
+});
+
+// ── GET /checker/profile/:address — enriched wallet profile ──────────────────
+
+router.get('/profile/:address', async (req, res) => {
+  const { address } = req.params;
+  if (!address) return res.status(400).json({ error: 'address required' });
+  try {
+    // Reuse counterparty cache if address was recently scanned (zero extra calls)
+    const counterparties = await getCounterparties(address);
+    const profile = await enrichProfile(address, counterparties);
+    res.json(profile);
+  } catch (err) {
+    console.error('[profile] enrichment failed:', err.message);
+    res.status(500).json({ error: 'Profile enrichment failed' });
   }
 });
 
