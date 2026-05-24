@@ -6,7 +6,6 @@ const props = defineProps({
   profileError:      { type: String,  default: null },
   signupLoading:     { type: Boolean, default: false },
   myVotesData:       { type: Array,   default: () => [] },
-  offchainClaimLoading: { type: Boolean, default: false },
 })
 
 const emit = defineEmits([
@@ -14,7 +13,6 @@ const emit = defineEmits([
   'show-deposit-modal',
   'signup-profile',
   'rotate-api-key',
-  'claim-offchain-balance',
   'copy-text',
   'show-section',
   'load-voting',
@@ -26,7 +24,7 @@ const emit = defineEmits([
     <div class="scan-hero">
       <div class="scan-tag">PROFILE</div>
       <h2 class="scan-title">Your POH Account</h2>
-      <p class="scan-sub">Sign in with your Solana wallet to access your API key, track rewards, and manage your submitted methods.</p>
+      <p class="scan-sub">Sign in with your Solana wallet to access your API key, track rewards, and manage your Submitted Signals.</p>
     </div>
 
     <div v-if="!connected" class="profile-connect-prompt">
@@ -40,7 +38,7 @@ const emit = defineEmits([
       <div v-if="profileLoading" class="empty-state"><p>Loading profile...</p></div>
 
       <div v-else-if="!profileData" class="profile-signup-card">
-        <p class="signup-desc">No profile found for this wallet. Create one to get your API key and start earning rewards from submitted methods.</p>
+        <p class="signup-desc">No profile found for this wallet. Create one to get your API key and start earning rewards from Submitted Signals.</p>
         <button class="submit-listing-btn" :disabled="signupLoading" @click="emit('signup-profile')">
           {{ signupLoading ? 'Signing...' : 'Create Profile' }}
         </button>
@@ -61,22 +59,6 @@ const emit = defineEmits([
             <div class="pstat-val">${{ ((profileData.profile?.balance ?? 0) / 1e6).toFixed(2) }}</div>
             <div class="pstat-label">Account Balance <br><span class="pstat-deposit-hint">Tap to Deposit</span></div>
           </div>
-          <div class="pstat-card">
-            <div class="pstat-val">${{ profileData.earned ? (profileData.earned / 1e6).toFixed(2) : '0.00' }}</div>
-            <div class="pstat-label">Total Earned</div>
-          </div>
-        </div>
-
-        <!-- Claimable scan earnings -->
-        <div v-if="(profileData.pending ?? 0) > 0" class="profile-card profile-claim-card">
-          <div class="profile-card-header">
-            <span class="profile-card-title">Scan Earnings</span>
-            <span class="claim-amount">${{ (profileData.pending / 1e6).toFixed(4) }}</span>
-          </div>
-          <p class="profile-hint">Your methods earned this from paid scans. Claim to receive tokens on-chain.</p>
-          <button class="submit-listing-btn claim-btn" :disabled="offchainClaimLoading" @click="emit('claim-offchain-balance')">
-            {{ offchainClaimLoading ? 'Claiming...' : 'Claim Earnings' }}
-          </button>
         </div>
 
         <!-- API Key -->
@@ -92,10 +74,10 @@ const emit = defineEmits([
           <p class="profile-hint">Pass as <code>apiKey</code> in POST /checker body. Identify scans without wallet interaction.</p>
         </div>
 
-        <!-- Submitted methods -->
+        <!-- Submitted Signals -->
         <div class="profile-card">
           <div class="profile-card-header">
-            <span class="profile-card-title">Submitted Methods</span>
+            <span class="profile-card-title">Submitted Signals</span>
             <span class="profile-card-count">{{ profileData.methods?.length ?? 0 }}</span>
           </div>
           <div v-if="!profileData.methods?.length" class="profile-empty">
@@ -110,7 +92,6 @@ const emit = defineEmits([
               </div>
               <div class="mlist-meta">
                 <span class="mlist-score">score {{ m.score?.toFixed(1) ?? '0.0' }}</span>
-                <span class="mlist-earned">${{ ((profileData.pending || 0) / 1e6).toFixed(4) }} pending</span>
               </div>
             </div>
           </div>

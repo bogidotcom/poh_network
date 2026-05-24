@@ -12,11 +12,23 @@ function loadList(name) {
   const filePath = path.join(DATA_DIR, `${name}.json`);
   if (!fs.existsSync(filePath)) return new Set();
   try {
-    const raw  = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-    // Accept: string[] or {address:string}[] or {[addr]:any}
-    const addrs = Array.isArray(raw)
-      ? raw.map(e => (typeof e === 'string' ? e : e?.address)).filter(Boolean)
-      : Object.keys(raw);
+    const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+
+    let addrs = [];
+
+    // Dune Analytics export: { result: { rows: [{address|wallet: "0x..."}, ...] } }
+    if (raw?.result?.rows) {
+      addrs = raw.result.rows
+        .map(r => r.address || r.wallet)
+        .filter(Boolean);
+    // Plain array of strings or {address} objects
+    } else if (Array.isArray(raw)) {
+      addrs = raw.map(e => (typeof e === 'string' ? e : e?.address)).filter(Boolean);
+    // Object keyed by address
+    } else {
+      addrs = Object.keys(raw);
+    }
+
     const set = new Set(addrs.map(a => a.toLowerCase()));
     console.log(`[labeled] ${name}: ${set.size} addresses`);
     return set;

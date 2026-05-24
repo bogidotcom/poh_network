@@ -172,7 +172,7 @@ const emit = defineEmits(['show-section', 'load-profile', 'load-my-votes'])
         <span class="api-method api-method--get">GET</span> /profile/:address
       </div>
       <div class="api-card">
-        <div class="api-desc">Returns profile stats, submitted methods, and reward totals for a wallet address.</div>
+        <div class="api-desc">Returns profile stats, Submitted Signals, and reward totals for a wallet address.</div>
         <div class="code-block">
           <div class="code-lang-bar"><span class="code-lang-badge code-lang-badge--sh">bash</span></div>
           <pre class="code-pre"><span class="sh-cmd">curl</span> https://proofofhuman.ge/profile/<span class="sh-str">YourSolanaWalletAddressHere</span></pre>

@@ -21,6 +21,20 @@ const BRAIN_STATE_PATH = path.join(__dirname, '../../data/brain_state.md');
 const DATASET_PATH     = path.join(__dirname, '../../data/dataset.json');
 const WEIGHTS_PATH     = path.join(__dirname, '../../data/weights.json');
 const FEEDBACK_PATH    = path.join(__dirname, '../../data/feedback.json');
+const POOLS_PATH       = path.join(__dirname, '../../data/pools.json');
+
+// ── Pool graduation multiplier ────────────────────────────────────────────────
+// Returns 1.5 if the signal's bonding curve has graduated to DEX, else 1.0
+function getGraduationMult(methodId) {
+  try {
+    if (!fs.existsSync(POOLS_PATH)) return 1.0;
+    const pools = JSON.parse(fs.readFileSync(POOLS_PATH, 'utf-8'));
+    const record = Array.isArray(pools)
+      ? pools.find(p => p.methodId === methodId)
+      : pools[methodId];
+    return record?.migrated ? 1.5 : 1.0;
+  } catch { return 1.0; }
+}
 
 // ── Ollama request queue (serializes all calls — Ollama is single-instance) ───
 let _ollamaQueue = Promise.resolve();
@@ -298,19 +312,22 @@ async function analyzeHumanness(address, methodResults, methods) {
 
   // Qvac 600M has ~2k token context — keep prompt tiny
   // Ollama: all passed + top-10 failed; Qvac: top-4 passed + top-4 failed
+  // Sort by effective weight (base weight × graduation multiplier)
+  const effectiveWeight = r => (weights[r.methodId] ?? 1) * getGraduationMult(r.methodId);
+
   const passed = methodResults
     .filter(r => r.result === true)
-    .sort((a, b) => (weights[b.methodId] ?? 1) - (weights[a.methodId] ?? 1))
+    .sort((a, b) => effectiveWeight(b) - effectiveWeight(a))
     .slice(0, usingQvac ? 4 : Infinity);
   const failed = methodResults
     .filter(r => r.result === false)
-    .sort((a, b) => (weights[b.methodId] ?? 1) - (weights[a.methodId] ?? 1))
+    .sort((a, b) => effectiveWeight(b) - effectiveWeight(a))
     .slice(0, usingQvac ? 4 : 10);
 
   const signals = [...passed, ...failed].map(r => ({
     name: r.description,
     pass: r.result,
-    w: +(weights[r.methodId] ?? 1.0).toFixed(2),
+    w: +((weights[r.methodId] ?? 1.0) * getGraduationMult(r.methodId)).toFixed(2),
   }));
 
   const signalsStr = signals

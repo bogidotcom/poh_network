@@ -13,7 +13,7 @@ import AboutSection from './AboutSection.vue'
 import {
   Search, PlusSquare, Vote,
   Activity, SquareArrowDown, PersonStanding, FolderCode, CreditCard, Bitcoin, Waypoints, FingerprintPattern, CandlestickChart,
-  FingerprintIcon, FileUp, Trash2, Globe
+  FingerprintIcon, FileUp, Trash2, Globe, Coins, Info
 } from 'lucide-vue-next'
 import {
   Transaction,
@@ -31,6 +31,7 @@ import { useChecker } from '../composables/useChecker.js'
 import { useVoting } from '../composables/useVoting.js'
 import { useListing } from '../composables/useListing.js'
 import { useProfile } from '../composables/useProfile.js'
+import { useCurve }   from '../composables/useCurve.js'
 import {
   getPohBalance, getStakeInfo, getGlobalState,
   stakeTokens, unstakeTokens,
@@ -73,7 +74,7 @@ const {
   onConnect: () => {
     loadProfile()
     loadPohBalance()
-    if (currentSection.value === 'votes') loadVoting()
+    if (currentSection.value === 'votes') loadVotingFiltered()
     if (SUGGEST_DEVNET_NETWORK) suggestDevnetNetwork()
   },
 })
@@ -257,6 +258,24 @@ const {
 
 watch(voting.error, val => { if (val) error.value = val })
 
+/**
+ * Load voting queue then filter to only signals that have a deployed curve.
+ * Signals without a Meteora pool record can't be traded, so they're excluded
+ * from the Convictions page.
+ */
+async function loadVotingFiltered() {
+  await loadVoting()
+  try {
+    const { data: pools } = await axios.get('/curves')
+    const pooledIds = new Set(pools.map(p => p.methodId))
+    votingList.value = votingList.value.filter(m => pooledIds.has(m.id))
+    voteIndex.value = 0
+  } catch {
+    // If the endpoint fails, keep the list empty rather than show untraded signals
+    votingList.value = []
+  }
+}
+
 const exprExpanded = ref(false)
 watch(currentVoteItem, () => { exprExpanded.value = false })
 
@@ -410,12 +429,54 @@ const profile = useProfile({
 const {
   profileData, profileLoading, profileError, signupLoading,
   showDepositModal, depositAmount, depositToken, depositLoading, depositMsg,
-  offchainClaimLoading,
-  loadProfile, signupProfile, rotateApiKey, submitDeposit, claimOffchainBalance,
+  loadProfile, signupProfile, rotateApiKey, submitDeposit,
 } = profile
 
-// stakeMessage from profile composable merged with local stakeMessage
-watch(profile.stakeMessage, val => { if (val) stakeMessage.value = val })
+// ── Referral / deep-link URL params ──────────────────────────────────────────
+const referralWallet = ref(null)
+
+// ── Curve (signal bonding curve) ──────────────────────────────────────────────
+const curve = useCurve({ walletAddress, walletProvider, SOLANA_RPC, pohFeeRecipient: FEE_RECIPIENT, referralWallet })
+const {
+  curveState, chartCandles, solBalance: curveSolBalance, ownedTokens,
+  quoteResult, loading: curveLoading,
+  loadSolBalance, loadCurveState, loadChart, getQuote, buySignal, sellSignal, claimCreatorFees,
+} = curve
+
+watch(currentVoteItem, async (item) => {
+  if (!item?.id) { curveState.value = null; chartCandles.value = []; return }
+  await Promise.all([loadCurveState(item.id), loadChart(item.id)])
+})
+
+watch(walletAddress, (addr) => { if (addr) loadSolBalance() })
+
+async function onCurveBuy(methodId, solLamports) {
+  try {
+    await buySignal(methodId, solLamports)
+  } catch (err) {
+    error.value = err.message || 'Buy failed'
+  }
+}
+
+async function onCurveSell(methodId, rawTokens) {
+  try {
+    await sellSignal(methodId, rawTokens)
+  } catch (err) {
+    error.value = err.message || 'Sell failed'
+  }
+}
+
+async function onClaimFees(methodId) {
+  try {
+    await claimCreatorFees(methodId)
+  } catch (err) {
+    error.value = err.message || 'Claim failed'
+  }
+}
+
+function onCurveQuote(methodId, action, amount) {
+  getQuote(methodId, action, amount)
+}
 
 // ── Listing ───────────────────────────────────────────────────────────────────
 const listingComposable = useListing({
@@ -459,7 +520,17 @@ function onDocClick(e) {
 
 onMounted(async () => {
   await fetchConfig()
-  if (currentSection.value === 'votes') loadVoting()
+  // Parse referral and deep-link signal from URL
+  const params   = new URLSearchParams(window.location.search)
+  const ref      = params.get('ref')
+  const signalId = params.get('signal')
+  if (ref) referralWallet.value = ref
+  if (signalId) {
+    showSection('votes')
+    await loadVotingFiltered()
+    await jumpToMethod(signalId)
+  }
+  if (currentSection.value === 'votes') loadVotingFiltered()
   if (connected.value || walletAddress.value) loadPohBalance()
   fetchMethodsForGraph()
   startNetAnim()
@@ -531,17 +602,20 @@ onUnmounted(() => {
         <button :class="['nav-btn', { active: currentSection === 'checker' }]" @click="showSection('checker')">
           <Search class="icon" :size="14" /> Scan
         </button>
-        <button :class="['nav-btn', { active: currentSection === 'votes' }]" @click="showSection('votes'); loadVoting()">
+        <button :class="['nav-btn', { active: currentSection === 'votes' }]" @click="showSection('votes'); loadVotingFiltered()">
           <Vote class="icon" :size="14" /> Convictions
         </button>
         <button :class="['nav-btn', { active: currentSection === 'listing' }]" @click="showSection('listing')">
           <PlusSquare class="icon" :size="14" /> Add signal
         </button>
+        <button :class="['nav-btn', { active: currentSection === 'staking' }]" @click="showSection('staking')">
+          <Coins class="icon" :size="14" /> Staking
+        </button>
         <button :class="['nav-btn', { active: currentSection === 'ecosystem' }]" @click="showSection('ecosystem')">
           <Globe class="icon" :size="14" /> Ecosystem
         </button>
         <button :class="['nav-btn', { active: currentSection === 'about' }]" @click="showSection('about')">
-          About
+          <Info class="icon" :size="14" /> About
         </button>
       </nav>
 
@@ -559,7 +633,7 @@ onUnmounted(() => {
             <div class="wallet-dropdown" v-show="desktopDropOpen">
               <button class="wallet-drop-item" @click="showSection('profile'); loadProfile(); loadMyVotes(); desktopDropOpen = false">Profile</button>
               <button class="wallet-drop-item" @click="showSection('dev'); desktopDropOpen = false">Dev</button>
-              <button class="wallet-drop-item wallet-drop-disconnect" @click="disconnectWallet; desktopDropOpen = false">Disconnect</button>
+              <button class="wallet-drop-item wallet-drop-disconnect" @click="disconnectWallet(); desktopDropOpen = false">Disconnect</button>
             </div>
           </div>
         </div>
@@ -576,8 +650,9 @@ onUnmounted(() => {
       <div class="mobile-menu-inner">
         <button :class="['mobile-nav-btn', { active: currentSection === 'landing' }]" @click="showSection('landing')">POH</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'checker' }]" @click="showSection('checker')">Scan</button>
-        <button :class="['mobile-nav-btn', { active: currentSection === 'votes' }]" @click="showSection('votes'); loadVoting()">Convictions</button>
+        <button :class="['mobile-nav-btn', { active: currentSection === 'votes' }]" @click="showSection('votes'); loadVotingFiltered()">Convictions</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'listing' }]" @click="showSection('listing')">Add signal</button>
+        <button :class="['mobile-nav-btn', { active: currentSection === 'staking' }]" @click="showSection('staking')">Staking</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'ecosystem' }]" @click="showSection('ecosystem')">Ecosystem</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'about' }]" @click="showSection('about')">About</button>
         <div class="mobile-menu-divider"></div>
@@ -736,7 +811,7 @@ onUnmounted(() => {
             <div class="feat-tag">SIGNALS</div>
             <h2 class="feat-title">Evidence from<br>every layer</h2>
             <p class="feat-body">Every signal runs in parallel. No single point of failure.</p>
-            <button class="feat-cta" @click="showSection('votes'); loadVoting()">Browse Methods →</button>
+            <button class="feat-cta" @click="showSection('votes'); loadVotingFiltered()">Browse Methods →</button>
           </div>
         </section>
 
@@ -775,7 +850,7 @@ onUnmounted(() => {
             <div class="feat-tag">COMMUNITY</div>
             <h2 class="feat-title">You decide what<br>counts as human</h2>
             <p class="feat-body">Every detection signal goes through community consensus.</p>
-            <button class="feat-cta" @click="showSection('votes'); loadVoting()">Open Vote Queue →</button>
+            <button class="feat-cta" @click="showSection('votes'); loadVotingFiltered()">Open Vote Queue →</button>
           </div>
         </section>
 
@@ -1212,92 +1287,38 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Votes -->
-      <div v-if="currentSection === 'votes'" class="votes-page">
-        <div class="votes-header">
-          <div class="scan-tag">CONSENSUS QUEUE</div>
-          <h2 class="scan-title">Review detection signals</h2>
-          <p class="scan-sub">Vote on whether each method reliably distinguishes humans from bots. Your POH stake weight determines your influence.</p>
-        </div>
-
-        <div v-if="loading" class="empty-state"><p>Loading...</p></div>
-
-        <div v-else-if="!currentVoteItem" class="empty-state">
-          <Code :size="28" />
-          <p>{{ votingList.length ? 'All methods reviewed.' : 'Queue is empty.' }}</p>
-          <button v-if="votingList.length" class="utility-link" @click="voteIndex = 0">Start over</button>
-        </div>
-
-        <div v-else class="vote-single">
-          <div class="vote-progress">
-            <div class="vote-progress-bar">
-              <div class="vote-progress-fill" :style="{ width: (voteIndex / votingList.length * 100) + '%' }"></div>
-            </div>
-            <span class="vote-progress-label">{{ voteIndex + 1 }} / {{ votingList.length }}</span>
-          </div>
-
-          <div class="vote-card-single">
-            <div class="vcs-meta">
-              <span class="vmc-type">{{ currentVoteItem.type?.toUpperCase() }}</span>
-              <span v-if="currentVoteItem.chainId" class="vcs-chain">chain {{ currentVoteItem.chainId }}</span>
-              <span class="vmc-score">score {{ currentVoteItem.score?.toFixed(1) ?? '0.0' }}</span>
-            </div>
-
-            <p class="vcs-desc">{{ currentVoteItem.description }}</p>
-
-            <div class="vcs-detail" v-if="currentVoteItem.address">
-              <span class="vcs-detail-label">{{ currentVoteItem.type === 'rest' ? 'Endpoint' : 'Address' }}</span>
-              <span class="vcs-detail-val">{{ currentVoteItem.address }}</span>
-            </div>
-            <div class="vcs-detail" v-if="currentVoteItem.method">
-              <span class="vcs-detail-label">Method</span>
-              <span class="vcs-detail-val">{{ currentVoteItem.method }}</span>
-            </div>
-            <div class="vcs-detail" v-if="currentVoteItem.expression">
-              <span class="vcs-detail-label">Expression</span>
-              <code :class="['vcs-code', exprExpanded ? 'vcs-code--expanded' : 'vcs-code--truncated']" @click="exprExpanded = !exprExpanded" :title="exprExpanded ? 'Click to collapse' : 'Click to expand'">{{ currentVoteItem.expression }}</code>
-            </div>
-
-            <div class="vcs-score-bar">
-              <div class="vcs-score-fill" :style="{ width: Math.min(100, Math.max(0, (currentVoteItem.score || 0) * 10)) + '%' }"></div>
-            </div>
-
-            <textarea
-              v-model="voteFeedback"
-              class="vcs-feedback"
-              placeholder="Optional: explain your reasoning to help the AI learn…"
-              rows="2"
-              maxlength="200"
-              @input="autoExpand"
-            ></textarea>
-
-            <div class="vcs-actions">
-              <button class="vcs-btn vcs-btn-yes" :disabled="voteSubmitting || feedbackValidating"
-                @click="castVote(true)"
-              >
-                {{ feedbackValidating ? 'Checking…' : voteSubmitting ? '…' : '✓ Human' }}
-              </button>
-              <button class="vcs-btn vcs-btn-no" :disabled="voteSubmitting || feedbackValidating"
-                @click="castVote(false)"
-              >
-                {{ feedbackValidating ? 'Checking…' : '✗ Robot' }}
-              </button>
-              <button class="vcs-btn vcs-btn-skip" :disabled="feedbackValidating"
-                @click="castVote('skip')"
-              >
-                Skip →
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <!-- Votes / Conviction Curves -->
+      <VoteQueueSection
+        v-if="currentSection === 'votes'"
+        :loading="loading"
+        :voting-list="votingList"
+        :vote-index="voteIndex"
+        :current-vote-item="currentVoteItem"
+        :vote-submitting="voteSubmitting"
+        :vote-feedback="voteFeedback"
+        :feedback-validating="feedbackValidating"
+        :curve-state="curveState"
+        :chart-candles="chartCandles"
+        :sol-balance="curveSolBalance"
+        :owned-tokens="ownedTokens"
+        :quote-result="quoteResult"
+        :curve-loading="curveLoading"
+        :wallet-address="walletAddress"
+        @update:vote-index="voteIndex = $event"
+        @update:vote-feedback="voteFeedback = $event"
+        @cast-vote="castVote"
+        @claim-fees="onClaimFees"
+        @curve-buy="onCurveBuy"
+        @curve-sell="onCurveSell"
+        @curve-quote="onCurveQuote"
+      />
 
       <!-- Profile -->
       <div v-if="currentSection === 'profile'" class="profile-page">
         <div class="scan-hero">
           <div class="scan-tag">PROFILE</div>
           <h2 class="scan-title">Your POH Account</h2>
-          <p class="scan-sub">Sign in with your Solana wallet to access your API key, track rewards, and manage your submitted methods.</p>
+          <p class="scan-sub">Sign in with your Solana wallet to access your API key, track rewards, and manage your Submitted Signals.</p>
         </div>
 
         <div v-if="!connected" class="profile-connect-prompt">
@@ -1311,7 +1332,7 @@ onUnmounted(() => {
           <div v-if="profileLoading" class="empty-state"><p>Loading profile...</p></div>
 
           <div v-else-if="!profileData" class="profile-signup-card">
-            <p class="signup-desc">No profile found for this wallet. Create one to get your API key and start earning rewards from submitted methods.</p>
+            <p class="signup-desc">No profile found for this wallet. Create one to get your API key and start earning rewards from Submitted Signals.</p>
             <button class="submit-listing-btn" :disabled="signupLoading" @click="signupProfile()">
               {{ signupLoading ? 'Signing...' : 'Create Profile' }}
             </button>
@@ -1332,22 +1353,6 @@ onUnmounted(() => {
                 <div class="pstat-val">${{ ((profileData.profile?.balance ?? 0) / 1e6).toFixed(2) }}</div>
                 <div class="pstat-label">Account Balance <br><span class="pstat-deposit-hint">Tap to Deposit</span></div>
               </div>
-              <div class="pstat-card">
-                <div class="pstat-val">${{ profileData.earned ? (profileData.earned / 1e6).toFixed(2) : '0.00' }}</div>
-                <div class="pstat-label">Total Earned</div>
-              </div>
-            </div>
-
-            <!-- Claimable scan earnings -->
-            <div v-if="(profileData.pending ?? 0) > 0" class="profile-card profile-claim-card">
-              <div class="profile-card-header">
-                <span class="profile-card-title">Scan Earnings</span>
-                <span class="claim-amount">${{ (profileData.pending / 1e6).toFixed(4) }}</span>
-              </div>
-              <p class="profile-hint">Your methods earned this from paid scans. Claim to receive tokens on-chain.</p>
-              <button class="submit-listing-btn claim-btn" :disabled="offchainClaimLoading" @click="claimOffchainBalance()">
-                {{ offchainClaimLoading ? 'Claiming...' : 'Claim Earnings' }}
-              </button>
             </div>
 
             <!-- API Key -->
@@ -1363,10 +1368,10 @@ onUnmounted(() => {
               <p class="profile-hint">Pass as <code>apiKey</code> in POST /checker body. Identify scans without wallet interaction.</p>
             </div>
 
-            <!-- Submitted methods -->
+            <!-- Submitted Signals -->
             <div class="profile-card">
               <div class="profile-card-header">
-                <span class="profile-card-title">Submitted Methods</span>
+                <span class="profile-card-title">Submitted Signals</span>
                 <span class="profile-card-count">{{ profileData.methods?.length ?? 0 }}</span>
               </div>
               <div v-if="!profileData.methods?.length" class="profile-empty">
@@ -1381,7 +1386,6 @@ onUnmounted(() => {
                   </div>
                   <div class="mlist-meta">
                     <span class="mlist-score">score {{ m.score?.toFixed(1) ?? '0.0' }}</span>
-                    <span class="mlist-earned">{{ ((profileData.pending || 0) / 1e9).toFixed(4) }} POH pending</span>
                   </div>
                 </div>
               </div>
@@ -1395,7 +1399,7 @@ onUnmounted(() => {
               </div>
               <div v-if="!myVotesData.length" class="profile-empty">
                 No feedback provided yet.
-                <button class="utility-link no-margin" @click="showSection('votes'); loadVoting()">Provide feedback →</button>
+                <button class="utility-link no-margin" @click="showSection('votes'); loadVotingFiltered()">Provide feedback →</button>
               </div>
               <div v-else class="method-list-profile">
                 <div v-for="v in myVotesData" :key="v.methodId" class="mlist-row">
@@ -1548,7 +1552,7 @@ const results = await pollJob(jobId)</pre>
         <div class="api-section">
           <div class="api-section-title">GET /profile/:address</div>
           <div class="api-card">
-            <div class="api-desc">Returns profile stats, submitted methods, and reward totals for a wallet address.</div>
+            <div class="api-desc">Returns profile stats, Submitted Signals, and reward totals for a wallet address.</div>
             <div class="code-block">
               <div class="code-lang">curl</div>
               <pre class="code-pre">curl https://proofofhuman.ge/profile/YourSolanaWalletAddressHere</pre>
@@ -1561,12 +1565,12 @@ const results = await pollJob(jobId)</pre>
         </div>
       </div>
 
-      <!-- Staking (hidden until mainnet contract deployed) -->
-      <div v-if="false && currentSection === 'staking'" class="staking-page">
+      <!-- Staking -->
+      <div v-if="currentSection === 'staking'" class="staking-page">
         <div class="scan-hero">
           <div class="scan-tag">STAKING</div>
           <h2 class="scan-title">Stake POH</h2>
-          <p class="scan-sub">Your staked POH balance determines your vote weight when scoring detection signals. Higher stake = more signal in the consensus.</p>
+          <p class="scan-sub">Your staked POH determines your vote weight when scoring detection signals.</p>
         </div>
 
         <div class="staking-grid">
@@ -1582,82 +1586,44 @@ const results = await pollJob(jobId)</pre>
           <div class="staking-info-card">
             <div class="si-title">How rewards work</div>
             <ul class="si-list">
-              <li>Every scan fee is split — 50% goes to method owners</li>
-              <li>Your votes boost a method's score → that method earns more</li>
-              <li>Back good methods, earn more rewards</li>
+              <li>50% or 500 POH signal deployment fee goes to stakers</li>
+              <li>More you stake, the more rewards you earn</li>
             </ul>
           </div>
         </div>
 
         <div class="stake-form-card">
           <div class="stake-form-title">Manage Stake</div>
-          <div v-if="!connected" class="prompt-text">
-            <button class="utility-link" @click="showWalletModal = true">Connect wallet →</button>
-          </div>
-          <template v-else>
-            <!-- Balances -->
-            <div class="stake-balance-row">
-              <div class="sbal-item">
-                <div class="sbal-val">{{ pohBalance.toFixed(2) }}</div>
-                <div class="sbal-label">Wallet POH</div>
-              </div>
-              <div class="sbal-item">
-                <div class="sbal-val">{{ stakedBalance.toFixed(2) }}</div>
-                <div class="sbal-label">Staked</div>
-              </div>
-              <div class="sbal-item">
-                <div class="sbal-val">{{ totalStaked.toFixed(0) }}</div>
-                <div class="sbal-label">Total Staked</div>
-              </div>
-              <div class="sbal-item sbal-claimable">
-                <div class="sbal-val">{{ claimable.toFixed(4) }}</div>
-                <div class="sbal-label">Claimable</div>
-              </div>
-            </div>
 
+          <!-- Coming soon banner -->
+          <div class="stake-coming-soon">
+            <span class="stake-cs-icon">🔒</span>
+            <div>
+              <div class="stake-cs-title">Staking contract coming soon</div>
+              <div class="stake-cs-sub">The on-chain staking program is being deployed. Staking and reward claims will be enabled once the contract address is live.</div>
+            </div>
+          </div>
+
+          <!-- Disabled form (visual preview) -->
+          <fieldset disabled class="stake-disabled-fieldset">
             <!-- Stake -->
             <div class="stake-action-row">
               <div class="flex-input">
-                <input type="number" v-model="stakeAmount" placeholder="POH to stake" class="premium-input flex-grow" min="0" step="1" />
-                <button class="outline-btn" :disabled="stakeLoading || !stakeAmount" @click="submitStake()">
-                  {{ stakeLoading ? '...' : 'Stake' }}
-                </button>
+                <input type="number" placeholder="POH to stake" class="premium-input flex-grow" />
+                <button class="outline-btn">Stake</button>
               </div>
-              <button class="max-btn" @click="stakeAmount = pohBalance.toFixed(2)">MAX</button>
+              <button class="max-btn">MAX</button>
             </div>
 
             <!-- Unstake -->
             <div class="stake-action-row">
               <div class="flex-input">
-                <input type="number" v-model="unstakeAmount" placeholder="POH to unstake" class="premium-input flex-grow" min="0" step="1" />
-                <button class="outline-btn" :disabled="unstakeLoading || !unstakeAmount" @click="submitUnstake()">
-                  {{ unstakeLoading ? '...' : 'Unstake' }}
-                </button>
+                <input type="number" placeholder="POH to unstake" class="premium-input flex-grow" />
+                <button class="outline-btn">Unstake</button>
               </div>
-              <button class="max-btn" @click="unstakeAmount = stakedBalance.toFixed(2)">MAX</button>
+              <button class="max-btn">MAX</button>
             </div>
-
-            <!-- Claim on-chain staking rewards -->
-            <div v-if="claimable > 0" class="stake-claim-row">
-              <span class="claim-desc">{{ claimable.toFixed(4) }} POH from on-chain staking</span>
-              <button class="outline-btn" :disabled="claimLoading" @click="claimRewards()">
-                {{ claimLoading ? 'Claiming...' : 'Claim Rewards' }}
-              </button>
-            </div>
-
-            <!-- Claim off-chain rewards (listing fees + scan revenue distributed by backend) -->
-            <div v-if="(profileData?.profile?.balance ?? 0) > 0" class="stake-claim-row">
-              <span class="claim-desc">${{ ((profileData.profile.balance) / 1e6).toFixed(4) }} off-chain rewards</span>
-              <button class="outline-btn" :disabled="offchainClaimLoading" @click="claimOffchainBalance()">
-                {{ offchainClaimLoading ? 'Claiming...' : 'Claim Rewards' }}
-              </button>
-            </div>
-
-            <div v-if="stakeMessage" class="stake-message">{{ stakeMessage }}</div>
-            <p class="profile-hint" style="margin-top:0.75rem">
-              Contract: <code>{{ STAKING_CONTRACT }}</code>
-            </p>
-          </template>
+          </fieldset>
         </div>
       </div>
 
@@ -4055,7 +4021,7 @@ const results = await pollJob(jobId)</pre>
   .form-row { flex-direction: column; }
   .form-col-sm { flex: unset; width: 100%; }
   .form-col-lg { flex: unset; width: 100%; }
-  .profile-stats { grid-template-columns: 1fr 1fr; }
+  .profile-stats { grid-template-columns: repeat(3, 1fr); }
   .pricing-table .pt-row { grid-template-columns: 1fr; gap: 0.15rem; }
   .staking-grid { grid-template-columns: 1fr; }
 }
@@ -4134,7 +4100,7 @@ const results = await pollJob(jobId)</pre>
 
 .profile-stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 1rem;
   margin: 1.5rem 0;
 }
@@ -4173,9 +4139,6 @@ const results = await pollJob(jobId)</pre>
 }
 .profile-card-title { font-size: 1.3rem; font-weight: 600; color: #ccc; }
 
-.profile-claim-card { border-color: #1a3a1a; }
-.claim-amount { font-size: 1rem; font-weight: 700; color: #5a8a5a; font-family: 'JetBrains Mono', monospace; }
-.claim-btn { margin-top: 0.75rem; width: 100%; }
 .profile-card-count {
   background: #111;
   border: 1px solid #222;
@@ -4340,6 +4303,15 @@ const results = await pollJob(jobId)</pre>
 }
 .stake-form-title { font-size: 1.0625rem; font-weight: 600; color: #ccc; margin-bottom: 1.25rem; }
 .stake-message { margin-top: 0.75rem; font-size: 1.3rem; color: #888; }
+.stake-coming-soon {
+  display: flex; align-items: flex-start; gap: 12px;
+  background: rgba(99,102,241,0.07); border: 1px solid rgba(99,102,241,0.2);
+  border-radius: 8px; padding: 14px 16px; margin-bottom: 1.5rem;
+}
+.stake-cs-icon { font-size: 1.4rem; flex-shrink: 0; margin-top: 1px; }
+.stake-cs-title { font-size: 0.875rem; font-weight: 600; color: #a5b4fc; margin-bottom: 4px; }
+.stake-cs-sub { font-size: 0.8rem; color: #6b7280; line-height: 1.5; }
+.stake-disabled-fieldset { border: none; padding: 0; margin: 0; opacity: 0.35; pointer-events: none; }
 
 /* ── Stake balance row ───────────────────────────────────────────────────── */
 .stake-balance-row {

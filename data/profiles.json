@@ -510,12 +510,12 @@
   "28fNW7xVScivET9ThHM5SBXivML1n97ap23Yy6bkH2r9": {
     "registeredAt": "2026-05-07T08:43:08.878Z",
     "apiKey": "5331b974-0242-4b5b-88b4-e7d7f3fc4f05",
-    "balance": 0,
+    "balance": 10000,
     "freeScansLeft": 100,
     "totalScans": 0,
     "stakedAmount": 0,
     "address": "28fNW7xVScivET9ThHM5SBXivML1n97ap23Yy6bkH2r9",
-    "updatedAt": "2026-05-07T08:43:08.879Z"
+    "updatedAt": "2026-05-24T13:41:45.858Z"
   },
   "devtest": {
     "ips": [

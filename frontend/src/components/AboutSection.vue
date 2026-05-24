@@ -3,7 +3,7 @@
     <div class="scan-hero">
       <div class="scan-tag">YELLOW PAPER</div>
       <h2 class="scan-title">Proof of Human</h2>
-      <p class="scan-sub">A decentralized, AI-augmented protocol for on-chain human identity verification. Pre-mainnet · Solana Devnet · May 19, 2026</p>
+      <p class="scan-sub">A decentralized, AI-augmented protocol for on-chain human identity verification. Mainnet · Solana · May 2026</p>
     </div>
 
     <!-- Abstract -->
@@ -38,7 +38,7 @@
         </table>
       </div>
       <p class="yp-p"><strong>Result evaluation:</strong> each signal produces a numeric or boolean value normalized by an optional <code>expression</code> (JavaScript) into a score ∈ ℝ.</p>
-      <p class="yp-p"><strong>Storage:</strong> signals are persisted in a JSON flat-file (<code>data/methods.json</code>) on the backend node. This is a transitional design; mainnet will migrate to on-chain account storage.</p>
+      <p class="yp-p"><strong>Storage:</strong> signals are persisted in a JSON flat-file (<code>data/methods.json</code>) on the backend node. This is a transitional design; a future version will migrate to on-chain account storage.</p>
 
       <h4 class="yp-h3">2.2 POH Token (SPL)</h4>
       <div class="yp-table-wrap">
@@ -47,21 +47,37 @@
           <tbody>
             <tr><td>Standard</td><td>Solana SPL Token</td></tr>
             <tr><td>Decimals</td><td>9</td></tr>
-            <tr><td>Listing fee</td><td>1,000 POH</td></tr>
-            <tr><td>Fee split</td><td>500 POH → deployer vault; 500 POH → staker fee vault (SFEE_PDA)</td></tr>
+            <tr><td>Signal listing fee</td><td>1,000 POH</td></tr>
+            <tr><td>Fee split</td><td>500 POH → protocol vault; 500 POH → staker fee vault (SFEE_PDA)</td></tr>
             <tr><td>Staking</td><td>Non-custodial; stake weight used for vote amplification</td></tr>
           </tbody>
         </table>
       </div>
 
       <h4 class="yp-h3">2.3 Staking Contract</h4>
-      <p class="yp-p">On-chain Anchor program. Key entrypoints:</p>
+      <p class="yp-p">On-chain Anchor program — <span class="yp-badge yp-badge--soon">contract deployment in progress</span></p>
+      <p class="yp-p">Planned entrypoints:</p>
       <ul class="yp-list">
         <li><code>stakeTokens(amount)</code> — locks POH in staker PDA, mints stake receipt</li>
         <li><code>unstakeTokens(amount)</code> — returns POH after cooldown</li>
         <li><code>registerMethod(methodHash)</code> — enforces 1,000 POH listing fee payment, routes 500 POH to SFEE vault</li>
         <li><code>claimStakerRewards()</code> — distributes accumulated listing fees pro-rata to stakers</li>
       </ul>
+
+      <h4 class="yp-h3">2.4 Scan API & Pricing</h4>
+      <p class="yp-p">Any wallet or API key can submit addresses for analysis. Wallets receive <strong>100 free scans</strong> on first use. Beyond the free tier, scans are prepaid in USDC or USDT:</p>
+      <div class="yp-table-wrap">
+        <table class="yp-table">
+          <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
+          <tbody>
+            <tr><td>Free tier</td><td>100 scans per wallet</td></tr>
+            <tr><td>Paid rate</td><td>$0.001 per scan (1 USDC/USDT per 1,000 scans)</td></tr>
+            <tr><td>Payment tokens</td><td>USDC or USDT (SPL, 6 decimals)</td></tr>
+            <tr><td>Fee recipient</td><td>100% to protocol FEE_RECIPIENT</td></tr>
+            <tr><td>Balance tracking</td><td>Off-chain, credited to <code>profile.balance</code> after on-chain transfer verified</td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <!-- 3. Signal Listing -->
@@ -228,27 +244,11 @@ TX2 (888 bytes):  Create pool + first buy (backend signs with baseMintKeypair)`}
         <table class="yp-table">
           <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
           <tbody>
-            <tr><td><span class="http-get">GET</span></td><td><code>/verifyer</code></td><td>List all signals, stake-weighted shuffle, annotated with myVoted</td></tr>
-            <tr><td><span class="http-get">GET</span></td><td><code>/verifyer/:id</code></td><td>Fetch single signal by ID</td></tr>
-            <tr><td><span class="http-post">POST</span></td><td><code>/verifyer/vote</code></td><td>Cast signed vote</td></tr>
-            <tr><td><span class="http-post">POST</span></td><td><code>/verifyer/validate-feedback</code></td><td>Pre-vote LLM feedback quality check</td></tr>
-            <tr><td><span class="http-post">POST</span></td><td><code>/listing</code></td><td>Register new signal (requires confirmed POH payment tx)</td></tr>
-            <tr><td><span class="http-post">POST</span></td><td><code>/listing/validate-description</code></td><td>Pre-submit LLM description quality check</td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      <h4 class="yp-h3">Curves</h4>
-      <div class="yp-table-wrap">
-        <table class="yp-table">
-          <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
-          <tbody>
-            <tr><td><span class="http-get">GET</span></td><td><code>/curves/:methodId</code></td><td>Pool info + current price</td></tr>
-            <tr><td><span class="http-get">GET</span></td><td><code>/curves/:methodId/chart</code></td><td>OHLCV candle data</td></tr>
-            <tr><td><span class="http-get">GET</span></td><td><code>/curves/:methodId/quote</code></td><td>Swap quote (?action=buy|sell&amount=lamports)</td></tr>
-            <tr><td><span class="http-get">GET</span></td><td><code>/curves/:methodId/creator-fees</code></td><td>Claimable creator fees</td></tr>
-            <tr><td><span class="http-post">POST</span></td><td><code>/curves/pool-creation-tx</code></td><td>Build partially-signed pool creation txs for user</td></tr>
-            <tr><td><span class="http-post">POST</span></td><td><code>/curves/record-pool</code></td><td>Persist pool record after user broadcasts</td></tr>
+            <tr><td><span class="http-get">GET</span></td><td><code>/methods/verifyer</code></td><td>List all signals, stake-weighted shuffle, annotated with myVoted</td></tr>
+            <tr><td><span class="http-post">POST</span></td><td><code>/methods/verifyer/vote</code></td><td>Cast signed vote</td></tr>
+            <tr><td><span class="http-post">POST</span></td><td><code>/methods/verifyer/validate-feedback</code></td><td>Pre-vote LLM feedback quality check</td></tr>
+            <tr><td><span class="http-post">POST</span></td><td><code>/methods/listing</code></td><td>Register new signal (requires confirmed POH payment tx)</td></tr>
+            <tr><td><span class="http-post">POST</span></td><td><code>/methods/listing/validate-description</code></td><td>Pre-submit LLM description quality check</td></tr>
           </tbody>
         </table>
       </div>
@@ -258,8 +258,28 @@ TX2 (888 bytes):  Create pool + first buy (backend signs with baseMintKeypair)`}
         <table class="yp-table">
           <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
           <tbody>
-            <tr><td><span class="http-post">POST</span></td><td><code>/checker/analyze</code></td><td>Run full AI verdict on an address</td></tr>
+            <tr><td><span class="http-post">POST</span></td><td><code>/checker</code></td><td>Run full AI verdict on an address (or batch CSV)</td></tr>
+            <tr><td><span class="http-get">GET</span></td><td><code>/checker/job/:jobId</code></td><td>Poll async job status</td></tr>
             <tr><td><span class="http-post">POST</span></td><td><code>/checker/feedback</code></td><td>Submit verdict correction for brain training</td></tr>
+            <tr><td><span class="http-get">GET</span></td><td><code>/checker/pricing</code></td><td>Current scan pricing (rate, free tier)</td></tr>
+            <tr><td><span class="http-post">POST</span></td><td><code>/checker/preview</code></td><td>Dry-run signal execution without verdict</td></tr>
+            <tr><td><span class="http-get">GET</span></td><td><code>/checker/brain/:key</code></td><td>Read brain state (weights, narrative)</td></tr>
+            <tr><td><span class="http-get">GET</span></td><td><code>/checker/profile/:address</code></td><td>Enriched identity profile (web3.bio, protocols, graph)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4 class="yp-h3">Profile</h4>
+      <div class="yp-table-wrap">
+        <table class="yp-table">
+          <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="http-post">POST</span></td><td><code>/profile/signup</code></td><td>Create profile (requires ed25519 wallet signature)</td></tr>
+            <tr><td><span class="http-get">GET</span></td><td><code>/profile/:address</code></td><td>Fetch profile, submitted signals, earned rewards</td></tr>
+            <tr><td><span class="http-get">GET</span></td><td><code>/profile/:address/votes</code></td><td>Voting history for wallet</td></tr>
+            <tr><td><span class="http-post">POST</span></td><td><code>/profile/deposit</code></td><td>Credit scan balance after USDC/USDT on-chain transfer</td></tr>
+            <tr><td><span class="http-post">POST</span></td><td><code>/profile/apikey/rotate</code></td><td>Rotate API key</td></tr>
+            <tr><td><span class="http-get">GET</span></td><td><code>/profile</code></td><td>Top earners leaderboard</td></tr>
           </tbody>
         </table>
       </div>
@@ -286,6 +306,19 @@ TX2 (888 bytes):  Create pool + first buy (backend signs with baseMintKeypair)`}
   "created_at":   "ISO 8601",
   "poolAddress":  "base58 (optional)",
   "mintAddress":  "base58 (optional)"
+}`}</pre>
+      </div>
+      <h4 class="yp-h3">Profile (profiles.json entry)</h4>
+      <div class="yp-code">
+        <pre>{`{
+  "address":       "base58 public key",
+  "apiKey":        "UUID",
+  "balance":       "number (USDC/USDT raw units, 6 decimals)",
+  "freeScansLeft": "number",
+  "totalScans":    "number",
+  "stakedAmount":  "number",
+  "registeredAt":  "ISO 8601",
+  "updatedAt":     "ISO 8601"
 }`}</pre>
       </div>
       <h4 class="yp-h3">Pool Record (pools.json entry)</h4>
@@ -323,8 +356,12 @@ TX2 (888 bytes):  Create pool + first buy (backend signs with baseMintKeypair)`}
           <p class="yp-card-body">Before inserting a new signal, the backend checks for exact duplicates: REST signals by URL, EVM/Solana signals by (address, method) pair. Attempting to list a duplicate returns HTTP 409.</p>
         </div>
         <div class="yp-card">
-          <div class="yp-card-title">Pool Idempotency</div>
-          <p class="yp-card-body"><code>recordPool()</code> is idempotent — if a pool record already exists for a methodId, the existing record is returned unchanged. This prevents overwriting a legitimate pool record with attacker-controlled data.</p>
+          <div class="yp-card-title">Deposit Verification</div>
+          <p class="yp-card-body">Scan balance deposits require an on-chain USDC/USDT transfer verified via <code>verifyStablecoinTransfer(txHash, amount, sender)</code>. Each transaction hash is recorded and rejected on reuse to prevent double-crediting.</p>
+        </div>
+        <div class="yp-card">
+          <div class="yp-card-title">IP Abuse Detection</div>
+          <p class="yp-card-body">Free scan usage is tracked per IP. If an IP address is associated with a different wallet that has already consumed free scans, subsequent wallets from that IP are flagged and denied the free tier.</p>
         </div>
         <div class="yp-card">
           <div class="yp-card-title">Brain Integrity</div>
@@ -340,12 +377,13 @@ TX2 (888 bytes):  Create pool + first buy (backend signs with baseMintKeypair)`}
         <table class="yp-table">
           <thead><tr><th>Flow</th><th>Amount</th><th>Recipient</th></tr></thead>
           <tbody>
-            <tr><td>Signal listing fee</td><td>1,000 POH</td><td>500 → deployer vault; 500 → staker SFEE</td></tr>
+            <tr><td>Signal listing fee</td><td>1,000 POH</td><td>500 POH → protocol vault; 500 POH → staker SFEE</td></tr>
+            <tr><td>Staker rewards</td><td>500 POH per listing (pro-rata)</td><td>POH stakers via <code>claimStakerRewards</code></td></tr>
+            <tr><td>Scan fee (paid tier)</td><td>$0.001 per scan (USDC/USDT)</td><td>100% → protocol FEE_RECIPIENT</td></tr>
             <tr><td>Pool deployment</td><td>0.1 SOL</td><td>~0.021 SOL rent (Meteora), ~0.079 SOL auto-buy</td></tr>
             <tr><td>Creator trading fee</td><td>4% per swap</td><td>Signal creator (on-chain claimable)</td></tr>
             <tr><td>Meteora protocol fee</td><td>20% of 1% base fee</td><td>Meteora treasury</td></tr>
             <tr><td>Referral cut (when active)</td><td>20% of Meteora's cut</td><td>Referral wallet or POH treasury</td></tr>
-            <tr><td>Staker rewards</td><td>Pro-rata listing fees</td><td>Stakers via claimStakerRewards</td></tr>
           </tbody>
         </table>
       </div>
@@ -358,8 +396,9 @@ TX2 (888 bytes):  Create pool + first buy (backend signs with baseMintKeypair)`}
         <table class="yp-table">
           <thead><tr><th>Phase</th><th>Feature</th></tr></thead>
           <tbody>
-            <tr><td><span class="yp-badge yp-badge--active">Alpha (current)</span></td><td>Signal registry, voting, AI brain, Conviction Curves on devnet</td></tr>
-            <tr><td>Beta</td><td>Mainnet migration, on-chain signal storage, DAO governance of brain weights</td></tr>
+            <tr><td><span class="yp-badge yp-badge--active">Mainnet (current)</span></td><td>Signal registry, voting, AI brain, Conviction Curves, scan API, profile & billing</td></tr>
+            <tr><td>Next</td><td>On-chain staking contract deployment, stake-weighted voting live</td></tr>
+            <tr><td>Beta</td><td>On-chain signal storage, DAO governance of brain weights</td></tr>
             <tr><td>V1</td><td>Cross-chain signals, ZK-proof integration for private signals</td></tr>
             <tr><td>V2</td><td>Prediction market settlement, signal expiry, signal composability (AND/OR logic)</td></tr>
           </tbody>
@@ -572,7 +611,7 @@ lp_fee       = 0.008 − creator_fee  = remainder`}</pre>
 .http-get  { color: #4ade80; font-family: monospace; font-size: 0.78rem; font-weight: 700; }
 .http-post { color: #facc15; font-family: monospace; font-size: 0.78rem; font-weight: 700; }
 
-/* ── Roadmap badge ────────────────────────────────────────────────────────── */
+/* ── Roadmap / status badges ──────────────────────────────────────────────── */
 .yp-badge {
   display: inline-block;
   font-size: 0.75rem;
@@ -582,8 +621,15 @@ lp_fee       = 0.008 − creator_fee  = remainder`}</pre>
   white-space: nowrap;
 }
 .yp-badge--active {
-  background: #ffffff10;
-  color: #aaa;
-  border: 1px solid #333;
+  background: rgba(99,102,241,0.12);
+  color: #a5b4fc;
+  border: 1px solid rgba(99,102,241,0.3);
+}
+.yp-badge--soon {
+  background: rgba(234,179,8,0.10);
+  color: #eab308;
+  border: 1px solid rgba(234,179,8,0.25);
+  font-size: 0.78rem;
+  font-weight: 500;
 }
 </style>

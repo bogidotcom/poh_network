@@ -114,42 +114,6 @@ router.post('/deposit', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// ── POST /profile/claim — withdraw off-chain balance as on-chain POH tokens ───
-router.post('/claim', async (req, res, next) => {
-  try {
-    const { address } = req.body;
-    if (!address) return res.status(400).json({ error: 'address required' });
-
-    const p = getProfile(address);
-    if (!p) return res.status(404).json({ error: 'Profile not found' });
-
-    const methods = getMethods().filter(m => m.ownerWallet === address);
-    const rewards  = getRewards();
-    const fromScanEarnings = methods.reduce((s, m) => s + (rewards[m.id]?.pendingWithdrawal || 0), 0);
-    const fromOffchainBalance = p.balance || 0;
-    const claimable = fromScanEarnings + fromOffchainBalance;
-
-    if (claimable <= 0) return res.status(400).json({ error: 'Nothing to claim' });
-
-    const txHash = await sendPohTokens(address, claimable);
-
-    for (const m of methods) {
-      if (rewards[m.id]) rewards[m.id].pendingWithdrawal = 0;
-    }
-    saveRewards(rewards);
-    upsertProfile(address, { balance: 0 });
-
-    console.log(`[profile] Claimed ${claimable / 1_000_000} POH → ${address} tx: ${txHash}`);
-    res.json({ success: true, claimed: claimable, txHash });
-  } catch (err) {
-    // If backend wallet isn't configured, return a clear error without 500
-    if (err.message.includes('not configured')) {
-      return res.status(503).json({ error: err.message, claimable: (getProfile(req.body.address)?.balance || 0) });
-    }
-    next(err);
-  }
-});
-
 // ── POST /profile/apikey/rotate ───────────────────────────────────────────────
 router.post('/apikey/rotate', (req, res, next) => {
   try {

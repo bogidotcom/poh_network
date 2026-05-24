@@ -32,8 +32,6 @@ export function useProfile({ walletAddress, connected, adapterSignMessage, POH_M
   const depositToken     = ref('USDC')   // 'USDC' | 'USDT'
   const depositLoading   = ref(false)
   const depositMsg       = ref(null)
-  const offchainClaimLoading = ref(false)
-  const stakeMessage     = ref(null)
 
   async function loadProfile() {
     if (!walletAddress.value) return
@@ -130,24 +128,6 @@ export function useProfile({ walletAddress, connected, adapterSignMessage, POH_M
     }
   }
 
-  async function claimOffchainBalance() {
-    if (!connected.value) { stakeMessage.value = 'Connect wallet to claim'; return }
-    offchainClaimLoading.value = true
-    stakeMessage.value = null
-    try {
-      const res = await axios.post('/profile/claim', { address: walletAddress.value })
-      const usd = (res.data.claimed / 1e6).toFixed(2)
-      stakeMessage.value = `Claimed $${usd} off-chain rewards ✓`
-      await loadProfile()
-      if (loadPohBalance) await loadPohBalance()
-    } catch (err) {
-      const msg = err.response?.data?.error || err.message || 'Claim failed'
-      stakeMessage.value = msg
-    } finally {
-      offchainClaimLoading.value = false
-    }
-  }
-
   return {
     profileData,
     profileLoading,
@@ -158,12 +138,9 @@ export function useProfile({ walletAddress, connected, adapterSignMessage, POH_M
     depositToken,
     depositLoading,
     depositMsg,
-    offchainClaimLoading,
-    stakeMessage,
     loadProfile,
     signupProfile,
     rotateApiKey,
     submitDeposit,
-    claimOffchainBalance,
   }
 }
