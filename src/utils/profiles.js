@@ -77,9 +77,9 @@ function calcScanCost(count) {
 }
 
 // ── Reward distribution ───────────────────────────────────────────────────────
-// 50% of pohPaid goes to method owners, weighted by method score/weight
+// Reward distribution to method owners (currently disabled — 100% stays in FEE_RECIPIENT)
 function distributeRewards(pohPaid, executedMethodIds, allMethods, weights) {
-  const pool = Math.floor(pohPaid * 0.5);
+  const pool = 0; // disabled until ownerWallet is populated for all methods
   if (pool <= 0 || !executedMethodIds.length) return;
 
   // Compute each method's weight share

@@ -2,6 +2,20 @@
 
 const { Connection, PublicKey, clusterApiUrl } = require('@solana/web3.js');
 const { getMint, getAccount, getAssociatedTokenAddress, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } = require('@solana/spl-token');
+const bs58 = require('bs58');
+
+// Decode an SPL Token transfer amount from base58 instruction data.
+// Handles Transfer (type 3) and TransferChecked (type 12).
+// Returns the raw token amount (u64), or null if not a transfer instruction.
+function parseSplTransferAmount(base58Data) {
+  try {
+    const buf = Buffer.from(bs58.decode(base58Data));
+    if ((buf[0] === 3 || buf[0] === 12) && buf.length >= 9) {
+      return Number(buf.readBigUInt64LE(1));
+    }
+  } catch {}
+  return null;
+}
 
 // Solana mainnet stablecoin mints (both use standard SPL TOKEN_PROGRAM_ID, 6 decimals)
 const USDC_MINT = new PublicKey(process.env.USDC_MINT || 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
@@ -23,7 +37,6 @@ function stakeRecordPDA(walletPubkey) {
  */
 async function verifyTxSuccess(txHash) {
   try {
-    // if ((txHash === 'MOCK_SUCCESS' || txHash === 'MOCK_BURN') && process.env.NODE_ENV !== 'production') return true;
     const tx = await connection.getTransaction(txHash, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
     if (!tx) return false;
     return tx.meta?.err === null;
@@ -38,7 +51,6 @@ async function verifyTxSuccess(txHash) {
  */
 async function verifyPohTransfer(txHash, expectedAmountRaw, fromWallet) {
   try {
-    if (txHash === 'MOCK_BURN' && process.env.NODE_ENV !== 'production') return true;
     const tx = await connection.getTransaction(txHash, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
     if (!tx || tx.meta?.err !== null) return false;
 
@@ -77,15 +89,15 @@ async function verifyPohTransfer(txHash, expectedAmountRaw, fromWallet) {
  */
 async function verifyStablecoinTransfer(txHash, expectedAmountRaw, fromWallet) {
   try {
-    if (txHash === 'MOCK_BURN' && process.env.NODE_ENV !== 'production') return true;
-    // If FEE_RECIPIENT is not configured, skip on-chain verification (dev/staging convenience)
-    if (!process.env.FEE_RECIPIENT) return true;
+    if (!process.env.FEE_RECIPIENT) return true; // not configured — skip (dev only)
     const tx = await connection.getTransaction(txHash, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
     if (!tx || tx.meta?.err !== null) return false;
 
-    const recipient   = new PublicKey(process.env.FEE_RECIPIENT);
-    const acctKeys    = tx.transaction.message.staticAccountKeys || tx.transaction.message.accountKeys;
+    const recipient = new PublicKey(process.env.FEE_RECIPIENT);
+    const acctKeys  = tx.transaction.message.staticAccountKeys || tx.transaction.message.accountKeys;
 
+    // ── Method 1: recipient balance delta ────────────────────────────────────
+    // Works for all normal deposits where fromAta !== toAta.
     for (const mint of [USDC_MINT, USDT_MINT]) {
       const toAta = await getAssociatedTokenAddress(mint, recipient, false, TOKEN_PROGRAM_ID);
       const toIdx = acctKeys.findIndex(k => k.toString() === toAta.toString());
@@ -99,6 +111,28 @@ async function verifyStablecoinTransfer(txHash, expectedAmountRaw, fromWallet) {
       const postAmt = Number(post.uiTokenAmount.amount);
       if ((postAmt - preAmt) >= expectedAmountRaw) return true;
     }
+
+    // ── Method 2: instruction-data parsing ───────────────────────────────────
+    // Fallback for self-deposits (fromWallet === FEE_RECIPIENT) where fromAta
+    // and toAta are identical so balance delta is always 0.  We decode every
+    // SPL Transfer / TransferChecked instruction and confirm the stated amount
+    // reaches the recipient's ATA.
+    const TOKEN_PROG = TOKEN_PROGRAM_ID.toString();
+    const instructions = tx.transaction.message.instructions || [];
+    for (const ix of instructions) {
+      const prog = acctKeys[ix.programIdIndex]?.toString();
+      if (prog !== TOKEN_PROG) continue;
+      const amount = parseSplTransferAmount(ix.data);
+      if (amount === null || amount < expectedAmountRaw) continue;
+      // ix.accounts: [source, destination, authority, ...signers]
+      const destIdx = ix.accounts[1];
+      const destKey = acctKeys[destIdx]?.toString();
+      for (const mint of [USDC_MINT, USDT_MINT]) {
+        const toAta = await getAssociatedTokenAddress(mint, recipient, false, TOKEN_PROGRAM_ID);
+        if (destKey === toAta.toString()) return true;
+      }
+    }
+
     return false;
   } catch (err) {
     console.error('[solana] verifyStablecoinTransfer failed:', err.message);
@@ -115,8 +149,6 @@ async function verifyStablecoinTransfer(txHash, expectedAmountRaw, fromWallet) {
  */
 async function verifySolPayment(txHash, expectedAmountInSol, recipientAddress) {
   try {
-    if (txHash === 'MOCK_SUCCESS') return true;
-    
     const tx = await connection.getTransaction(txHash, { commitment: 'confirmed' });
     if (!tx) return false;
 
@@ -215,7 +247,6 @@ async function getVoteBalance(walletAddress) {
  */
 async function verifyBurnTransaction(txHash, expectedAmount, walletAddress) {
   try {
-    if (txHash === 'MOCK_BURN') return true;
     const tx = await connection.getTransaction(txHash, { commitment: 'confirmed' });
     if (!tx) return false;
 
