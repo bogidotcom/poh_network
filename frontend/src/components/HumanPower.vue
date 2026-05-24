@@ -144,7 +144,7 @@ const {
   brainVerdict, brainPolling, brainKey, batchFile, batchRowCount, batchRows,
   isResolving, detectedChain, faucetLoading, faucetMsg,
   runCheck, handleFileSelect, claimFaucet,
-  batchPolling, batchProgress,
+  batchPolling, batchProgress, isBatchScan,
   loading: checkerLoading,
 } = checker
 
@@ -168,17 +168,56 @@ async function loadWalletProfile(address) {
   }
 }
 
-// Load profile in parallel with brain analysis — starts as soon as scan results arrive
+// Load profile in parallel with brain analysis — single scans only, skip batch
 watch(checkerResults, (results) => {
   walletProfile.value = null
-  if (!results?.length) return
+  if (!results?.length || isBatchScan.value) return
   const addr = resolvedInputDisplay.value || scanInput.value?.trim()
   if (addr) loadWalletProfile(addr)
 })
 
+// ── Batch results summary (group signals by address) ──────────────────────────
+const batchSummary = computed(() => {
+  if (!isBatchScan.value || !checkerResults.value?.length) return []
+  const map = {}
+  for (const r of checkerResults.value) {
+    const addr = r.input
+    if (!addr) continue
+    if (!map[addr]) map[addr] = { address: addr, pass: 0, fail: 0, ofac: false, cex: false }
+    if (r.methodId === 'ofac_check') { map[addr].ofac = true; continue }
+    if (r.methodId === 'cex_check')  { map[addr].cex  = true; continue }
+    if (r.result) map[addr].pass++
+    else map[addr].fail++
+  }
+  return Object.values(map)
+})
+
+function downloadBatchCsv() {
+  if (!batchSummary.value.length) return
+  const rows = [['address', 'pass', 'fail', 'total', 'ofac_sanctioned', 'cex_wallet']]
+  for (const a of batchSummary.value) {
+    rows.push([a.address, a.pass, a.fail, a.pass + a.fail, a.ofac, a.cex])
+  }
+  const csv = rows.map(r => r.join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url  = URL.createObjectURL(blob)
+  const el   = document.createElement('a')
+  el.href = url; el.download = 'poh_batch_results.csv'; el.click()
+  URL.revokeObjectURL(url)
+}
+
 function handleProfileScan(addr) {
+  // Clear batch state so a single-wallet scan runs
+  batchFile.value = null
+  batchRowCount.value = 0
+  batchRows.value = []
   scanInput.value = addr
   runCheck()
+}
+
+function fmtAddr(addr) {
+  if (!addr || addr.length < 10) return addr
+  return addr.slice(0, 6) + '…' + addr.slice(-4)
 }
 
 // ── Verdict feedback ──────────────────────────────────────────────────────────
@@ -867,7 +906,7 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div v-if="brainPolling && !brainVerdict" class="brain-card brain-pending">
+        <div v-if="!isBatchScan && brainPolling && !brainVerdict" class="brain-card brain-pending">
           <span class="brain-label">AI Analysis</span>
           <span class="brain-analyzing">processing evidence...</span>
         </div>
@@ -877,8 +916,41 @@ onUnmounted(() => {
           <span class="evidence-loading-label">Running signals…</span>
         </div>
 
+        <!-- ── Batch results table ─────────────────────────────────────────── -->
+        <div v-if="isBatchScan && batchSummary.length" class="batch-results">
+          <div class="batch-results-header">
+            <span class="batch-results-title">Results — {{ batchSummary.length }} addresses</span>
+            <button class="batch-download-btn" @click="downloadBatchCsv">↓ CSV</button>
+          </div>
+          <div class="batch-table">
+            <div class="batch-table-head">
+              <span class="bt-col bt-addr">Address</span>
+              <span class="bt-col bt-num">✓ Pass</span>
+              <span class="bt-col bt-num">✗ Fail</span>
+              <span class="bt-col bt-flags">Flags</span>
+              <span class="bt-col bt-action"></span>
+            </div>
+            <div v-for="row in batchSummary" :key="row.address"
+                 :class="['batch-table-row', row.ofac ? 'batch-row-danger' : row.cex ? 'batch-row-warn' : '']">
+              <span class="bt-col bt-addr">
+                <span class="bt-addr-text" :title="row.address">{{ fmtAddr(row.address) }}</span>
+              </span>
+              <span class="bt-col bt-num bt-pass-val">{{ row.pass }}</span>
+              <span class="bt-col bt-num bt-fail-val">{{ row.fail }}</span>
+              <span class="bt-col bt-flags">
+                <span v-if="row.ofac" class="batch-flag batch-flag-ofac">⛔ OFAC</span>
+                <span v-if="row.cex"  class="batch-flag batch-flag-cex">🏦 CEX</span>
+                <span v-if="!row.ofac && !row.cex" class="batch-flag batch-flag-none">—</span>
+              </span>
+              <span class="bt-col bt-action">
+                <button class="batch-scan-btn" @click="handleProfileScan(row.address)">Scan</button>
+              </span>
+            </div>
+          </div>
+        </div>
+
         <!-- OFAC sanctions warning — shown whenever ofacResult.sanctioned is true -->
-        <div v-if="ofacResult?.sanctioned" class="ofac-card">
+        <div v-if="!isBatchScan && ofacResult?.sanctioned" class="ofac-card">
           <div class="ofac-row">
             <span class="ofac-icon">⛔</span>
             <span class="ofac-title">OFAC SANCTIONED</span>
@@ -896,7 +968,7 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div v-if="brainVerdict && brainVerdict.status !== 'not_found'" class="brain-card" :class="brainVerdict.verdict === 'HUMAN' ? 'brain-human' : 'brain-bot'">
+        <div v-if="!isBatchScan && brainVerdict && brainVerdict.status !== 'not_found'" class="brain-card" :class="brainVerdict.verdict === 'HUMAN' ? 'brain-human' : 'brain-bot'">
           <div class="brain-row">
             <span class="brain-label">AI Verdict</span>
             <span :class="['status-badge', brainVerdict.verdict === 'HUMAN' ? 'human' : 'ai']">
@@ -929,12 +1001,12 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- Wallet Profile — shown after verdict, loads async -->
-        <div v-if="walletProfileLoading && brainVerdict" class="profile-loading">
+        <!-- Wallet Profile — single scans only -->
+        <div v-if="!isBatchScan && walletProfileLoading && brainVerdict" class="profile-loading">
           <span class="profile-loading-dot" /><span class="profile-loading-dot" /><span class="profile-loading-dot" />
           <span style="color:#6b7280;font-size:13px;margin-left:8px;">Loading profile…</span>
         </div>
-        <div v-if="walletProfile && brainVerdict" class="profile-card-wrap">
+        <div v-if="!isBatchScan && walletProfile && brainVerdict" class="profile-card-wrap">
           <WalletProfile
             :profile="walletProfile"
             :verdict="brainVerdict"
@@ -3537,6 +3609,31 @@ const results = await pollJob(jobId)</pre>
   background: #4ade80;
   transition: width 0.4s ease;
 }
+
+/* ── Batch results table ── */
+.batch-results { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+.batch-results-header { display: flex; align-items: center; justify-content: space-between; }
+.batch-results-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #6b7280; }
+.batch-download-btn { background: rgba(99,102,241,0.15); color: #818cf8; border: 1px solid rgba(99,102,241,0.3); border-radius: 6px; padding: 4px 12px; font-size: 12px; cursor: pointer; transition: background 0.15s; }
+.batch-download-btn:hover { background: rgba(99,102,241,0.25); }
+.batch-table { display: flex; flex-direction: column; border: 1px solid #1f2937; border-radius: 10px; overflow: hidden; }
+.batch-table-head { display: grid; grid-template-columns: 1fr 70px 70px 110px 60px; gap: 0; background: rgba(255,255,255,0.03); padding: 8px 14px; border-bottom: 1px solid #1f2937; }
+.batch-table-row  { display: grid; grid-template-columns: 1fr 70px 70px 110px 60px; gap: 0; padding: 8px 14px; border-bottom: 1px solid #111827; transition: background 0.1s; }
+.batch-table-row:last-child { border-bottom: none; }
+.batch-table-row:hover { background: rgba(255,255,255,0.03); }
+.batch-row-danger { background: rgba(239,68,68,0.05) !important; }
+.batch-row-warn   { background: rgba(234,179,8,0.05) !important; }
+.bt-col { display: flex; align-items: center; font-size: 12px; }
+.batch-table-head .bt-col { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #4b5563; }
+.bt-addr-text { font-family: monospace; color: #d1d5db; }
+.bt-pass-val  { color: #22c55e; font-weight: 600; }
+.bt-fail-val  { color: #6b7280; font-weight: 600; }
+.batch-flag { font-size: 11px; padding: 2px 6px; border-radius: 4px; }
+.batch-flag-ofac { background: rgba(239,68,68,0.12); color: #ef4444; }
+.batch-flag-cex  { background: rgba(234,179,8,0.12);  color: #eab308; }
+.batch-flag-none { color: #374151; }
+.batch-scan-btn { background: #1f2937; color: #9ca3af; border: 1px solid #374151; border-radius: 5px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
+.batch-scan-btn:hover { background: #6366f1; color: #fff; border-color: #6366f1; }
 
 .chain-pill-row {
   padding-left: 0.1rem;

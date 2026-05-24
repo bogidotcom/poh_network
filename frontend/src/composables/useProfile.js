@@ -89,6 +89,11 @@ export function useProfile({ walletAddress, connected, adapterSignMessage, POH_M
       const mintPubkey = new PublicKey(STABLE_MINTS[depositToken.value])
       const walletPubkey = new PublicKey(walletAddress.value)
       const recipientPubkey = new PublicKey(FEE_RECIPIENT.value)
+      // Guard: FEE_RECIPIENT must not be the depositing wallet itself
+      if (walletPubkey.equals(recipientPubkey)) {
+        throw new Error('Deposit recipient is the same as your wallet — check FEE_RECIPIENT config.')
+      }
+
       // USDC/USDT use standard SPL TOKEN_PROGRAM_ID (no 4th arg needed)
       const fromAta = await getAssociatedTokenAddress(mintPubkey, walletPubkey)
       const toAta   = await getAssociatedTokenAddress(mintPubkey, recipientPubkey)

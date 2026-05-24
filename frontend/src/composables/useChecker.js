@@ -1,7 +1,11 @@
 import { ref, computed, watch } from 'vue'
 import axios from 'axios'
 import { Connection, PublicKey, Transaction } from '@solana/web3.js'
-import { getAssociatedTokenAddress, createTransferInstruction } from '@solana/spl-token'
+import {
+  getAssociatedTokenAddress,
+  createTransferInstruction,
+  createAssociatedTokenAccountInstruction,
+} from '@solana/spl-token'
 
 // Solana mainnet stablecoin mints (standard SPL TOKEN_PROGRAM_ID, 6 decimals)
 const STABLE_MINTS = {
@@ -31,6 +35,7 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
   const batchJobId           = ref(null)
   const batchPolling         = ref(false)
   const batchProgress        = ref(null) // { done, total, percent }
+  const isBatchScan          = ref(false)
 
   const detectedChain = computed(() => {
     const v = scanInput.value?.trim()
@@ -124,6 +129,7 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
     brainKey.value       = null
     batchProgress.value  = null
     batchPolling.value   = false
+    isBatchScan.value    = !!batchFile.value
     loading.value = true
     isResolving.value = true
     error.value = null
@@ -131,7 +137,12 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
     try {
       let resolvedInputs = []
       if (batchFile.value) {
-        resolvedInputs = await Promise.all(batchRows.value.map(resolveToAddress))
+        // Use allSettled so one bad address doesn't kill the whole batch
+        const settled = await Promise.allSettled(batchRows.value.map(resolveToAddress))
+        resolvedInputs = settled.filter(r => r.status === 'fulfilled').map(r => r.value)
+        const skipped  = settled.filter(r => r.status === 'rejected').length
+        if (skipped) console.warn(`[batch] skipped ${skipped} unresolvable address(es)`)
+        if (!resolvedInputs.length) throw new Error('No valid addresses to scan — check CSV format')
       } else {
         const resolved = await resolveToAddress(scanInput.value)
         if (resolved !== scanInput.value.trim()) {
@@ -156,9 +167,15 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
         // Default getAssociatedTokenAddress uses TOKEN_PROGRAM_ID — correct for USDC
         const fromAta = await getAssociatedTokenAddress(mintPubkey, walletPubkey)
         const toAta   = await getAssociatedTokenAddress(mintPubkey, recipientPubkey)
-        const payTx = new Transaction().add(
-          createTransferInstruction(fromAta, toAta, walletPubkey, BigInt(costRaw))
-        )
+        const fromAtaInfo = await connection.getAccountInfo(fromAta)
+        if (!fromAtaInfo) throw new Error('No USDC token account found in your wallet')
+        const payTx = new Transaction()
+        // Create recipient ATA if first time receiving USDC (avoids InvalidAccountData)
+        const toAtaInfo = await connection.getAccountInfo(toAta)
+        if (!toAtaInfo) {
+          payTx.add(createAssociatedTokenAccountInstruction(walletPubkey, toAta, recipientPubkey, mintPubkey))
+        }
+        payTx.add(createTransferInstruction(fromAta, toAta, walletPubkey, BigInt(costRaw)))
         txHash = await signAndSendTransaction(payTx)
       }
 
@@ -253,5 +270,6 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
     batchJobId,
     batchPolling,
     batchProgress,
+    isBatchScan,
   }
 }
