@@ -6,7 +6,9 @@
 
 const { ethers } = require('ethers');
 
-const HUMANITY_RPC      = 'https://rpc.humanity.org';
+// rpc.humanity.org returns 403 (Cloudflare blocks server-side requests).
+// Thirdweb hosts the same chain (id 6985385) publicly without restrictions.
+const HUMANITY_RPC      = 'https://6985385.rpc.thirdweb.com';
 const ORACLE_ADDRESS    = '0x8D71D8bD47860bd0381b272AE42162c3692c4F3a';
 const MAX_AGE_SECONDS   = 86400 * 30; // accept verifications up to 30 days old
 

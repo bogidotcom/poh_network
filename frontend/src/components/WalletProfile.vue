@@ -41,34 +41,60 @@
       <div class="profile-section-title">Identity Protocols</div>
       <div class="id-protocol-grid">
 
+        <!-- World ID (Worldcoin) -->
+        <div v-if="worldIdFlag != null" :class="['id-protocol-card', worldIdFlag ? 'id-ok' : 'id-none']">
+          <div class="id-protocol-icon">
+            <img src="https://world.org/favicon.ico" class="id-ext-icon" alt="World ID" @error="e => e.target.replaceWith(Object.assign(document.createElement('span'), {textContent:'🌍'}))" />
+          </div>
+          <div class="id-protocol-body">
+            <div class="id-protocol-name">World ID</div>
+            <div class="id-protocol-status">{{ worldIdFlag ? 'Verified human' : 'Not verified' }}</div>
+          </div>
+          <span v-if="worldIdFlag" class="id-check">✓</span>
+        </div>
+
+        <!-- Proof of Humanity (Kleros) -->
+        <div v-if="pohFlag != null" :class="['id-protocol-card', pohFlag ? 'id-ok' : 'id-none']">
+          <div class="id-protocol-icon">⚖️</div>
+          <div class="id-protocol-body">
+            <div class="id-protocol-name">Proof of Humanity</div>
+            <div class="id-protocol-status">{{ pohFlag ? 'Registered' : 'Not registered' }}</div>
+          </div>
+          <span v-if="pohFlag" class="id-check">✓</span>
+        </div>
+
+        <!-- Humanity Protocol (palm biometric on-chain) -->
+        <div v-if="humanityFlag != null" :class="['id-protocol-card', humanityFlag ? 'id-ok' : 'id-none']">
+          <div class="id-protocol-icon">🖐️</div>
+          <div class="id-protocol-body">
+            <div class="id-protocol-name">Humanity Protocol</div>
+            <div class="id-protocol-status">{{ humanityFlag ? 'Palm verified' : 'Not verified' }}</div>
+          </div>
+          <span v-if="humanityFlag" class="id-check">✓</span>
+        </div>
+
         <!-- BrightID -->
-        <div v-if="ip.brightid != null" :class="['id-protocol-card', ip.brightid?.verified ? 'id-ok' : 'id-none']">
-          <div class="id-protocol-icon">🔆</div>
+        <div v-if="brightidFlag != null" :class="['id-protocol-card', brightidFlag ? 'id-ok' : 'id-none']">
+          <div class="id-protocol-icon">
+            <img src="https://brightid.org/favicon.ico" class="id-ext-icon" alt="BrightID" @error="e => e.target.replaceWith(Object.assign(document.createElement('span'), {textContent:'🔆'}))" />
+          </div>
           <div class="id-protocol-body">
             <div class="id-protocol-name">BrightID</div>
-            <div class="id-protocol-status">{{ ip.brightid?.verified ? 'Verified unique' : 'Not verified' }}</div>
+            <div class="id-protocol-status">{{ brightidFlag ? 'Verified unique' : 'Not verified' }}</div>
           </div>
-          <span v-if="ip.brightid?.verified" class="id-check">✓</span>
+          <span v-if="brightidFlag" class="id-check">✓</span>
         </div>
 
         <!-- BAB — Binance Account Bound (KYC) -->
-        <div v-if="ip.bab?.hasKyc" class="id-protocol-card id-ok">
-          <div class="id-protocol-icon">🏦</div>
+        <div v-if="babFlag != null" :class="['id-protocol-card', babFlag ? 'id-ok' : 'id-none']">
+          <div class="id-protocol-icon">
+            <img src="https://www.binance.com/favicon.ico" class="id-ext-icon" alt="Binance" @error="e => e.target.replaceWith(Object.assign(document.createElement('span'), {textContent:'🏦'}))" />
+          </div>
           <div class="id-protocol-body">
             <div class="id-protocol-name">BAB Token</div>
-            <div class="id-protocol-status">Binance KYC verified</div>
+            <div class="id-protocol-status">{{ babFlag ? 'Binance KYC verified' : 'No BAB token' }}</div>
           </div>
-          <span class="id-check">✓</span>
-        </div>
-
-        <!-- Humanity Protocol -->
-        <div v-if="ip.humanity != null" :class="['id-protocol-card', ip.humanity?.registered ? 'id-ok' : 'id-none']">
-          <div class="id-protocol-icon">🌐</div>
-          <div class="id-protocol-body">
-            <div class="id-protocol-name">Humanity Protocol</div>
-            <div class="id-protocol-status">{{ ip.humanity?.registered ? 'Registered' : 'Not registered' }}</div>
-          </div>
-          <span v-if="ip.humanity?.registered" class="id-check">✓</span>
+          <span v-if="babFlag" class="id-check">✓</span>
         </div>
 
         <!-- Human Protocol (human.tech) -->
@@ -231,17 +257,64 @@ defineEmits(['scan'])
 const showPass = ref(false)
 const showFail = ref(false)
 
-// Shorthand for identity protocols
+// Shorthand for identity protocols (from profileEnrich REST data)
 const ip = computed(() => props.profile.identityProtocols || {})
 
-// Show identity section only when at least one protocol returned data
+// Fast lookup: methodId → result (true/false) from live checker signals
+const sigMap = computed(() => {
+  const m = {}
+  for (const r of props.signals || []) {
+    if (r.methodId != null) m[r.methodId] = !!r.result
+  }
+  return m
+})
+
+// ── Per-protocol resolved flags ───────────────────────────────────────────────
+// Each returns: true = verified, false = checked but not verified, null = no data
+
+const brightidFlag = computed(() => {
+  if (ip.value.brightid != null) return ip.value.brightid.verified ? true : false
+  return null
+})
+
+const babFlag = computed(() => {
+  if (ip.value.bab?.hasKyc) return true
+  // Signal covers both BSC and opBNB BAB checks
+  const bsc   = sigMap.value['poh_bab_bsc_1776849825388']
+  const opbnb = sigMap.value['poh_bab_opbnb_1776849825388']
+  if (bsc != null || opbnb != null) return !!(bsc || opbnb)
+  return null
+})
+
+const humanityFlag = computed(() => {
+  // On-chain oracle (humanityProtocol.js — fixed RPC)
+  if (sigMap.value['humanity_protocol'] != null) return sigMap.value['humanity_protocol']
+  // REST API fallback (profileEnrich)
+  if (ip.value.humanity != null) return ip.value.humanity.registered ? true : false
+  return null
+})
+
+const worldIdFlag = computed(() => {
+  // Galxe hasWorldcoin signal — World ID linked to this wallet
+  if (sigMap.value['1777600000006galxe_worl'] != null) return sigMap.value['1777600000006galxe_worl']
+  return null
+})
+
+const pohFlag = computed(() => {
+  // Proof of Humanity — Kleros biometric registry on Ethereum
+  if (sigMap.value['1776780461275Ethereum'] != null) return sigMap.value['1776780461275Ethereum']
+  return null
+})
+
+// Show identity section when at least one protocol has any data
 const hasIdentityData = computed(() => {
-  const p = ip.value
-  return p.brightid  != null
-      || p.bab?.hasKyc
-      || p.humanity  != null
-      || p.humanTech != null
-      || p.nomis     != null
+  return brightidFlag.value  != null
+      || babFlag.value        != null
+      || humanityFlag.value   != null
+      || worldIdFlag.value    != null
+      || pohFlag.value        != null
+      || ip.value.humanTech   != null
+      || ip.value.nomis       != null
 })
 
 const initials = computed(() => {
@@ -344,7 +417,8 @@ function platformIcon(p) {
 .id-ok   { border-color: rgba(34,197,94,0.3);  background: rgba(34,197,94,0.05); }
 .id-warn { border-color: rgba(234,179,8,0.25); background: rgba(234,179,8,0.04); }
 .id-none { border-color: #1f2937; opacity: 0.6; }
-.id-protocol-icon { font-size: 20px; line-height: 1; flex-shrink: 0; }
+.id-protocol-icon { font-size: 20px; line-height: 1; flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; }
+.id-ext-icon { width: 20px; height: 20px; object-fit: contain; border-radius: 3px; }
 .id-protocol-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
 .id-protocol-name { font-size: 12px; font-weight: 700; color: #e5e7eb; }
 .id-protocol-status { font-size: 11px; color: #6b7280; }
