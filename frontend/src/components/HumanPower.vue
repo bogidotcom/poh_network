@@ -145,7 +145,7 @@ const {
   brainVerdict, brainPolling, brainKey, batchFile, batchRowCount, batchRows,
   isResolving, detectedChain, faucetLoading, faucetMsg,
   runCheck, handleFileSelect, claimFaucet,
-  batchPolling, batchProgress, isBatchScan,
+  batchPolling, batchProgress, isBatchScan, inlineScanProfile,
   loading: checkerLoading,
 } = checker
 
@@ -169,10 +169,16 @@ async function loadWalletProfile(address) {
   }
 }
 
-// Load profile in parallel with brain analysis — single scans only, skip batch
+// Load profile in parallel with brain analysis — single scans only, skip batch.
+// On cache hits the profile comes inline; on fresh scans fetch it separately.
 watch(checkerResults, (results) => {
   walletProfile.value = null
   if (!results?.length || isBatchScan.value) return
+  if (inlineScanProfile.value) {
+    // Cache hit — profile was returned with the scan response, no extra request needed
+    walletProfile.value = inlineScanProfile.value
+    return
+  }
   const addr = resolvedInputDisplay.value || scanInput.value?.trim()
   if (addr) loadWalletProfile(addr)
 })

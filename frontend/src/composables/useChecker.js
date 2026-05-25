@@ -36,6 +36,7 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
   const batchPolling         = ref(false)
   const batchProgress        = ref(null) // { done, total, percent }
   const isBatchScan          = ref(false)
+  const inlineScanProfile    = ref(null) // populated when cache hit includes enriched profile
 
   const detectedChain = computed(() => {
     const v = scanInput.value?.trim()
@@ -122,14 +123,15 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
 
   const runCheck = async () => {
     if (!connected.value) return
-    checkerResults.value = null
-    ofacResult.value     = null
-    brainVerdict.value   = null
-    brainPolling.value   = false
-    brainKey.value       = null
-    batchProgress.value  = null
-    batchPolling.value   = false
-    isBatchScan.value    = !!batchFile.value
+    checkerResults.value  = null
+    ofacResult.value      = null
+    brainVerdict.value    = null
+    brainPolling.value    = false
+    brainKey.value        = null
+    batchProgress.value   = null
+    batchPolling.value    = false
+    isBatchScan.value     = !!batchFile.value
+    inlineScanProfile.value = null
     loading.value = true
     isResolving.value = true
     error.value = null
@@ -219,6 +221,21 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
         brainKey.value     = null
         showEvidence.value = false
 
+        // ── Cache hit: verdict and profile are inline (no polling needed) ──
+        if (res.data.verdict) {
+          brainVerdict.value = {
+            status:     'done',
+            verdict:    res.data.verdict,
+            confidence: res.data.confidence,
+            reasoning:  res.data.reasoning,
+          }
+          brainPolling.value = false
+        }
+        if (res.data.profile) {
+          inlineScanProfile.value = res.data.profile
+        }
+
+        // ── Fresh scan: poll brain endpoint for async verdict ───────────────
         const _brainKey = res.data.brainKey
         if (_brainKey) {
           brainKey.value = _brainKey
@@ -271,5 +288,6 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
     batchPolling,
     batchProgress,
     isBatchScan,
+    inlineScanProfile,
   }
 }

@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto  = require('crypto');
 const express = require('express');
 const router  = express.Router();
 const fs      = require('fs');
@@ -31,6 +32,18 @@ const DATASET_PATH = path.join(__dirname, '../../data/dataset.json');
 
 // Async brain verdicts for single-wallet scans
 const brainPending = {};
+
+// 7-day full-scan cache (results + brain verdict + enriched profile)
+const SCAN_CACHE_TTL = 7 * 24 * 3600;
+
+/**
+ * Stable fingerprint of the active method set.
+ * Changes whenever signals are added or removed — invalidating old cache entries.
+ */
+function computeMethodsHash(methods) {
+  const ids = methods.map(m => m.id).sort().join(',');
+  return crypto.createHash('sha256').update(ids).digest('hex').slice(0, 12);
+}
 
 // ── OFAC sanctions check ──────────────────────────────────────────────────────
 // 1. Direct address match — O(1) in-memory lookup.
@@ -282,6 +295,32 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
       effectiveWallet = match.address;
     }
 
+    const allMethods = getMethods();
+    const scanCtx    = { allMethods, chainFilter };
+
+    // ── Full scan cache (single wallet, no payment needed on hit) ─────────
+    if (inputs.length === 1) {
+      const methodsHash  = computeMethodsHash(allMethods);
+      const fullCacheKey = `fullscan:v1:${inputs[0]}:${methodsHash}`;
+      const fullCached   = await getCachedResponse(fullCacheKey);
+      if (fullCached) {
+        console.log(`[checker] Cache hit for ${inputs[0]} (cached ${fullCached.cachedAt})`);
+        return res.json({
+          result:     fullCached.results,
+          count:      fullCached.results.length,
+          source:     'cache',
+          cachedAt:   fullCached.cachedAt,
+          ofac:       fullCached.ofac      || null,
+          cex:        fullCached.cex       || null,
+          verdict:    fullCached.verdict,
+          confidence: fullCached.confidence,
+          reasoning:  fullCached.reasoning,
+          profile:    fullCached.profile   || null,
+          freeScansLeft: effectiveWallet ? getFreeScansLeft(effectiveWallet) : null,
+        });
+      }
+    }
+
     // ── Free tier / payment ───────────────────────────────────────────────
     const freeLeft = effectiveWallet ? getFreeScansLeft(effectiveWallet) : 0;
     const isFree   = freeLeft >= inputs.length;
@@ -326,9 +365,6 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
     if (isFree && effectiveWallet) {
       for (let i = 0; i < inputs.length; i++) consumeFreeScan(effectiveWallet);
     }
-
-    const allMethods = getMethods();
-    const scanCtx    = { allMethods, chainFilter };
 
     // ── Bulk: job queue ───────────────────────────────────────────────────
     if (inputs.length > 1) {
@@ -424,9 +460,30 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
     });
 
     brain.analyzeHumanness(scanKey, results, allMethods)
-      .then(verdict => {
+      .then(async verdict => {
         brainPending[scanKey] = { status: 'done', ...verdict, signals: results };
         console.log(`[brain] Verdict for ${scanKey}: ${verdict.verdict} (${(verdict.confidence * 100).toFixed(0)}%)`);
+
+        // ── Cache full scan bundle for 7 days ──────────────────────────────
+        try {
+          const methodsHash  = computeMethodsHash(allMethods);
+          const fullCacheKey = `fullscan:v1:${scanKey}:${methodsHash}`;
+          const counterparties = await getCounterparties(scanKey).catch(() => []);
+          const profile = await enrichProfile(scanKey, counterparties);
+          await setCachedResponse(fullCacheKey, {
+            results,
+            ofac:       ofac.sanctioned ? ofac : null,
+            cex:        isCex || null,
+            verdict:    verdict.verdict,
+            confidence: verdict.confidence,
+            reasoning:  verdict.reasoning,
+            profile,
+            cachedAt:   new Date().toISOString(),
+          }, SCAN_CACHE_TTL);
+          console.log(`[checker] Full scan cached for ${scanKey} (7 days)`);
+        } catch (cacheErr) {
+          console.warn('[checker] Failed to cache full scan:', cacheErr.message);
+        }
       })
       .catch(err => {
         brainPending[scanKey] = { status: 'error', reasoning: err.message };
@@ -614,9 +671,14 @@ router.get('/profile/:address', async (req, res) => {
   const { address } = req.params;
   if (!address) return res.status(400).json({ error: 'address required' });
   try {
+    const profileCacheKey = `profile:v1:${address}`;
+    const cachedProfile   = await getCachedResponse(profileCacheKey);
+    if (cachedProfile) return res.json(cachedProfile);
+
     // Reuse counterparty cache if address was recently scanned (zero extra calls)
     const counterparties = await getCounterparties(address);
     const profile = await enrichProfile(address, counterparties);
+    await setCachedResponse(profileCacheKey, profile, SCAN_CACHE_TTL);
     res.json(profile);
   } catch (err) {
     console.error('[profile] enrichment failed:', err.message);
