@@ -1,6 +1,7 @@
 'use strict';
 
-const axios = require('axios');
+const axios   = require('axios');
+const { ethers } = require('ethers');
 
 const WEB3BIO_API = 'https://api.web3.bio';
 const ETHERSCAN_V2 = 'https://api.etherscan.io/v2/api';
@@ -145,6 +146,47 @@ async function fetchHumanTech(address) {
   } catch { return null; }
 }
 
+// ── Link3 / CyberConnect Profile — BSC on-chain ccProfile NFT ────────────────
+// Contract 0x2723..9dA6 on BSC (chain 56). 1.3M+ holders.
+// getPrimaryProfile(address) → tokenId; tokenURI(tokenId) → base64 JSON with handle + subscriber count.
+const LINK3_CONTRACT = '0x2723522702093601e6360cae665518c4f63e9da6';
+const LINK3_ABI = [
+  'function getPrimaryProfile(address user) view returns (uint256)',
+  'function tokenURI(uint256 tokenId) view returns (string)',
+];
+let _link3Provider = null;
+let _link3Contract = null;
+
+function getLink3Contract() {
+  if (!_link3Contract) {
+    _link3Provider = new ethers.JsonRpcProvider('https://bsc-dataseed.binance.org');
+    _link3Contract = new ethers.Contract(LINK3_CONTRACT, LINK3_ABI, _link3Provider);
+  }
+  return _link3Contract;
+}
+
+async function fetchLink3Profile(address) {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) return null;
+  try {
+    const c         = getLink3Contract();
+    const checksummed = ethers.getAddress(address);
+    const profileId = await c.getPrimaryProfile(checksummed);
+    if (!profileId || profileId === 0n) return null;
+    const uri  = await c.tokenURI(profileId);
+    const b64  = uri.replace('data:application/json;base64,', '');
+    const meta = JSON.parse(Buffer.from(b64, 'base64').toString('utf-8'));
+    const attrs = {};
+    for (const a of (meta.attributes || [])) attrs[a.trait_type] = a.value;
+    const handle = (attrs.handle || meta.name || '').replace('@', '');
+    if (!handle) return null;
+    return {
+      handle,
+      subscribers: parseInt(attrs.subscribers || '0'),
+      url: 'https://link3.to/' + handle,
+    };
+  } catch { return null; }
+}
+
 // ── Gnosis Safe — find Safe multisigs where address is an owner ───────────────
 async function fetchSafeWallets(address) {
   try {
@@ -228,10 +270,11 @@ async function enrichProfile(address, counterparties) {
     humanity:  isEvm ? fetchHumanityProtocol(address): Promise.resolve(null),
     humanTech: isEvm ? fetchHumanTech(address)       : Promise.resolve(null),
     safeWallets: isEvm ? fetchSafeWallets(address)   : Promise.resolve(null),
+    link3:     isEvm ? fetchLink3Profile(address)    : Promise.resolve(null),
   };
 
   const [web3bio, txStats, gitcoin, ens, galxe,
-         brightid, bab, nomis, humanity, humanTech, safeWallets] = await Promise.all(
+         brightid, bab, nomis, humanity, humanTech, safeWallets, link3] = await Promise.all(
     Object.values(tasks).map(p => p.catch(() => null))
   );
 
@@ -339,6 +382,7 @@ async function enrichProfile(address, counterparties) {
       humanity:  humanity  || null,  // { registered: true } or null
       humanTech: humanTech || null,  // { score } or null
     },
+    link3Profile:      link3       || null,  // { handle, subscribers, url } or null
     associatedWallets: safeWallets || null,  // Safe multisig addresses or null
   };
 }

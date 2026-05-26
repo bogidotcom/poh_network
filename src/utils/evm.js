@@ -9,7 +9,7 @@ const CHAIN_REGISTRY = {
   1:        'https://eth.llamarpc.com',                    // Ethereum Mainnet
   5:        'https://rpc.ankr.com/eth_goerli',             // Goerli (deprecated but kept)
   11155111: 'https://rpc.sepolia.org',                     // Sepolia
-  137:      'https://polygon-rpc.com',                     // Polygon
+  137:      'https://1rpc.io/matic',                        // Polygon
   80001:    'https://rpc-mumbai.maticvigil.com',           // Mumbai
   56:       'https://bsc-dataseed.binance.org',            // BSC
   97:       'https://data-seed-prebsc-1-s1.binance.org:8545', // BSC Testnet

@@ -121,6 +121,20 @@
       </div>
     </div>
 
+    <!-- Link3 / CyberConnect profile -->
+    <div v-if="profile.link3Profile" class="profile-section">
+      <div class="profile-section-title">Link3 Profile</div>
+      <a :href="profile.link3Profile.url" target="_blank" rel="noopener" class="link3-card">
+        <img src="https://link3.to/favicon.ico" class="link3-logo" alt="Link3"
+             @error="e => e.target.style.display='none'" />
+        <div class="link3-info">
+          <span class="link3-handle">@{{ profile.link3Profile.handle }}</span>
+          <span class="link3-subscribers">{{ profile.link3Profile.subscribers.toLocaleString() }} subscribers</span>
+        </div>
+        <span class="link3-arrow">↗</span>
+      </a>
+    </div>
+
     <!-- Web3 domains -->
     <div v-if="profile.domains?.length" class="profile-section">
       <div class="profile-section-title">Web3 Domains</div>
@@ -425,6 +439,20 @@ function platformIcon(p) {
 .id-check { color: #22c55e; font-size: 14px; font-weight: 700; flex-shrink: 0; }
 .id-score-bar { position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: #1f2937; border-radius: 0 0 10px 10px; overflow: hidden; }
 .id-score-fill { height: 100%; border-radius: 0 0 10px 10px; transition: width 0.4s; }
+
+/* ── Link3 Profile ── */
+.link3-card {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; background: rgba(99,102,241,0.05);
+  border: 1px solid rgba(99,102,241,0.2); border-radius: 10px;
+  text-decoration: none; transition: border-color 0.15s;
+}
+.link3-card:hover { border-color: rgba(99,102,241,0.5); }
+.link3-logo { width: 20px; height: 20px; object-fit: contain; border-radius: 3px; flex-shrink: 0; }
+.link3-info { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.link3-handle { font-size: 14px; font-weight: 700; color: #e5e7eb; }
+.link3-subscribers { font-size: 11px; color: #6b7280; }
+.link3-arrow { font-size: 14px; color: #6366f1; flex-shrink: 0; }
 
 /* ── Domains ── */
 .profile-domains { display: flex; flex-wrap: wrap; gap: 8px; }

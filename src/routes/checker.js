@@ -140,7 +140,8 @@ async function executeMethod(m, address) {
         result = [await p.getCode(address)];
       } else {
         result = await callContract(rpcUrl, m.address, m.method,
-          JSON.parse(m.abiTypes || '[]'), JSON.parse(m.returnTypes || '[]'), [address], m.chainId);
+          JSON.parse(m.abiTypes || '[]'), JSON.parse(m.returnTypes || '[]'),
+          [address, ...(m.extraParams ? JSON.parse(m.extraParams) : [])], m.chainId);
       }
       return evaluate(m.expression, { result, decimals }, m.lang || 'js');
 
@@ -597,7 +598,8 @@ router.post('/preview', async (req, res) => {
         result = [await p.getCode(address)];
       } else {
         result = await callContract(rpcUrl, m.address, m.method,
-          JSON.parse(m.abiTypes || '[]'), JSON.parse(m.returnTypes || '[]'), [address], m.chainId);
+          JSON.parse(m.abiTypes || '[]'), JSON.parse(m.returnTypes || '[]'),
+          [address, ...(m.extraParams ? JSON.parse(m.extraParams) : [])], m.chainId);
       }
       const expressionResult = await evaluate(m.expression, { result, decimals }, m.lang || 'js');
       return { rawResult: serialize(result), expressionResult };

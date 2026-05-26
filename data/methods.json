@@ -2420,5 +2420,19 @@
     "voteCount": 0,
     "created_at": "2026-05-24T14:01:32.234725Z"
   },
-  
+  {
+    "id": "kaprika_reader_polygon",
+    "type": "evm",
+    "chainId": 137,
+    "address": "0x7fdf8bd388e3641dbca0f8440ccf8ccd29e796aa",
+    "method": "balanceOf",
+    "abiTypes": ["address", "uint256"],
+    "returnTypes": ["uint256"],
+    "extraParams": "[1]",
+    "expression": "result[0] > 0n",
+    "description": "Kaprika.id \u2014 holds a Kaprika Media decentralised journalism NFT on Polygon (web3 reader/subscriber)",
+    "score": 0,
+    "voteCount": 0,
+    "created_at": "2026-05-26T00:00:00.000Z"
+  }
 ]
