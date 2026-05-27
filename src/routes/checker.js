@@ -120,8 +120,13 @@ async function resolveZnsDomain(name) {
 
 // ── Single-method executor ────────────────────────────────────────────────────
 
+// Per-method wall-clock limit.  REST calls get up to 12 s (some ENS / social
+// APIs are slow); the outer race kills anything beyond that.
+const METHOD_TIMEOUT_MS     = 14000;
+const REST_AXIOS_TIMEOUT_MS = 12000;
+
 async function executeMethod(m, address) {
-  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 8000));
+  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), METHOD_TIMEOUT_MS));
   const run = (async () => {
     if (m.type === 'evm') {
       const { ethers } = require('ethers');
@@ -156,10 +161,10 @@ async function executeMethod(m, address) {
       let response;
       if (method === 'POST') {
         const body = JSON.parse((m.body || '{}').replace(/\{address\}/g, address));
-        response = await axios.post(url, body, { headers, timeout: 7000, validateStatus: validate });
+        response = await axios.post(url, body, { headers, timeout: REST_AXIOS_TIMEOUT_MS, validateStatus: validate });
       } else {
         const params = hasHolder ? {} : { address };
-        response = await axios.get(url, { params, headers, timeout: 7000, validateStatus: validate });
+        response = await axios.get(url, { params, headers, timeout: REST_AXIOS_TIMEOUT_MS, validateStatus: validate });
       }
       return evaluate(m.expression, { data: response.data, status: response.status, decimals }, m.lang || 'js');
 
@@ -665,21 +670,49 @@ async function resolveIdentity(raw) {
     if (resolved) return [{ address: resolved, platform: 'zns', handle: q, displayName: null, avatar: null }];
   }
 
-  // ── web3.bio search (free text or bare handle) ────────────────────────────
-  // First try exact-handle match via /profile/{query}
-  const exactProfiles = await w3bProfile(q);
+  // ── free text / bare handle — no dot, no prefix ─────────────────────────
+  // web3.bio /search only accepts valid identity handles, not display names.
+  // Strategy:
+  //   1. Try exact handle on web3.bio (/profile/{q})
+  //   2. If input has spaces (display name like "Vitalik Buterin"):
+  //      a. Each word as a handle with common TLDs (.eth, .lens, .fc)
+  //      b. Concatenated no-space version, with same TLDs
+  //   3. Single word with common TLDs (.eth first — most likely for human names)
+  const lq2    = q.toLowerCase().trim();
+  const words  = lq2.split(/\s+/).filter(Boolean);
+  const noSpace = words.join('');
+  const TLDS   = ['.eth', '.lens', '.fc', '.base', '.bnb'];
+
+  // 1. Exact handle
+  const exactProfiles = await w3bProfile(lq2);
   if (exactProfiles.length) return toResults(exactProfiles);
 
-  // Then try search endpoint
-  try {
-    const res = await axios.get(`${WEB3BIO_API}/search`, {
-      params: { query: q }, timeout: 7000, validateStatus: () => true,
-    });
-    const list = Array.isArray(res.data) ? res.data
-                 : Array.isArray(res.data?.results) ? res.data.results
-                 : [];
-    if (list.length) return toResults(list);
-  } catch { /* fall through */ }
+  // Build candidate list
+  const candidates = new Set();
+  if (words.length > 1) {
+    // multi-word: each word + concatenated, with TLDs
+    for (const word of words) {
+      for (const tld of TLDS) candidates.add(word + tld);
+    }
+    for (const tld of TLDS) candidates.add(noSpace + tld);
+    candidates.add(noSpace); // bare concatenated
+  } else {
+    // single word: try with TLDs
+    for (const tld of TLDS) candidates.add(lq2 + tld);
+  }
+
+  // Fan out in parallel batches of 4 to stay under rate limits
+  const candidateArr = [...candidates];
+  for (let i = 0; i < candidateArr.length; i += 4) {
+    const batch = candidateArr.slice(i, i + 4);
+    const settled = await Promise.allSettled(batch.map(c => w3bProfile(c)));
+    for (const r of settled) {
+      if (r.status === 'fulfilled' && r.value.length) {
+        const results = toResults(r.value);
+        if (results.length) return results;
+      }
+    }
+  }
 
   return [];
 }
@@ -751,10 +784,10 @@ router.post('/preview', async (req, res) => {
       let response;
       if (method === 'POST') {
         const body = JSON.parse((m.body || '{}').replace(/\{address\}/g, address));
-        response = await axios.post(url, body, { headers, timeout: 7000, validateStatus: validate });
+        response = await axios.post(url, body, { headers, timeout: REST_AXIOS_TIMEOUT_MS, validateStatus: validate });
       } else {
         const params = hasHolder ? {} : { address };
-        response = await axios.get(url, { params, headers, timeout: 7000, validateStatus: validate });
+        response = await axios.get(url, { params, headers, timeout: REST_AXIOS_TIMEOUT_MS, validateStatus: validate });
       }
       const expressionResult = await evaluate(
         m.expression, { data: response.data, status: response.status, decimals }, m.lang || 'js'
