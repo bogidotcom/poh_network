@@ -15,8 +15,12 @@ const STABLE_MINTS = {
 
 export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, SOLANA_RPC, signAndSendTransaction }) {
   const scanInput            = ref('')
-  // Auto-lowercase domain names (anything with a dot — never a raw wallet address)
-  watch(scanInput, v => { if (v.includes('.') && v !== v.toLowerCase()) scanInput.value = v.toLowerCase() })
+  const selectedPlatform     = ref(null)  // null = auto-detect; 'twitter' | 'farcaster' | etc.
+  // Auto-lowercase domain names; reset platform on new input
+  watch(scanInput, v => {
+    if (v.includes('.') && v !== v.toLowerCase()) scanInput.value = v.toLowerCase()
+    selectedPlatform.value = null  // clear platform choice on every new keystroke
+  })
   const resolvedInputDisplay = ref('')
   const checkerResults       = ref(null)
   const ofacResult           = ref(null) // top-level OFAC field from single scans
@@ -57,9 +61,25 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
     return false
   }
 
-  async function resolveToAddress(input) {
+  async function resolveToAddress(input, platformOverride) {
     const trimmed = input.trim()
     if (isWalletAddress(trimmed)) return trimmed
+
+    // ── Platform override (user picked a chip) ────────────────────────────────
+    if (platformOverride) {
+      const q = `${platformOverride}:${trimmed}`
+      const res = await axios.get('/checker/resolve', { params: { q } })
+      const hits = res.data?.results || []
+      if (hits.length === 1) return hits[0].address
+      if (hits.length > 1) {
+        resolveResults.value = hits
+        resolveQuery.value   = trimmed
+        const err = new Error('MULTI_RESULT')
+        err.resolveResults = hits
+        throw err
+      }
+      throw new Error(`No ${platformOverride} account found for "${trimmed}"`)
+    }
 
     // .sol domain → Bonfida SNS
     if (trimmed.endsWith('.sol')) {
@@ -180,7 +200,7 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
         if (skipped) console.warn(`[batch] skipped ${skipped} unresolvable address(es)`)
         if (!resolvedInputs.length) throw new Error('No valid addresses to scan — check CSV format')
       } else {
-        const resolved = await resolveToAddress(scanInput.value)
+        const resolved = await resolveToAddress(scanInput.value, selectedPlatform.value)
         if (resolved !== scanInput.value.trim()) {
           resolvedInputDisplay.value = resolved
         }
@@ -332,5 +352,6 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
     resolveResults,
     resolveQuery,
     pickResolveResult,
+    selectedPlatform,
   }
 }

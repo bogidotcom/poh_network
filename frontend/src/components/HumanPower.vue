@@ -148,8 +148,27 @@ const {
   runCheck, handleFileSelect, claimFaucet,
   batchPolling, batchProgress, isBatchScan, inlineScanProfile,
   resolveResults, resolveQuery, pickResolveResult,
+  selectedPlatform,
   loading: checkerLoading,
 } = checker
+
+// Platform chips — shown below the input when a non-address, non-domain value is typed
+const PLATFORM_CHIPS = [
+  { id: 'twitter',   icon: '𝕏',  name: 'Twitter'   },
+  { id: 'farcaster', icon: '🟣', name: 'Farcaster' },
+  { id: 'lens',      icon: '🌿', name: 'Lens'       },
+  { id: 'ens',       icon: '◈',  name: 'ENS'        },
+  { id: 'github',    icon: '⌥',  name: 'GitHub'     },
+]
+
+// Show platform chips when input is a non-empty, non-address, non-domain string
+const showPlatformChips = computed(() => {
+  const v = scanInput.value?.trim()
+  if (!v || !!batchFile.value) return false
+  if (/^0x[0-9a-fA-F]{40}$/.test(v)) return false
+  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(v)) return false
+  return true
+})
 
 const showEvidencePass = ref(false)
 const showEvidenceFail = ref(false)
@@ -826,13 +845,13 @@ onUnmounted(() => {
             <!-- Bot/Human classification: scanning fingerprint -->
             <div class="benefit-card">
               <SvgIdentityScan class="benefit-svg" />
-              <p class="benefit-label">Captcha<br>and Digital Identities</p>
+              <p class="benefit-label">Proof of Personhood<br>and Access Control</p>
             </div>
 
             <!-- AI portrait: wallet → signals → profile -->
             <div class="benefit-card">
               <SvgWalletPortrait />
-              <p class="benefit-label">AML and Whitelabel</p>
+              <p class="benefit-label">AML, KYC, KYB</p>
             </div>
           </div>
         </section>
@@ -853,7 +872,7 @@ onUnmounted(() => {
           <div class="feat-left">
             <div class="feat-tag">AI BRAIN</div>
             <h2 class="feat-title">On-device AI,<br>zero cloud calls</h2>
-            <p class="feat-body">Structured verdict with confidence and reasoning. <br>Runs on Qvac by Tether.</p>
+            <p class="feat-body">Structured Digital Persona<br>Humans, Entities, AI-agents</p>
             <button class="feat-cta" @click="showSection('checker')">See a Verdict →</button>
           </div>
           <div class="feat-right">
@@ -955,11 +974,20 @@ onUnmounted(() => {
               <FileUp :size="16" />
             </label>
           </div>
-          <div v-if="detectedChain" class="chain-pill-row">
-            <span :class="['chain-pill', `chain-pill--${detectedChain}`]">
-              Resolving identity…
-            </span>
+          <!-- Platform chips — search by specific network -->
+          <div v-if="showPlatformChips" class="platform-chips">
+            <button
+              v-for="p in PLATFORM_CHIPS"
+              :key="p.id"
+              :class="['platform-chip', { active: selectedPlatform === p.id }]"
+              @click="selectedPlatform = selectedPlatform === p.id ? null : p.id"
+              :title="'Search on ' + p.name"
+            >
+              <span class="platform-chip-icon">{{ p.icon }}</span>
+              <span class="platform-chip-name">{{ p.name }}</span>
+            </button>
           </div>
+
           <div v-if="resolvedInputDisplay" class="resolved-display">
             ↳ <span class="resolved-address">{{ resolvedInputDisplay }}</span>
           </div>
@@ -3652,6 +3680,39 @@ const results = await pollJob(jobId)</pre>
   border-color: #3b2d6e;
   background: #0e0b1c;
 }
+
+/* ── Platform chips ── */
+.platform-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 0 2px;
+}
+.platform-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid #2a2a38;
+  background: transparent;
+  color: #808080;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+.platform-chip:hover {
+  border-color: #4b4b68;
+  color: #c4c4d4;
+}
+.platform-chip.active {
+  border-color: #6366f1;
+  background: rgba(99, 102, 241, 0.12);
+  color: #a5b4fc;
+}
+.platform-chip-icon { font-size: 13px; line-height: 1; }
+.platform-chip-name { font-size: 11px; font-weight: 500; }
 
 /* ── Resolve picker ── */
 .resolve-picker {
