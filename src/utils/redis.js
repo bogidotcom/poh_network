@@ -47,4 +47,47 @@ async function clearCache() {
   try { await client.flushDb(); } catch { cacheFallback.clear(); }
 }
 
-module.exports = { getCachedResponse, setCachedResponse, clearCache };
+// Return up to `limit` cached profiles for the particles background animation.
+// Scans profile:v1:* keys and returns lightweight objects.
+async function getSampleProfiles(limit = 60) {
+  try {
+    let keys = [];
+    if (useFallback || !connected) {
+      // In-memory fallback: iterate Map keys
+      for (const k of cacheFallback.keys()) {
+        if (k.startsWith('profile:v1:')) keys.push(k);
+      }
+    } else {
+      keys = await client.keys('profile:v1:*');
+    }
+    // Shuffle and cap
+    for (let i = keys.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [keys[i], keys[j]] = [keys[j], keys[i]];
+    }
+    keys = keys.slice(0, limit);
+
+    const profiles = await Promise.all(keys.map(async k => {
+      try {
+        const raw = useFallback || !connected
+          ? cacheFallback.get(k)
+          : JSON.parse(await client.get(k));
+        if (!raw) return null;
+        return {
+          address:     raw.address    || null,
+          displayName: raw.displayName || null,
+          avatar:      raw.avatar      || null,
+          domains:     (raw.domains    || []).slice(0, 3),
+          handles:     (raw.links      || [])
+            .filter(l => l.identity)
+            .slice(0, 4)
+            .map(l => ({ platform: l.platform, identity: l.identity })),
+          link3:       raw.link3Profile?.handle || null,
+        };
+      } catch { return null; }
+    }));
+    return profiles.filter(Boolean);
+  } catch { return []; }
+}
+
+module.exports = { getCachedResponse, setCachedResponse, clearCache, getSampleProfiles };

@@ -3,7 +3,8 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import axios from 'axios'
 import BrainGraph from './BrainGraph.vue'
 import WalletProfile from './WalletProfile.vue'
-import ScannerSection from './ScannerSection.vue'
+import ScannerSection          from './ScannerSection.vue'
+import BackgroundParticles      from './BackgroundParticles.vue'
 import ListingSection from './ListingSection.vue'
 import VoteQueueSection from './VoteQueueSection.vue'
 import ProfileSection from './ProfileSection.vue'
@@ -754,25 +755,14 @@ onUnmounted(() => {
       <!-- Landing -->
       <div v-if="currentSection === 'landing'" class="landing">
 
-        <!-- Problem screen -->
+        <!-- Problem screen (hero with live wallet particle background) -->
         <section class="problem-screen">
-          <div class="problem-inner">
-            <div class="problem-tag">THE PROBLEM</div>
-            <h2 class="problem-title">Defining AI-agents, and <span class="problem-accent">people</span></h2>
-            <blockquote class="problem-quote">
-              <div class="problem-quote-inner">
-                <img src="/jensen-huang.jpg" alt="Jensen Huang" class="problem-quote-avatar" />
-                <div>
-                  <span class="problem-quote-name">Jensen Huang, CEO of NVIDIA</span>
-                  <p class="problem-quote-text">"The company already has a lot more cybersecurity AI agents than people working on cybersecurity."</p>
-                </div>
-              </div>
-            </blockquote>
-            <button class="neon-btn" @click="showSection('checker')">Scan a Wallet →</button>
+          <BackgroundParticles />
+          <div class="problem-inner problem-inner--above">
+            <h2 class="problem-title">AI-powered Digital Identities</h2>
+            <button class="neon-btn" @click="showSection('checker')">Search →</button>
           </div>
         </section>
-        
-        <h2 class="problem-title" style="margin-top:10rem">Wallets and on-chain identities can no longer be trusted.</h2>
 
         <!-- ── Features (full-screen panels) ──────────────────────────────────────── -->
         <section class="feat-screen">
@@ -786,8 +776,6 @@ onUnmounted(() => {
             <SvgScanner class="feat-svg" />
           </div>
         </section>
-
-        <h2 class="problem-title">POH verifies humanity through evidence<br> — not promises.</h2>
 
         <section class="feat-screen feat-screen--alt">
           <div class="feat-right display-block">
@@ -817,8 +805,8 @@ onUnmounted(() => {
           <div class="feat-left">
             <div class="feat-tag">SIGNALS</div>
             <h2 class="feat-title">Evidence from<br>every layer</h2>
-            <p class="feat-body">Every signal runs in parallel. No single point of failure.</p>
-            <button class="feat-cta" @click="showSection('votes'); loadVotingFiltered()">Browse Methods →</button>
+            <p class="feat-body">Search for any identity and see the evidence from every layer.</p>
+            <button class="feat-cta" @click="showSection('votes'); loadVotingFiltered()">Browse Signals →</button>
           </div>
         </section>
 
@@ -948,9 +936,8 @@ onUnmounted(() => {
       <!-- Checker -->
       <div v-if="currentSection === 'checker'" class="scan-page">
         <div class="scan-hero">
-          <div class="scan-tag">WALLET SCANNER</div>
-          <h2 class="scan-title">Human or AI</h2>
-          <p class="scan-sub">Run all registered detection signals simultaneously and get an AI verdict.</p>
+          <h2 class="scan-title">AI-powered Identities</h2>
+          <p class="scan-sub">EVM and Solana wallet addresses, Web3 domain names, @handle, twitter:name, or any name</p>
         </div>
 
         <div class="scan-box">
@@ -959,7 +946,7 @@ onUnmounted(() => {
               type="text"
               v-model="scanInput"
               :disabled="!!batchFile"
-              placeholder="0x… address, domain, @handle, twitter:name, or any name"
+              placeholder=""
               class="scan-input"
               @keydown.enter="runCheck"
             />
@@ -970,9 +957,7 @@ onUnmounted(() => {
           </div>
           <div v-if="detectedChain" class="chain-pill-row">
             <span :class="['chain-pill', `chain-pill--${detectedChain}`]">
-              {{ detectedChain === 'evm'    ? 'EVM — running EVM + REST methods'
-               : detectedChain === 'solana' ? 'Solana — running Solana + REST methods'
-               :                             'Resolving identity…' }}
+              Resolving identity…
             </span>
           </div>
           <div v-if="resolvedInputDisplay" class="resolved-display">
@@ -1006,7 +991,7 @@ onUnmounted(() => {
             <button @click="batchFile = null; batchRowCount = 0; batchRows = []" class="mini-btn"><Trash2 :size="12" /></button>
           </div>
           <button @click="connected ? runCheck() : showWalletModal = true" :disabled="checkerLoading || isResolving || brainPolling || batchPolling || (checkerResults && !batchFile && !brainVerdict?.reasoning)" class="submit-listing-btn">
-            {{ isResolving ? 'Resolving...' : checkerLoading ? 'Scanning...' : batchPolling ? `Analyzing… (${batchProgress?.done ?? 0}/${batchProgress?.total ?? '?'})` : (brainPolling || (checkerResults && !brainVerdict?.reasoning)) ? 'AI analyzing...' : batchFile ? 'Scan Batch' : connected ? 'Scan Wallet' : 'Connect Wallet' }}
+            {{ isResolving ? 'Resolving...' : checkerLoading ? 'Scanning...' : batchPolling ? `Analyzing… (${batchProgress?.done ?? 0}/${batchProgress?.total ?? '?'})` : (brainPolling || (checkerResults && !brainVerdict?.reasoning)) ? 'AI analyzing...' : batchFile ? 'Scan Batch' : connected ? 'Search' : 'Connect Wallet' }}
           </button>
           <div v-if="batchPolling && batchProgress" class="batch-progress-bar">
             <div class="batch-progress-fill" :style="{ width: (batchProgress.percent ?? 0) + '%' }"></div>
@@ -1810,9 +1795,12 @@ const results = await pollJob(jobId)</pre>
   align-items: center;
   justify-content: center;
   padding: 6rem 2rem;
+  position: relative;   /* contains the particle layer */
+  overflow: hidden;
   /* border-bottom: 1px solid #111; */
 }
-.problem-inner { max-width: 680px; text-align: center; }
+.problem-inner           { max-width: 680px; text-align: center; }
+.problem-inner--above    { position: relative; z-index: 1; }
 .problem-tag {
   font-size: 0.7rem; letter-spacing: 0.18em; color: #808080;
   font-family: 'JetBrains Mono', monospace; margin-bottom: 2rem;

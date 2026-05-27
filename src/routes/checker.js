@@ -10,7 +10,7 @@ const { getRpcUrl, callContract } = require('../utils/evm');
 const { evaluate }                = require('../eval/evaluator');
 const multer                      = require('multer');
 const { parse }                   = require('csv-parse/sync');
-const { getCachedResponse, setCachedResponse } = require('../utils/redis');
+const { getCachedResponse, setCachedResponse, getSampleProfiles } = require('../utils/redis');
 const { verifyStablecoinTransfer } = require('../utils/solana');
 const brain                       = require('../utils/brain');
 const { recordMethodResult }      = require('../utils/methodHealth');
@@ -548,6 +548,81 @@ router.post('/feedback', async (req, res) => {
     .catch(err => console.error('[feedback] onVerdictFeedback failed:', err.message));
 
   res.json({ ok: true });
+});
+
+// ── GET /checker/particles — background animation data from cached profiles ───
+// Returns a flat list of particles: { kind, label, avatar?, address? }
+// Kinds: 'address' | 'name' | 'domain' | 'handle' | 'avatar'
+// Falls back to a built-in seed list when the cache is sparse.
+
+const PARTICLE_SEED = [
+  { kind:'address', label:'0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045' },
+  { kind:'address', label:'0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B' },
+  { kind:'address', label:'0x4Fabb145d64652a948d72533023f6E7A623C7C53' },
+  { kind:'address', label:'0x3f5CE5FBFe3E9af3971dD833D26bA9b5C936f0bE' },
+  { kind:'name',    label:'Vitalik Buterin' },
+  { kind:'name',    label:'hayden.eth' },
+  { kind:'name',    label:'stani.eth' },
+  { kind:'name',    label:'dwr.eth' },
+  { kind:'name',    label:'jessepollak.eth' },
+  { kind:'domain',  label:'vitalik.eth' },
+  { kind:'domain',  label:'uniswap.eth' },
+  { kind:'domain',  label:'aave.eth' },
+  { kind:'domain',  label:'lens.xyz' },
+  { kind:'domain',  label:'ens.eth' },
+  { kind:'handle',  label:'@VitalikButerin' },
+  { kind:'handle',  label:'@hayden' },
+  { kind:'handle',  label:'@jessepollak' },
+  { kind:'handle',  label:'@dwr' },
+  { kind:'handle',  label:'@stani' },
+  { kind:'handle',  label:'@camila' },
+];
+
+router.get('/particles', async (req, res) => {
+  try {
+    const profiles = await getSampleProfiles(80);
+    const particles = [];
+
+    for (const p of profiles) {
+      if (p.address) {
+        particles.push({ kind: 'address', label: p.address, address: p.address });
+      }
+      if (p.displayName && p.displayName !== p.address) {
+        particles.push({ kind: 'name', label: p.displayName, avatar: p.avatar || null, address: p.address });
+      }
+      if (p.avatar) {
+        particles.push({ kind: 'avatar', label: p.displayName || '', avatar: p.avatar, address: p.address });
+      }
+      for (const d of p.domains || []) {
+        if (d.name) particles.push({ kind: 'domain', label: d.name, address: p.address });
+      }
+      for (const h of p.handles || []) {
+        const tag = h.identity.startsWith('@') ? h.identity : '@' + h.identity;
+        particles.push({ kind: 'handle', label: tag, platform: h.platform, address: p.address });
+      }
+      if (p.link3) {
+        particles.push({ kind: 'handle', label: '@' + p.link3, platform: 'link3', address: p.address });
+      }
+    }
+
+    // Pad with seed items so there are always enough particles even on a fresh install
+    if (particles.length < 30) {
+      for (const s of PARTICLE_SEED) {
+        if (!particles.find(p => p.label === s.label)) particles.push(s);
+      }
+    }
+
+    // Shuffle
+    for (let i = particles.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [particles[i], particles[j]] = [particles[j], particles[i]];
+    }
+
+    res.set('Cache-Control', 'public, max-age=60');
+    res.json(particles.slice(0, 120));
+  } catch (err) {
+    res.json(PARTICLE_SEED);
+  }
 });
 
 // ── GET /checker/pricing?count=N ─────────────────────────────────────────────
