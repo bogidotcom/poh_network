@@ -10,7 +10,7 @@ const { getRpcUrl, callContract } = require('../utils/evm');
 const { evaluate }                = require('../eval/evaluator');
 const multer                      = require('multer');
 const { parse }                   = require('csv-parse/sync');
-const { getCachedResponse, setCachedResponse } = require('../utils/redis');
+const { getCachedResponse, setCachedResponse, getSampleProfiles } = require('../utils/redis');
 const { verifyStablecoinTransfer } = require('../utils/solana');
 const brain                       = require('../utils/brain');
 const { recordMethodResult }      = require('../utils/methodHealth');
@@ -120,8 +120,13 @@ async function resolveZnsDomain(name) {
 
 // ── Single-method executor ────────────────────────────────────────────────────
 
+// Per-method wall-clock limit.  REST calls get up to 12 s (some ENS / social
+// APIs are slow); the outer race kills anything beyond that.
+const METHOD_TIMEOUT_MS     = 14000;
+const REST_AXIOS_TIMEOUT_MS = 12000;
+
 async function executeMethod(m, address) {
-  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 8000));
+  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), METHOD_TIMEOUT_MS));
   const run = (async () => {
     if (m.type === 'evm') {
       const { ethers } = require('ethers');
@@ -156,10 +161,10 @@ async function executeMethod(m, address) {
       let response;
       if (method === 'POST') {
         const body = JSON.parse((m.body || '{}').replace(/\{address\}/g, address));
-        response = await axios.post(url, body, { headers, timeout: 7000, validateStatus: validate });
+        response = await axios.post(url, body, { headers, timeout: REST_AXIOS_TIMEOUT_MS, validateStatus: validate });
       } else {
         const params = hasHolder ? {} : { address };
-        response = await axios.get(url, { params, headers, timeout: 7000, validateStatus: validate });
+        response = await axios.get(url, { params, headers, timeout: REST_AXIOS_TIMEOUT_MS, validateStatus: validate });
       }
       return evaluate(m.expression, { data: response.data, status: response.status, decimals }, m.lang || 'js');
 
@@ -545,6 +550,81 @@ router.post('/feedback', async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── GET /checker/particles — background animation data from cached profiles ───
+// Returns a flat list of particles: { kind, label, avatar?, address? }
+// Kinds: 'address' | 'name' | 'domain' | 'handle' | 'avatar'
+// Falls back to a built-in seed list when the cache is sparse.
+
+const PARTICLE_SEED = [
+  { kind:'address', label:'0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045' },
+  { kind:'address', label:'0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B' },
+  { kind:'address', label:'0x4Fabb145d64652a948d72533023f6E7A623C7C53' },
+  { kind:'address', label:'0x3f5CE5FBFe3E9af3971dD833D26bA9b5C936f0bE' },
+  { kind:'name',    label:'Vitalik Buterin' },
+  { kind:'name',    label:'hayden.eth' },
+  { kind:'name',    label:'stani.eth' },
+  { kind:'name',    label:'dwr.eth' },
+  { kind:'name',    label:'jessepollak.eth' },
+  { kind:'domain',  label:'vitalik.eth' },
+  { kind:'domain',  label:'uniswap.eth' },
+  { kind:'domain',  label:'aave.eth' },
+  { kind:'domain',  label:'lens.xyz' },
+  { kind:'domain',  label:'ens.eth' },
+  { kind:'handle',  label:'@VitalikButerin' },
+  { kind:'handle',  label:'@hayden' },
+  { kind:'handle',  label:'@jessepollak' },
+  { kind:'handle',  label:'@dwr' },
+  { kind:'handle',  label:'@stani' },
+  { kind:'handle',  label:'@camila' },
+];
+
+router.get('/particles', async (req, res) => {
+  try {
+    const profiles = await getSampleProfiles(80);
+    const particles = [];
+
+    for (const p of profiles) {
+      if (p.address) {
+        particles.push({ kind: 'address', label: p.address, address: p.address });
+      }
+      if (p.displayName && p.displayName !== p.address) {
+        particles.push({ kind: 'name', label: p.displayName, avatar: p.avatar || null, address: p.address });
+      }
+      if (p.avatar) {
+        particles.push({ kind: 'avatar', label: p.displayName || '', avatar: p.avatar, address: p.address });
+      }
+      for (const d of p.domains || []) {
+        if (d.name) particles.push({ kind: 'domain', label: d.name, address: p.address });
+      }
+      for (const h of p.handles || []) {
+        const tag = h.identity.startsWith('@') ? h.identity : '@' + h.identity;
+        particles.push({ kind: 'handle', label: tag, platform: h.platform, address: p.address });
+      }
+      if (p.link3) {
+        particles.push({ kind: 'handle', label: '@' + p.link3, platform: 'link3', address: p.address });
+      }
+    }
+
+    // Pad with seed items so there are always enough particles even on a fresh install
+    if (particles.length < 30) {
+      for (const s of PARTICLE_SEED) {
+        if (!particles.find(p => p.label === s.label)) particles.push(s);
+      }
+    }
+
+    // Shuffle
+    for (let i = particles.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [particles[i], particles[j]] = [particles[j], particles[i]];
+    }
+
+    res.set('Cache-Control', 'public, max-age=60');
+    res.json(particles.slice(0, 120));
+  } catch (err) {
+    res.json(PARTICLE_SEED);
+  }
+});
+
 // ── GET /checker/pricing?count=N ─────────────────────────────────────────────
 
 router.get('/pricing', (req, res) => {
@@ -557,6 +637,168 @@ router.get('/pricing', (req, res) => {
       { minAddresses: 1, rate: 0.001, label: 'Any volume — $1 per 1000 scans' },
     ],
   });
+});
+
+// ── GET /checker/resolve?q= — resolve any identity to wallet address(es) ──────
+// Accepts:
+//   • EVM / Solana address → returned as-is
+//   • ENS / .sol / ZNS domain → resolved via existing resolvers
+//   • platform:handle  (e.g. twitter:VitalikButerin, farcaster:dwr, lens:vitalik.lens)
+//   • @handle          → tries Farcaster first, then Twitter via web3.bio
+//   • free-text name   → web3.bio /search endpoint
+//
+// Returns: { results: [{ address, platform, handle, displayName, avatar }] }
+
+const WEB3BIO_API = 'https://api.web3.bio';
+
+async function resolveIdentity(raw) {
+  const q = raw.trim();
+  if (!q) return [];
+
+  const isEvmAddr    = /^0x[0-9a-fA-F]{40}$/.test(q);
+  const isSolanaAddr = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(q);
+  if (isEvmAddr || isSolanaAddr) {
+    return [{ address: q, platform: null, handle: null, displayName: null, avatar: null }];
+  }
+
+  // Helper: fetch web3.bio profile for an identity string → array of profile objects
+  async function w3bProfile(identity) {
+    try {
+      const res = await axios.get(`${WEB3BIO_API}/profile/${encodeURIComponent(identity)}`,
+        { timeout: 7000, validateStatus: () => true });
+      if (!Array.isArray(res.data) || !res.data.length) return [];
+      return res.data;
+    } catch { return []; }
+  }
+
+  // Helper: turn a web3.bio profile array into result items (de-dup by address)
+  function toResults(profiles) {
+    const seen = new Set();
+    const out  = [];
+    for (const p of profiles) {
+      const addr = p.address;
+      if (!addr || seen.has(addr.toLowerCase())) continue;
+      seen.add(addr.toLowerCase());
+      out.push({
+        address:     addr,
+        platform:    p.platform  || null,
+        handle:      p.identity  || null,
+        displayName: p.displayName || null,
+        avatar:      p.avatar    || null,
+      });
+    }
+    return out;
+  }
+
+  // ── platform:handle syntax ────────────────────────────────────────────────
+  const colonIdx = q.indexOf(':');
+  if (colonIdx > 0 && colonIdx < 20 && !q.startsWith('0x') && !q.includes('://')) {
+    const platform = q.slice(0, colonIdx).toLowerCase().trim();
+    const handle   = q.slice(colonIdx + 1).replace(/^@/, '').trim();
+    if (handle) {
+      // web3.bio understands "twitter,handle", "farcaster,handle", etc.
+      const identity = `${platform},${handle}`;
+      const profiles = await w3bProfile(identity);
+      if (profiles.length) return toResults(profiles);
+      // fallback: try bare handle
+      const fallback = await w3bProfile(handle);
+      return toResults(fallback);
+    }
+  }
+
+  // ── @handle → Farcaster / Twitter via web3.bio ────────────────────────────
+  if (q.startsWith('@')) {
+    const handle   = q.slice(1);
+    const profiles = await w3bProfile(`farcaster,${handle}`);
+    if (profiles.length) return toResults(profiles);
+    const tw = await w3bProfile(`twitter,${handle}`);
+    if (tw.length) return toResults(tw);
+    // last-ditch: bare handle
+    return toResults(await w3bProfile(handle));
+  }
+
+  // ── known domain suffixes → existing domain resolvers ────────────────────
+  const lq  = q.toLowerCase();
+  const tld = lq.split('.').pop();
+  if (lq.endsWith('.sol')) {
+    try {
+      const res = await axios.get(
+        `https://sns-sdk-proxy.bonfida.workers.dev/resolve/${lq.slice(0, -4)}`,
+        { timeout: 5000 }
+      );
+      if (res.data?.result) return [{ address: res.data.result, platform: 'sns', handle: q, displayName: null, avatar: null }];
+    } catch { /* fall through */ }
+  }
+  if (lq.endsWith('.eth') || lq.endsWith('.bnb') || lq.endsWith('.base') || lq.endsWith('.arb')) {
+    try {
+      const res = await axios.get('https://nameapi.space.id/getAddress', { params: { domain: lq }, timeout: 5000 });
+      if (res.data?.code === 0 && res.data.address) {
+        return [{ address: res.data.address, platform: 'ens', handle: q, displayName: null, avatar: null }];
+      }
+    } catch { /* fall through */ }
+    // Try web3.bio for ENS-style names
+    const profiles = await w3bProfile(lq);
+    if (profiles.length) return toResults(profiles);
+  }
+  if (ZNS_TLD_CHAIN[tld]) {
+    const resolved = await resolveZnsDomain(lq);
+    if (resolved) return [{ address: resolved, platform: 'zns', handle: q, displayName: null, avatar: null }];
+  }
+
+  // ── free text / bare handle — no dot, no prefix ─────────────────────────
+  // web3.bio /search only accepts valid identity handles, not display names.
+  // Strategy:
+  //   1. Try exact handle on web3.bio (/profile/{q})
+  //   2. If input has spaces (display name like "Vitalik Buterin"):
+  //      a. Each word as a handle with common TLDs (.eth, .lens, .fc)
+  //      b. Concatenated no-space version, with same TLDs
+  //   3. Single word with common TLDs (.eth first — most likely for human names)
+  const lq2    = q.toLowerCase().trim();
+  const words  = lq2.split(/\s+/).filter(Boolean);
+  const noSpace = words.join('');
+  const TLDS   = ['.eth', '.lens', '.fc', '.base', '.bnb'];
+
+  // 1. Exact handle
+  const exactProfiles = await w3bProfile(lq2);
+  if (exactProfiles.length) return toResults(exactProfiles);
+
+  // Build candidate list
+  const candidates = new Set();
+  if (words.length > 1) {
+    // multi-word: each word + concatenated, with TLDs
+    for (const word of words) {
+      for (const tld of TLDS) candidates.add(word + tld);
+    }
+    for (const tld of TLDS) candidates.add(noSpace + tld);
+    candidates.add(noSpace); // bare concatenated
+  } else {
+    // single word: try with TLDs
+    for (const tld of TLDS) candidates.add(lq2 + tld);
+  }
+
+  // Fan out in parallel batches of 4 to stay under rate limits
+  const candidateArr = [...candidates];
+  for (let i = 0; i < candidateArr.length; i += 4) {
+    const batch = candidateArr.slice(i, i + 4);
+    const settled = await Promise.allSettled(batch.map(c => w3bProfile(c)));
+    for (const r of settled) {
+      if (r.status === 'fulfilled' && r.value.length) {
+        const results = toResults(r.value);
+        if (results.length) return results;
+      }
+    }
+  }
+
+  return [];
+}
+
+router.get('/resolve', async (req, res, next) => {
+  try {
+    const q = (req.query.q || '').trim();
+    if (!q) return res.status(400).json({ error: 'q param required' });
+    const results = await resolveIdentity(q);
+    res.json({ query: q, results });
+  } catch (err) { next(err); }
 });
 
 // ── POST /checker/preview ─────────────────────────────────────────────────────
@@ -617,10 +859,10 @@ router.post('/preview', async (req, res) => {
       let response;
       if (method === 'POST') {
         const body = JSON.parse((m.body || '{}').replace(/\{address\}/g, address));
-        response = await axios.post(url, body, { headers, timeout: 7000, validateStatus: validate });
+        response = await axios.post(url, body, { headers, timeout: REST_AXIOS_TIMEOUT_MS, validateStatus: validate });
       } else {
         const params = hasHolder ? {} : { address };
-        response = await axios.get(url, { params, headers, timeout: 7000, validateStatus: validate });
+        response = await axios.get(url, { params, headers, timeout: REST_AXIOS_TIMEOUT_MS, validateStatus: validate });
       }
       const expressionResult = await evaluate(
         m.expression, { data: response.data, status: response.status, decimals }, m.lang || 'js'

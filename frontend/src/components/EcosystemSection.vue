@@ -48,7 +48,6 @@ onMounted(loadProjects)
 <template>
   <div class="content-section">
     <div class="listing-header">
-      <div class="scan-tag">ECOSYSTEM</div>
       <h2 class="scan-title">Integrated Projects</h2>
       <p class="scan-sub">Projects and protocols that use POH's humanity verification. Each integration is manually reviewed before listing.</p>
     </div>

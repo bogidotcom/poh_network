@@ -19,6 +19,8 @@ const props = defineProps({
   loading:              { type: Boolean, default: false },
   faucetLoading:        { type: Boolean, default: false },
   faucetMsg:            { type: Object,  default: null },
+  resolveResults:       { type: Array,   default: () => [] },
+  resolveQuery:         { type: String,  default: '' },
 })
 
 const emit = defineEmits([
@@ -28,6 +30,7 @@ const emit = defineEmits([
   'run-check',
   'handle-file-select',
   'claim-faucet',
+  'pick-resolve-result',
 ])
 </script>
 
@@ -46,7 +49,7 @@ const emit = defineEmits([
           :value="scanInput"
           @input="emit('update:scanInput', $event.target.value)"
           :disabled="!!batchFile"
-          placeholder="0x... or wallet.sol or wallet.eth"
+          placeholder="0x… address, domain, @handle, twitter:name, or any name"
           class="scan-input"
           @keydown.enter="emit('run-check')"
         />
@@ -57,8 +60,33 @@ const emit = defineEmits([
       </div>
       <div v-if="detectedChain" class="chain-pill-row">
         <span :class="['chain-pill', `chain-pill--${detectedChain}`]">
-          {{ detectedChain === 'evm' ? 'EVM — running EVM + REST methods' : 'Solana — running Solana + REST methods' }}
+          {{ detectedChain === 'evm'    ? 'EVM — running EVM + REST methods'
+           : detectedChain === 'solana' ? 'Solana — running Solana + REST methods'
+           :                             'Resolving identity…' }}
         </span>
+      </div>
+
+      <!-- Multi-result resolve picker -->
+      <div v-if="resolveResults?.length" class="resolve-picker">
+        <div class="resolve-picker-title">
+          Multiple matches for <strong>{{ resolveQuery }}</strong> — pick one:
+        </div>
+        <button
+          v-for="hit in resolveResults"
+          :key="hit.address"
+          class="resolve-hit"
+          @click="emit('pick-resolve-result', hit)"
+        >
+          <img v-if="hit.avatar" :src="hit.avatar" class="resolve-hit-avatar"
+               @error="e => e.target.style.display='none'" />
+          <span class="resolve-hit-icon" v-else>👤</span>
+          <div class="resolve-hit-info">
+            <span class="resolve-hit-name">{{ hit.displayName || hit.handle || hit.address }}</span>
+            <span class="resolve-hit-sub">
+              {{ hit.platform ? hit.platform + ' · ' : '' }}{{ hit.address.slice(0,10) }}…{{ hit.address.slice(-6) }}
+            </span>
+          </div>
+        </button>
       </div>
       <div v-if="resolvedInputDisplay" class="resolved-display">
         ↳ <span class="resolved-address">{{ resolvedInputDisplay }}</span>
@@ -68,7 +96,7 @@ const emit = defineEmits([
         <button @click="emit('update:batchFile', null)" class="mini-btn"><Trash2 :size="12" /></button>
       </div>
       <button @click="emit('run-check')" :disabled="loading || (!scanInput && !batchFile)" class="submit-listing-btn">
-        {{ isResolving ? 'Resolving...' : loading ? 'Scanning...' : batchFile ? 'Scan Batch' : 'Scan Wallet' }}
+        {{ isResolving ? 'Resolving...' : loading ? 'Scanning...' : batchFile ? 'Scan Batch' : 'Search' }}
       </button>
     </div>
 

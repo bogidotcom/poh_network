@@ -224,13 +224,13 @@ function renderFrame() {
     ctx.stroke()
     ctx.shadowBlur = 0
 
-    // "qvac." label
+    // "AI" label
     ctx.fillStyle = QVAC_TEAL
-    ctx.font = 'bold 12px monospace'
+    ctx.font = 'bold 13px monospace'
     ctx.textAlign = 'center'
     ctx.shadowBlur = 12 + pulse * 16
     ctx.shadowColor = QVAC_TEAL
-    ctx.fillText('qvac', brain.x, brain.y + 4)
+    ctx.fillText('AI', brain.x, brain.y + 4)
     ctx.shadowBlur = 0
   }
 

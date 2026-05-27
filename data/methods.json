@@ -359,7 +359,7 @@
   },
   {
     "type": "rest",
-    "address": "https://ensdata.net/{address}",
+    "address": "https://api.ensdata.net/{address}",
     "method": "GET",
     "description": "ENS reverse lookup — owning an ENS name signals identity investment",
     "expression": "data.ens && data.ens.length > 0",
@@ -812,6 +812,7 @@
   },
   {
     "type": "evm",
+<<<<<<< HEAD
     "chainId": 98865,
     "address": "0xf180136DdC9e4F8c9b5A9FE59e2b1f07265C5D4D",
     "method": "balanceOf",
@@ -829,6 +830,8 @@
   },
   {
     "type": "evm",
+=======
+>>>>>>> 95a34dda6ed43f5853efc20e13a0e3d21485b3b6
     "chainId": 43111,
     "address": "0xf180136DdC9e4F8c9b5A9FE59e2b1f07265C5D4D",
     "method": "balanceOf",
@@ -846,6 +849,7 @@
   },
   {
     "type": "evm",
+<<<<<<< HEAD
     "chainId": 1440002,
     "address": "0xf180136DdC9e4F8c9b5A9FE59e2b1f07265C5D4D",
     "method": "balanceOf",
@@ -896,6 +900,8 @@
   },
   {
     "type": "evm",
+=======
+>>>>>>> 95a34dda6ed43f5853efc20e13a0e3d21485b3b6
     "chainId": 999,
     "address": "0x55B867a955e4384bcAc03eF7F2E492F68016C152",
     "method": "balanceOf",
@@ -996,6 +1002,7 @@
   },
   {
     "type": "evm",
+<<<<<<< HEAD
     "chainId": 167000,
     "address": "0xFb2Cd41a8aeC89EFBb19575C6c48d872cE97A0A5",
     "method": "balanceOf",
@@ -1013,6 +1020,8 @@
   },
   {
     "type": "evm",
+=======
+>>>>>>> 95a34dda6ed43f5853efc20e13a0e3d21485b3b6
     "chainId": 7777777,
     "address": "0xf180136DdC9e4F8c9b5A9FE59e2b1f07265C5D4D",
     "method": "balanceOf",

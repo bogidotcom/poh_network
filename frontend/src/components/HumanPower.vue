@@ -3,7 +3,8 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import axios from 'axios'
 import BrainGraph from './BrainGraph.vue'
 import WalletProfile from './WalletProfile.vue'
-import ScannerSection from './ScannerSection.vue'
+import ScannerSection          from './ScannerSection.vue'
+import BackgroundParticles      from './BackgroundParticles.vue'
 import ListingSection from './ListingSection.vue'
 import VoteQueueSection from './VoteQueueSection.vue'
 import ProfileSection from './ProfileSection.vue'
@@ -146,8 +147,28 @@ const {
   isResolving, detectedChain, faucetLoading, faucetMsg,
   runCheck, handleFileSelect, claimFaucet,
   batchPolling, batchProgress, isBatchScan, inlineScanProfile,
+  resolveResults, resolveQuery, pickResolveResult,
+  selectedPlatform,
   loading: checkerLoading,
 } = checker
+
+// Platform chips — shown below the input when a non-address, non-domain value is typed
+const PLATFORM_CHIPS = [
+  { id: 'twitter',   icon: '𝕏',  name: 'Twitter'   },
+  { id: 'farcaster', icon: '🟣', name: 'Farcaster' },
+  { id: 'lens',      icon: '🌿', name: 'Lens'       },
+  { id: 'ens',       icon: '◈',  name: 'ENS'        },
+  { id: 'github',    icon: '⌥',  name: 'GitHub'     },
+]
+
+// Show platform chips when input is a non-empty, non-address, non-domain string
+const showPlatformChips = computed(() => {
+  const v = scanInput.value?.trim()
+  if (!v || !!batchFile.value) return false
+  if (/^0x[0-9a-fA-F]{40}$/.test(v)) return false
+  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(v)) return false
+  return true
+})
 
 const showEvidencePass = ref(false)
 const showEvidenceFail = ref(false)
@@ -753,40 +774,39 @@ onUnmounted(() => {
       <!-- Landing -->
       <div v-if="currentSection === 'landing'" class="landing">
 
-        <!-- Problem screen -->
+        <!-- Problem screen (hero with live wallet particle background) -->
         <section class="problem-screen">
-          <div class="problem-inner">
-            <div class="problem-tag">THE PROBLEM</div>
-            <h2 class="problem-title">Defining AI-agents, and <span class="problem-accent">people</span></h2>
-            <blockquote class="problem-quote">
-              <div class="problem-quote-inner">
-                <img src="/jensen-huang.jpg" alt="Jensen Huang" class="problem-quote-avatar" />
-                <div>
-                  <span class="problem-quote-name">Jensen Huang, CEO of NVIDIA</span>
-                  <p class="problem-quote-text">"The company already has a lot more cybersecurity AI agents than people working on cybersecurity."</p>
-                </div>
-              </div>
-            </blockquote>
-            <button class="neon-btn" @click="showSection('checker')">Scan a Wallet →</button>
-          </div>
-        </section>
-        
-        <h2 class="problem-title" style="margin-top:10rem">Wallets and on-chain identities can no longer be trusted.</h2>
-
-        <!-- ── Features (full-screen panels) ──────────────────────────────────────── -->
-        <section class="feat-screen">
-          <div class="feat-left">
-            <div class="feat-tag">SCAN</div>
-            <h2 class="feat-title">Human or AI?</h2>
-            <p class="feat-body">Paste an EVM address, Solana address, or Web3 domain name. AI returns verdict instantly.</p>
-            <button class="feat-cta" @click="showSection('checker')">Try the Scanner →</button>
-          </div>
-          <div class="feat-right">
-            <SvgScanner class="feat-svg" />
+          <BackgroundParticles />
+          <div class="problem-inner problem-inner--above">
+            <h2 class="problem-title">AI-powered Digital Identities</h2>
+            <button class="neon-btn" @click="showSection('checker')">Search →</button>
           </div>
         </section>
 
-        <h2 class="problem-title">POH verifies humanity through evidence<br> — not promises.</h2>
+        <!-- Benefit section -->
+        <section class="benefit-section">
+          <div class="benefit-header">
+          </div>
+          <div class="benefit-cards">
+            <!-- Trading volume: animated candlestick chart -->
+            <div class="benefit-card">
+              <SvgTradingVolume class="benefit-svg" />
+              <p class="benefit-label">Detect Fake and real<br>Trading Volume</p>
+            </div>
+
+            <!-- Bot/Human classification: scanning fingerprint -->
+            <div class="benefit-card">
+              <SvgIdentityScan class="benefit-svg" />
+              <p class="benefit-label">Proof of Personhood<br>and Access Control</p>
+            </div>
+
+            <!-- AI portrait: wallet → signals → profile -->
+            <div class="benefit-card">
+              <SvgWalletPortrait />
+              <p class="benefit-label">AML, KYC, KYB</p>
+            </div>
+          </div>
+        </section>
 
         <section class="feat-screen feat-screen--alt">
           <div class="feat-right display-block">
@@ -814,70 +834,28 @@ onUnmounted(() => {
             </div>
           </div>
           <div class="feat-left">
-            <div class="feat-tag">SIGNALS</div>
-            <h2 class="feat-title">Evidence from<br>every layer</h2>
-            <p class="feat-body">Every signal runs in parallel. No single point of failure.</p>
-            <button class="feat-cta" @click="showSection('votes'); loadVotingFiltered()">Browse Methods →</button>
-          </div>
-        </section>
-
-        <h2 class="problem-title">Use Cases</h2>
-
-        <!-- Benefit section -->
-        <section class="benefit-section">
-          <div class="benefit-header">
-          </div>
-          <div class="benefit-cards">
-            <!-- Trading volume: animated candlestick chart -->
-            <div class="benefit-card">
-              <SvgTradingVolume class="benefit-svg" />
-              <p class="benefit-label">Detect Fake and real<br>Trading Volume</p>
-            </div>
-
-            <!-- Bot/Human classification: scanning fingerprint -->
-            <div class="benefit-card">
-              <SvgIdentityScan class="benefit-svg" />
-              <p class="benefit-label">Captcha<br>and Digital Identities</p>
-            </div>
-
-            <!-- AI portrait: wallet → signals → profile -->
-            <div class="benefit-card">
-              <SvgWalletPortrait />
-              <p class="benefit-label">AML and Whitelabel</p>
-            </div>
+            <h2 class="feat-title">Search</h2>
+            <p class="feat-body">Search for any identity and see the evidence from every imaginable layer.</p>
+            <button class="feat-cta" @click="showSection('votes'); loadVotingFiltered()">Browse Signals →</button>
           </div>
         </section>
 
         <section class="feat-screen feat-screen--alt">
           <div class="feat-right">
-            <SvgCommunity class="feat-svg" />
+            <SvgIdentityScan class="benefit-svg" />
           </div>
           <div class="feat-left">
-            <div class="feat-tag">COMMUNITY</div>
             <h2 class="feat-title">You decide what<br>counts as human</h2>
             <p class="feat-body">Every detection signal goes through community consensus.</p>
-            <button class="feat-cta" @click="showSection('votes'); loadVotingFiltered()">Open Vote Queue →</button>
+            <button class="feat-cta" @click="showSection('votes'); loadVotingFiltered()">Vote →</button>
           </div>
         </section>
 
         <section class="feat-screen">
           <div class="feat-left">
-            <div class="feat-tag">AI BRAIN</div>
-            <h2 class="feat-title">On-device AI,<br>zero cloud calls</h2>
-            <p class="feat-body">Structured verdict with confidence and reasoning. <br>Runs on Qvac by Tether.</p>
-            <button class="feat-cta" @click="showSection('checker')">See a Verdict →</button>
-          </div>
-          <div class="feat-right">
-            <SvgAiBrain class="feat-svg" />
-          </div>
-        </section>
-
-        <section class="feat-screen">
-          <div class="feat-left">
-            <div class="feat-tag">API</div>
-            <h2 class="feat-title">One call.<br>Instant answer.</h2>
-            <p class="feat-body">Drop-in HTTP API for any app. First 100 scans free.</p>
-            <button class="feat-cta" @click="showSection('api')">API Reference →</button>
+            <h2 class="feat-title">Dev Ready</h2>
+            <p class="feat-body">SDK, API, Widget for your choice. First 100 scans free.</p>
+            <button class="feat-cta" @click="showSection('dev')">API Reference →</button>
           </div>
           <div class="feat-right">
 
@@ -896,23 +874,23 @@ onUnmounted(() => {
                 <div class="roadmap-date" style="color: #fff">Apr-May 2026</div>
                 <div class="roadmap-desc" style="color: #fff">Devnet public launch</div>
                 <div class="roadmap-desc" style="color: #fff">Colosseum Hackathon submission</div>
-                <div class="roadmap-desc" style="color: #fff">Data providers onboarding</div>
+                <div class="roadmap-desc" style="color: #fff">AI-tutors onboarding</div>
               </div>
             </div>
             <div class="roadmap-item">
               <div class="roadmap-dot"></div>
               <div class="roadmap-content">
-                <div class="roadmap-date">May-Jun 2026</div>
-                <div class="roadmap-desc">Colosseum Accellerator</div>
-                <div class="roadmap-desc">Human-verified proof with fully private evidence and quantum-resistant encryption</div>
-                <div class="roadmap-desc">POH token launch (date TBA)</div>
+                <div class="roadmap-date" style="color: #fff">May-Jun 2026</div>
+                <div class="roadmap-desc" style="color: #fff">Digital Identity Search</div>
+                <div class="roadmap-desc" style="color: #fff">SDK, Widget, Dev tools</div>
+                <div class="roadmap-desc" style="color: #fff">Conviction Curves</div>
               </div>
             </div>
             <div class="roadmap-item">
               <div class="roadmap-dot"></div>
               <div class="roadmap-content">
                 <div class="roadmap-date">Jun-Jul 2026</div>
-                <div class="roadmap-desc">Multi-chain support across Bitcoin, Litecoin, and Tron</div>
+                <div class="roadmap-desc">Support Bitcoin, Tron, TON search</div>
               </div>
             </div>
 
@@ -920,7 +898,7 @@ onUnmounted(() => {
               <div class="roadmap-dot"></div>
               <div class="roadmap-content">
                 <div class="roadmap-date">Jul-Aug 2026</div>
-                <div class="roadmap-desc">Trading pair analysis to identify fake liquidity and real market activity</div>
+                <div class="roadmap-desc">Trading analysis</div>
               </div>
             </div>
             
@@ -928,7 +906,7 @@ onUnmounted(() => {
               <div class="roadmap-dot"></div>
               <div class="roadmap-content">
                 <div class="roadmap-date">Aug-Sep 2026</div>
-                <div class="roadmap-desc">Visual analytics powered by charts & behavioral data mapping</div>
+                <div class="roadmap-desc">Getting smarter...</div>
               </div>
             </div>
 
@@ -947,9 +925,8 @@ onUnmounted(() => {
       <!-- Checker -->
       <div v-if="currentSection === 'checker'" class="scan-page">
         <div class="scan-hero">
-          <div class="scan-tag">WALLET SCANNER</div>
-          <h2 class="scan-title">Human or AI</h2>
-          <p class="scan-sub">Run all registered detection signals simultaneously and get an AI verdict.</p>
+          <h2 class="scan-title">AI-powered Identities</h2>
+          <p class="scan-sub">Search by cryptocurrency wallet address, Web3 domain names, X profiles or names</p>
         </div>
 
         <div class="scan-box">
@@ -958,7 +935,7 @@ onUnmounted(() => {
               type="text"
               v-model="scanInput"
               :disabled="!!batchFile"
-              placeholder="0x... or wallet.sol or wallet.eth"
+              placeholder="Type to search"
               class="scan-input"
               @keydown.enter="runCheck"
             />
@@ -967,20 +944,52 @@ onUnmounted(() => {
               <FileUp :size="16" />
             </label>
           </div>
-          <div v-if="detectedChain" class="chain-pill-row">
-            <span :class="['chain-pill', `chain-pill--${detectedChain}`]">
-              {{ detectedChain === 'evm' ? 'EVM — running EVM + REST methods' : 'Solana — running Solana + REST methods' }}
-            </span>
+          <!-- Platform chips — search by specific network -->
+          <div v-if="showPlatformChips" class="platform-chips">
+            <button
+              v-for="p in PLATFORM_CHIPS"
+              :key="p.id"
+              :class="['platform-chip', { active: selectedPlatform === p.id }]"
+              @click="selectedPlatform = selectedPlatform === p.id ? null : p.id"
+              :title="'Search on ' + p.name"
+            >
+              <span class="platform-chip-icon">{{ p.icon }}</span>
+              <span class="platform-chip-name">{{ p.name }}</span>
+            </button>
           </div>
+
           <div v-if="resolvedInputDisplay" class="resolved-display">
             ↳ <span class="resolved-address">{{ resolvedInputDisplay }}</span>
+          </div>
+
+          <!-- Multi-result resolve picker -->
+          <div v-if="resolveResults?.length" class="resolve-picker">
+            <div class="resolve-picker-title">
+              Multiple matches for <strong>{{ resolveQuery }}</strong> — pick one:
+            </div>
+            <button
+              v-for="hit in resolveResults"
+              :key="hit.address"
+              class="resolve-hit"
+              @click="pickResolveResult(hit)"
+            >
+              <img v-if="hit.avatar" :src="hit.avatar" class="resolve-hit-avatar"
+                   @error="e => e.target.style.display='none'" />
+              <span class="resolve-hit-icon" v-else>👤</span>
+              <div class="resolve-hit-info">
+                <span class="resolve-hit-name">{{ hit.displayName || hit.handle || hit.address }}</span>
+                <span class="resolve-hit-sub">
+                  {{ hit.platform ? hit.platform + ' · ' : '' }}{{ hit.address.slice(0,10) }}…{{ hit.address.slice(-6) }}
+                </span>
+              </div>
+            </button>
           </div>
           <div v-if="batchFile" class="file-info">
             <span class="file-name">{{ batchFile.name }} — {{ batchRowCount }} addresses</span>
             <button @click="batchFile = null; batchRowCount = 0; batchRows = []" class="mini-btn"><Trash2 :size="12" /></button>
           </div>
           <button @click="connected ? runCheck() : showWalletModal = true" :disabled="checkerLoading || isResolving || brainPolling || batchPolling || (checkerResults && !batchFile && !brainVerdict?.reasoning)" class="submit-listing-btn">
-            {{ isResolving ? 'Resolving...' : checkerLoading ? 'Scanning...' : batchPolling ? `Analyzing… (${batchProgress?.done ?? 0}/${batchProgress?.total ?? '?'})` : (brainPolling || (checkerResults && !brainVerdict?.reasoning)) ? 'AI analyzing...' : batchFile ? 'Scan Batch' : connected ? 'Scan Wallet' : 'Connect Wallet' }}
+            {{ isResolving ? 'Resolving...' : checkerLoading ? 'Scanning...' : batchPolling ? `Analyzing… (${batchProgress?.done ?? 0}/${batchProgress?.total ?? '?'})` : (brainPolling || (checkerResults && !brainVerdict?.reasoning)) ? 'AI analyzing...' : batchFile ? 'Scan Batch' : connected ? 'Search' : 'Connect Wallet' }}
           </button>
           <div v-if="batchPolling && batchProgress" class="batch-progress-bar">
             <div class="batch-progress-fill" :style="{ width: (batchProgress.percent ?? 0) + '%' }"></div>
@@ -1101,9 +1110,8 @@ onUnmounted(() => {
       <!-- Listing -->
       <div v-if="currentSection === 'listing'" class="content-section">
         <div class="listing-header">
-          <div class="scan-tag">METHOD LISTING</div>
           <h2 class="scan-title">Submit a detection signal</h2>
-          <p class="scan-sub">Define a signal and pay 1000 POH to register it. 500 POH goes to stakers immediately, 500 to the protocol. Earn rewards when your method is used in scans.</p>
+          <p class="scan-sub">Define a signal and earn 4% trading volume lifetime.</p>
         </div>
         <div class="form-section">
           <div class="form-label-row">
@@ -1574,7 +1582,6 @@ const results = await pollJob(jobId)</pre>
       <!-- Staking -->
       <div v-if="currentSection === 'staking'" class="staking-page">
         <div class="scan-hero">
-          <div class="scan-tag">STAKING</div>
           <h2 class="scan-title">Stake POH</h2>
           <p class="scan-sub">Your staked POH determines your vote weight when scoring detection signals.</p>
         </div>
@@ -1784,9 +1791,12 @@ const results = await pollJob(jobId)</pre>
   align-items: center;
   justify-content: center;
   padding: 6rem 2rem;
+  position: relative;   /* contains the particle layer */
+  overflow: hidden;
   /* border-bottom: 1px solid #111; */
 }
-.problem-inner { max-width: 680px; text-align: center; }
+.problem-inner           { max-width: 680px; text-align: center; }
+.problem-inner--above    { position: relative; z-index: 1; }
 .problem-tag {
   font-size: 0.7rem; letter-spacing: 0.18em; color: #808080;
   font-family: 'JetBrains Mono', monospace; margin-bottom: 2rem;
@@ -1858,7 +1868,7 @@ const results = await pollJob(jobId)</pre>
 }
 .benefit-svg {
   width: 100%;
-  /* max-width: 240px; */
+  max-width: 512px;
   height: auto;
   border-radius: 12px;
 }
@@ -3632,6 +3642,73 @@ const results = await pollJob(jobId)</pre>
   border-color: #2a1a44;
   background: #0c0810;
 }
+
+.chain-pill--custom {
+  color: #a78bfa;
+  border-color: #3b2d6e;
+  background: #0e0b1c;
+}
+
+/* ── Platform chips ── */
+.platform-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 0 2px;
+}
+.platform-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid #2a2a38;
+  background: transparent;
+  color: #808080;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+.platform-chip:hover {
+  border-color: #4b4b68;
+  color: #c4c4d4;
+}
+.platform-chip.active {
+  border-color: #6366f1;
+  background: rgba(99, 102, 241, 0.12);
+  color: #a5b4fc;
+}
+.platform-chip-icon { font-size: 13px; line-height: 1; }
+.platform-chip-name { font-size: 11px; font-weight: 500; }
+
+/* ── Resolve picker ── */
+.resolve-picker {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 10px; background: #0e0e12; border: 1px solid #2d2d3a;
+  border-radius: 10px; margin-top: 2px;
+}
+.resolve-picker-title {
+  font-size: 12px; color: #808080; padding-bottom: 4px;
+}
+.resolve-picker-title strong { color: #d1d5db; }
+.resolve-hit {
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(99,102,241,0.05); border: 1px solid #2a2a38;
+  border-radius: 8px; padding: 8px 10px;
+  cursor: pointer; text-align: left; transition: border-color 0.15s;
+}
+.resolve-hit:hover { border-color: #6366f1; }
+.resolve-hit-avatar {
+  width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
+}
+.resolve-hit-icon { font-size: 20px; flex-shrink: 0; }
+.resolve-hit-info { display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
+.resolve-hit-name {
+  font-size: 13px; font-weight: 600; color: #e5e7eb;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.resolve-hit-sub { font-size: 11px; color: #6b7280; }
 
 .resolved-display {
   font-size: 1.25rem;
