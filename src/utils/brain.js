@@ -260,7 +260,7 @@ async function evaluatorChatJSON(prompt, requiredKeys, opts = {}) {
   if (!parsed || requiredKeys.some(k => !(k in parsed))) {
     console.warn('[brain] Evaluator invalid JSON, retrying... raw:', (raw || '').slice(0, 200));
     const retry = await evaluatorChat(
-      `Output ONLY a JSON object with fields ${requiredKeys.join(', ')}. Example: {"verdict":"HUMAN","confidence":0.8,"reasoning":"x"}\n\nNow output JSON for this task:\n${prompt}`,
+      `Output ONLY a JSON object with fields ${requiredKeys.join(', ')}. Schema: {"verdict":"HUMAN|AI|UNCERTAIN","confidence":<float 0.0-1.0>,"reasoning":"<brief>"}\n\nNow output JSON for this task:\n${prompt}`,
       { ...opts, jsonMode: false }
     );
     console.warn('[brain] Retry raw:', (retry || '').slice(0, 200));
@@ -345,7 +345,7 @@ Signals (${passed.length} passed, ${failed.length} failed shown):
 ${signalsStr}
 ${correctionBlock}
 Return ONLY valid JSON. No text outside the JSON object.
-{"verdict":"HUMAN","confidence":0.95,"reasoning":"..."}`;
+Schema: {"verdict":"HUMAN|AI|UNCERTAIN","confidence":<float 0.0-1.0 reflecting actual signal strength>,"reasoning":"<brief>"}`;
 
   const backend = usingQvac ? 'Qvac' : 'Ollama';
   console.log(`[brain] Evaluating ${address} via ${backend}`);
