@@ -1,4 +1,4 @@
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, shallowRef } from 'vue'
 import axios from 'axios'
 import { Connection, PublicKey, Transaction } from '@solana/web3.js'
 import {
@@ -37,12 +37,16 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
   const batchProgress        = ref(null) // { done, total, percent }
   const isBatchScan          = ref(false)
   const inlineScanProfile    = ref(null) // populated when cache hit includes enriched profile
+  const resolveResults       = shallowRef([])  // multi-match list when resolve returns >1
+  const resolveQuery         = ref('')         // the original query that produced resolveResults
 
   const detectedChain = computed(() => {
     const v = scanInput.value?.trim()
     if (!v) return null
     if (/^0x[0-9a-fA-F]{40}$/.test(v)) return 'evm'
     if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(v)) return 'solana'
+    // Hint for platform-prefixed or @ searches
+    if (v.startsWith('@') || v.includes(':')) return 'custom'
     return null
   })
 
@@ -89,7 +93,26 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
       } catch { /* try next chain */ }
     }
 
-    throw new Error(`Could not resolve "${trimmed}" — not a valid address or domain`)
+    // ── Fallback: backend /checker/resolve (name, @handle, platform:handle, free text) ──
+    try {
+      const res = await axios.get('/checker/resolve', { params: { q: trimmed } })
+      const hits = res.data?.results || []
+      if (hits.length === 1) return hits[0].address
+      if (hits.length > 1) {
+        // Surface results to the caller via resolveResults — caller must pick
+        resolveResults.value = hits
+        resolveQuery.value   = trimmed
+        // Throw a special sentinel so runCheck knows to stop and show picker
+        const err = new Error('MULTI_RESULT')
+        err.resolveResults = hits
+        throw err
+      }
+    } catch (e) {
+      if (e.message === 'MULTI_RESULT') throw e
+      /* network/API error — fall through to final error */
+    }
+
+    throw new Error(`Could not resolve "${trimmed}" — try an address, domain, or platform:handle`)
   }
 
   const handleFileSelect = (event) => {
@@ -121,6 +144,16 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
     }
   }
 
+  // Called when the user picks one result from a multi-resolve list
+  const pickResolveResult = (hit) => {
+    resolveResults.value = []
+    scanInput.value      = hit.address
+    resolvedInputDisplay.value = hit.displayName
+      ? `${hit.displayName} (${hit.address})`
+      : hit.handle ? `${hit.handle} → ${hit.address}` : hit.address
+    runCheck()
+  }
+
   const runCheck = async () => {
     if (!connected.value) return
     checkerResults.value  = null
@@ -132,6 +165,7 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
     batchPolling.value    = false
     isBatchScan.value     = !!batchFile.value
     inlineScanProfile.value = null
+    resolveResults.value  = []
     loading.value = true
     isResolving.value = true
     error.value = null
@@ -254,6 +288,12 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
         }
       }
     } catch (err) {
+      if (err.message === 'MULTI_RESULT') {
+        // resolveResults already populated — just stop loading, show picker
+        isResolving.value = false
+        loading.value = false
+        return
+      }
       console.log(err.data, err.message, err.response)
       error.value = err.response?.data?.error || err.message || 'Scan failed'
       isResolving.value = false
@@ -289,5 +329,8 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
     batchProgress,
     isBatchScan,
     inlineScanProfile,
+    resolveResults,
+    resolveQuery,
+    pickResolveResult,
   }
 }

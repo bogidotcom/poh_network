@@ -146,6 +146,7 @@ const {
   isResolving, detectedChain, faucetLoading, faucetMsg,
   runCheck, handleFileSelect, claimFaucet,
   batchPolling, batchProgress, isBatchScan, inlineScanProfile,
+  resolveResults, resolveQuery, pickResolveResult,
   loading: checkerLoading,
 } = checker
 
@@ -958,7 +959,7 @@ onUnmounted(() => {
               type="text"
               v-model="scanInput"
               :disabled="!!batchFile"
-              placeholder="0x... or wallet.sol or wallet.eth"
+              placeholder="0x… address, domain, @handle, twitter:name, or any name"
               class="scan-input"
               @keydown.enter="runCheck"
             />
@@ -969,11 +970,36 @@ onUnmounted(() => {
           </div>
           <div v-if="detectedChain" class="chain-pill-row">
             <span :class="['chain-pill', `chain-pill--${detectedChain}`]">
-              {{ detectedChain === 'evm' ? 'EVM — running EVM + REST methods' : 'Solana — running Solana + REST methods' }}
+              {{ detectedChain === 'evm'    ? 'EVM — running EVM + REST methods'
+               : detectedChain === 'solana' ? 'Solana — running Solana + REST methods'
+               :                             'Resolving identity…' }}
             </span>
           </div>
           <div v-if="resolvedInputDisplay" class="resolved-display">
             ↳ <span class="resolved-address">{{ resolvedInputDisplay }}</span>
+          </div>
+
+          <!-- Multi-result resolve picker -->
+          <div v-if="resolveResults?.length" class="resolve-picker">
+            <div class="resolve-picker-title">
+              Multiple matches for <strong>{{ resolveQuery }}</strong> — pick one:
+            </div>
+            <button
+              v-for="hit in resolveResults"
+              :key="hit.address"
+              class="resolve-hit"
+              @click="pickResolveResult(hit)"
+            >
+              <img v-if="hit.avatar" :src="hit.avatar" class="resolve-hit-avatar"
+                   @error="e => e.target.style.display='none'" />
+              <span class="resolve-hit-icon" v-else>👤</span>
+              <div class="resolve-hit-info">
+                <span class="resolve-hit-name">{{ hit.displayName || hit.handle || hit.address }}</span>
+                <span class="resolve-hit-sub">
+                  {{ hit.platform ? hit.platform + ' · ' : '' }}{{ hit.address.slice(0,10) }}…{{ hit.address.slice(-6) }}
+                </span>
+              </div>
+            </button>
           </div>
           <div v-if="batchFile" class="file-info">
             <span class="file-name">{{ batchFile.name }} — {{ batchRowCount }} addresses</span>
@@ -3632,6 +3658,40 @@ const results = await pollJob(jobId)</pre>
   border-color: #2a1a44;
   background: #0c0810;
 }
+
+.chain-pill--custom {
+  color: #a78bfa;
+  border-color: #3b2d6e;
+  background: #0e0b1c;
+}
+
+/* ── Resolve picker ── */
+.resolve-picker {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 10px; background: #0e0e12; border: 1px solid #2d2d3a;
+  border-radius: 10px; margin-top: 2px;
+}
+.resolve-picker-title {
+  font-size: 12px; color: #808080; padding-bottom: 4px;
+}
+.resolve-picker-title strong { color: #d1d5db; }
+.resolve-hit {
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(99,102,241,0.05); border: 1px solid #2a2a38;
+  border-radius: 8px; padding: 8px 10px;
+  cursor: pointer; text-align: left; transition: border-color 0.15s;
+}
+.resolve-hit:hover { border-color: #6366f1; }
+.resolve-hit-avatar {
+  width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
+}
+.resolve-hit-icon { font-size: 20px; flex-shrink: 0; }
+.resolve-hit-info { display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
+.resolve-hit-name {
+  font-size: 13px; font-weight: 600; color: #e5e7eb;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.resolve-hit-sub { font-size: 11px; color: #6b7280; }
 
 .resolved-display {
   font-size: 1.25rem;

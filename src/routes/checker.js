@@ -559,6 +559,140 @@ router.get('/pricing', (req, res) => {
   });
 });
 
+// ── GET /checker/resolve?q= — resolve any identity to wallet address(es) ──────
+// Accepts:
+//   • EVM / Solana address → returned as-is
+//   • ENS / .sol / ZNS domain → resolved via existing resolvers
+//   • platform:handle  (e.g. twitter:VitalikButerin, farcaster:dwr, lens:vitalik.lens)
+//   • @handle          → tries Farcaster first, then Twitter via web3.bio
+//   • free-text name   → web3.bio /search endpoint
+//
+// Returns: { results: [{ address, platform, handle, displayName, avatar }] }
+
+const WEB3BIO_API = 'https://api.web3.bio';
+
+async function resolveIdentity(raw) {
+  const q = raw.trim();
+  if (!q) return [];
+
+  const isEvmAddr    = /^0x[0-9a-fA-F]{40}$/.test(q);
+  const isSolanaAddr = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(q);
+  if (isEvmAddr || isSolanaAddr) {
+    return [{ address: q, platform: null, handle: null, displayName: null, avatar: null }];
+  }
+
+  // Helper: fetch web3.bio profile for an identity string → array of profile objects
+  async function w3bProfile(identity) {
+    try {
+      const res = await axios.get(`${WEB3BIO_API}/profile/${encodeURIComponent(identity)}`,
+        { timeout: 7000, validateStatus: () => true });
+      if (!Array.isArray(res.data) || !res.data.length) return [];
+      return res.data;
+    } catch { return []; }
+  }
+
+  // Helper: turn a web3.bio profile array into result items (de-dup by address)
+  function toResults(profiles) {
+    const seen = new Set();
+    const out  = [];
+    for (const p of profiles) {
+      const addr = p.address;
+      if (!addr || seen.has(addr.toLowerCase())) continue;
+      seen.add(addr.toLowerCase());
+      out.push({
+        address:     addr,
+        platform:    p.platform  || null,
+        handle:      p.identity  || null,
+        displayName: p.displayName || null,
+        avatar:      p.avatar    || null,
+      });
+    }
+    return out;
+  }
+
+  // ── platform:handle syntax ────────────────────────────────────────────────
+  const colonIdx = q.indexOf(':');
+  if (colonIdx > 0 && colonIdx < 20 && !q.startsWith('0x') && !q.includes('://')) {
+    const platform = q.slice(0, colonIdx).toLowerCase().trim();
+    const handle   = q.slice(colonIdx + 1).replace(/^@/, '').trim();
+    if (handle) {
+      // web3.bio understands "twitter,handle", "farcaster,handle", etc.
+      const identity = `${platform},${handle}`;
+      const profiles = await w3bProfile(identity);
+      if (profiles.length) return toResults(profiles);
+      // fallback: try bare handle
+      const fallback = await w3bProfile(handle);
+      return toResults(fallback);
+    }
+  }
+
+  // ── @handle → Farcaster / Twitter via web3.bio ────────────────────────────
+  if (q.startsWith('@')) {
+    const handle   = q.slice(1);
+    const profiles = await w3bProfile(`farcaster,${handle}`);
+    if (profiles.length) return toResults(profiles);
+    const tw = await w3bProfile(`twitter,${handle}`);
+    if (tw.length) return toResults(tw);
+    // last-ditch: bare handle
+    return toResults(await w3bProfile(handle));
+  }
+
+  // ── known domain suffixes → existing domain resolvers ────────────────────
+  const lq  = q.toLowerCase();
+  const tld = lq.split('.').pop();
+  if (lq.endsWith('.sol')) {
+    try {
+      const res = await axios.get(
+        `https://sns-sdk-proxy.bonfida.workers.dev/resolve/${lq.slice(0, -4)}`,
+        { timeout: 5000 }
+      );
+      if (res.data?.result) return [{ address: res.data.result, platform: 'sns', handle: q, displayName: null, avatar: null }];
+    } catch { /* fall through */ }
+  }
+  if (lq.endsWith('.eth') || lq.endsWith('.bnb') || lq.endsWith('.base') || lq.endsWith('.arb')) {
+    try {
+      const res = await axios.get('https://nameapi.space.id/getAddress', { params: { domain: lq }, timeout: 5000 });
+      if (res.data?.code === 0 && res.data.address) {
+        return [{ address: res.data.address, platform: 'ens', handle: q, displayName: null, avatar: null }];
+      }
+    } catch { /* fall through */ }
+    // Try web3.bio for ENS-style names
+    const profiles = await w3bProfile(lq);
+    if (profiles.length) return toResults(profiles);
+  }
+  if (ZNS_TLD_CHAIN[tld]) {
+    const resolved = await resolveZnsDomain(lq);
+    if (resolved) return [{ address: resolved, platform: 'zns', handle: q, displayName: null, avatar: null }];
+  }
+
+  // ── web3.bio search (free text or bare handle) ────────────────────────────
+  // First try exact-handle match via /profile/{query}
+  const exactProfiles = await w3bProfile(q);
+  if (exactProfiles.length) return toResults(exactProfiles);
+
+  // Then try search endpoint
+  try {
+    const res = await axios.get(`${WEB3BIO_API}/search`, {
+      params: { query: q }, timeout: 7000, validateStatus: () => true,
+    });
+    const list = Array.isArray(res.data) ? res.data
+                 : Array.isArray(res.data?.results) ? res.data.results
+                 : [];
+    if (list.length) return toResults(list);
+  } catch { /* fall through */ }
+
+  return [];
+}
+
+router.get('/resolve', async (req, res, next) => {
+  try {
+    const q = (req.query.q || '').trim();
+    if (!q) return res.status(400).json({ error: 'q param required' });
+    const results = await resolveIdentity(q);
+    res.json({ query: q, results });
+  } catch (err) { next(err); }
+});
+
 // ── POST /checker/preview ─────────────────────────────────────────────────────
 // Test a method definition against an address without writing to dataset.
 // Body: { address, method: { type, address, method, expression, ... } }
