@@ -1,6 +1,6 @@
 <template>
-            <svg viewBox="0 0 240 200" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect width="240" height="200" rx="12" fill="#090909" stroke="#1a1a1a"/>
+            <svg viewBox="0 0 240 215" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="240" height="215" rx="12" fill="#090909" stroke="#1a1a1a"/>
               <text x="20" y="22" fill="#666" font-size="8" font-family="monospace">SDK · TOOLING</text>
 
               <!-- request block -->
@@ -42,31 +42,51 @@
               <text x="142" y="92" fill="#ffffff30" font-size="6" font-family="monospace" opacity="0">
                 <animate attributeName="opacity" values="0;1" dur="0.3s" begin="1.7s" fill="freeze"/>}</text>
 
-              <!-- SDK rows -->
+              <!-- SDK label -->
               <text x="14" y="124" fill="#444" font-size="6" font-family="monospace">AVAILABLE SDKs</text>
 
-              <rect x="14" y="130" width="64" height="18" rx="3" fill="#111" stroke="#1e1e1e" opacity="0">
+              <!-- Row 1: JS/TS · Python · Rust -->
+              <rect x="14"  y="130" width="66" height="18" rx="3" fill="#111" stroke="#1e1e1e" opacity="0">
                 <animate attributeName="opacity" values="0;1" dur="0.2s" begin="1.8s" fill="freeze"/>
               </rect>
-              <text x="24" y="142" fill="#f7df1e80" font-size="7" font-family="monospace" opacity="0">
+              <text x="47" y="142" fill="#f7df1e90" font-size="7" font-family="monospace" text-anchor="middle" opacity="0">
                 <animate attributeName="opacity" values="0;1" dur="0.2s" begin="1.8s" fill="freeze"/>JS / TS</text>
 
-              <rect x="84" y="130" width="64" height="18" rx="3" fill="#111" stroke="#1e1e1e" opacity="0">
+              <rect x="84"  y="130" width="66" height="18" rx="3" fill="#111" stroke="#1e1e1e" opacity="0">
                 <animate attributeName="opacity" values="0;1" dur="0.2s" begin="2.0s" fill="freeze"/>
               </rect>
-              <text x="97" y="142" fill="#3b82f680" font-size="7" font-family="monospace" opacity="0">
+              <text x="117" y="142" fill="#3b82f690" font-size="7" font-family="monospace" text-anchor="middle" opacity="0">
                 <animate attributeName="opacity" values="0;1" dur="0.2s" begin="2.0s" fill="freeze"/>Python</text>
 
               <rect x="154" y="130" width="72" height="18" rx="3" fill="#111" stroke="#1e1e1e" opacity="0">
                 <animate attributeName="opacity" values="0;1" dur="0.2s" begin="2.2s" fill="freeze"/>
               </rect>
-              <text x="165" y="142" fill="#00ADD880" font-size="7" font-family="monospace" opacity="0">
-                <animate attributeName="opacity" values="0;1" dur="0.2s" begin="2.2s" fill="freeze"/>Go / Rust</text>
+              <text x="190" y="142" fill="#ce4a2490" font-size="7" font-family="monospace" text-anchor="middle" opacity="0">
+                <animate attributeName="opacity" values="0;1" dur="0.2s" begin="2.2s" fill="freeze"/>Rust</text>
 
-              <!-- bottom: REST note -->
-              <text x="14" y="168" fill="#ffffff20" font-size="6.5" font-family="monospace" opacity="0">
-                <animate attributeName="opacity" values="0;1" dur="0.4s" begin="2.4s" fill="freeze"/>or raw REST — no SDK needed</text>
-              <text x="14" y="180" fill="#22c55e40" font-size="6.5" font-family="monospace" opacity="0">
-                <animate attributeName="opacity" values="0;1" dur="0.4s" begin="2.5s" fill="freeze"/>proofofhuman.ge</text>
+              <!-- Row 2: iOS · Android · Web Widget -->
+              <rect x="14"  y="152" width="66" height="18" rx="3" fill="#111" stroke="#1e1e1e" opacity="0">
+                <animate attributeName="opacity" values="0;1" dur="0.2s" begin="2.4s" fill="freeze"/>
+              </rect>
+              <text x="47" y="164" fill="#99999990" font-size="7" font-family="monospace" text-anchor="middle" opacity="0">
+                <animate attributeName="opacity" values="0;1" dur="0.2s" begin="2.4s" fill="freeze"/>iOS</text>
+
+              <rect x="84"  y="152" width="66" height="18" rx="3" fill="#111" stroke="#1e1e1e" opacity="0">
+                <animate attributeName="opacity" values="0;1" dur="0.2s" begin="2.6s" fill="freeze"/>
+              </rect>
+              <text x="117" y="164" fill="#3ddc8490" font-size="7" font-family="monospace" text-anchor="middle" opacity="0">
+                <animate attributeName="opacity" values="0;1" dur="0.2s" begin="2.6s" fill="freeze"/>Android</text>
+
+              <rect x="154" y="152" width="72" height="18" rx="3" fill="#111" stroke="#1e1e1e" opacity="0">
+                <animate attributeName="opacity" values="0;1" dur="0.2s" begin="2.8s" fill="freeze"/>
+              </rect>
+              <text x="190" y="164" fill="#6366f190" font-size="7" font-family="monospace" text-anchor="middle" opacity="0">
+                <animate attributeName="opacity" values="0;1" dur="0.2s" begin="2.8s" fill="freeze"/>Web Widget</text>
+
+              <!-- bottom note -->
+              <text x="14" y="187" fill="#ffffff20" font-size="6.5" font-family="monospace" opacity="0">
+                <animate attributeName="opacity" values="0;1" dur="0.4s" begin="3.0s" fill="freeze"/>or raw REST — no SDK needed</text>
+              <text x="14" y="199" fill="#22c55e40" font-size="6.5" font-family="monospace" opacity="0">
+                <animate attributeName="opacity" values="0;1" dur="0.4s" begin="3.1s" fill="freeze"/>proofofhuman.ge</text>
             </svg>
 </template>

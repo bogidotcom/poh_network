@@ -783,16 +783,28 @@ onUnmounted(() => {
           </div>
         </section>
 
-        <!-- ── Features (full-screen panels) ──────────────────────────────────────── -->
-        <section class="feat-screen">
-          <div class="feat-left">
-            <div class="feat-tag">SCAN</div>
-            <h2 class="feat-title">Human or AI?</h2>
-            <p class="feat-body">Paste an EVM address, Solana address, or Web3 domain name. AI returns verdict instantly.</p>
-            <button class="feat-cta" @click="showSection('checker')">Try the Scanner →</button>
+        <!-- Benefit section -->
+        <section class="benefit-section">
+          <div class="benefit-header">
           </div>
-          <div class="feat-right">
-            <SvgScanner class="feat-svg" />
+          <div class="benefit-cards">
+            <!-- Trading volume: animated candlestick chart -->
+            <div class="benefit-card">
+              <SvgTradingVolume class="benefit-svg" />
+              <p class="benefit-label">Detect Fake and real<br>Trading Volume</p>
+            </div>
+
+            <!-- Bot/Human classification: scanning fingerprint -->
+            <div class="benefit-card">
+              <SvgIdentityScan class="benefit-svg" />
+              <p class="benefit-label">Proof of Personhood<br>and Access Control</p>
+            </div>
+
+            <!-- AI portrait: wallet → signals → profile -->
+            <div class="benefit-card">
+              <SvgWalletPortrait />
+              <p class="benefit-label">AML, KYC, KYB</p>
+            </div>
           </div>
         </section>
 
@@ -822,70 +834,28 @@ onUnmounted(() => {
             </div>
           </div>
           <div class="feat-left">
-            <div class="feat-tag">SIGNALS</div>
-            <h2 class="feat-title">Evidence from<br>every layer</h2>
-            <p class="feat-body">Search for any identity and see the evidence from every layer.</p>
+            <h2 class="feat-title">Search</h2>
+            <p class="feat-body">Search for any identity and see the evidence from every imaginable layer.</p>
             <button class="feat-cta" @click="showSection('votes'); loadVotingFiltered()">Browse Signals →</button>
-          </div>
-        </section>
-
-        <h2 class="problem-title">Use Cases</h2>
-
-        <!-- Benefit section -->
-        <section class="benefit-section">
-          <div class="benefit-header">
-          </div>
-          <div class="benefit-cards">
-            <!-- Trading volume: animated candlestick chart -->
-            <div class="benefit-card">
-              <SvgTradingVolume class="benefit-svg" />
-              <p class="benefit-label">Detect Fake and real<br>Trading Volume</p>
-            </div>
-
-            <!-- Bot/Human classification: scanning fingerprint -->
-            <div class="benefit-card">
-              <SvgIdentityScan class="benefit-svg" />
-              <p class="benefit-label">Proof of Personhood<br>and Access Control</p>
-            </div>
-
-            <!-- AI portrait: wallet → signals → profile -->
-            <div class="benefit-card">
-              <SvgWalletPortrait />
-              <p class="benefit-label">AML, KYC, KYB</p>
-            </div>
           </div>
         </section>
 
         <section class="feat-screen feat-screen--alt">
           <div class="feat-right">
-            <SvgCommunity class="feat-svg" />
+            <SvgIdentityScan class="benefit-svg" />
           </div>
           <div class="feat-left">
-            <div class="feat-tag">COMMUNITY</div>
             <h2 class="feat-title">You decide what<br>counts as human</h2>
             <p class="feat-body">Every detection signal goes through community consensus.</p>
-            <button class="feat-cta" @click="showSection('votes'); loadVotingFiltered()">Open Vote Queue →</button>
+            <button class="feat-cta" @click="showSection('votes'); loadVotingFiltered()">Vote →</button>
           </div>
         </section>
 
         <section class="feat-screen">
           <div class="feat-left">
-            <div class="feat-tag">AI BRAIN</div>
-            <h2 class="feat-title">On-device AI,<br>zero cloud calls</h2>
-            <p class="feat-body">Structured Digital Persona<br>Humans, Entities, AI-agents</p>
-            <button class="feat-cta" @click="showSection('checker')">See a Verdict →</button>
-          </div>
-          <div class="feat-right">
-            <SvgAiBrain class="feat-svg" />
-          </div>
-        </section>
-
-        <section class="feat-screen">
-          <div class="feat-left">
-            <div class="feat-tag">API</div>
-            <h2 class="feat-title">One call.<br>Instant answer.</h2>
-            <p class="feat-body">Drop-in HTTP API for any app. First 100 scans free.</p>
-            <button class="feat-cta" @click="showSection('api')">API Reference →</button>
+            <h2 class="feat-title">Dev Ready</h2>
+            <p class="feat-body">SDK, API, Widget for your choice. First 100 scans free.</p>
+            <button class="feat-cta" @click="showSection('dev')">API Reference →</button>
           </div>
           <div class="feat-right">
 
@@ -904,23 +874,23 @@ onUnmounted(() => {
                 <div class="roadmap-date" style="color: #fff">Apr-May 2026</div>
                 <div class="roadmap-desc" style="color: #fff">Devnet public launch</div>
                 <div class="roadmap-desc" style="color: #fff">Colosseum Hackathon submission</div>
-                <div class="roadmap-desc" style="color: #fff">Data providers onboarding</div>
+                <div class="roadmap-desc" style="color: #fff">AI-tutors onboarding</div>
               </div>
             </div>
             <div class="roadmap-item">
               <div class="roadmap-dot"></div>
               <div class="roadmap-content">
-                <div class="roadmap-date">May-Jun 2026</div>
-                <div class="roadmap-desc">Colosseum Accellerator</div>
-                <div class="roadmap-desc">Human-verified proof with fully private evidence and quantum-resistant encryption</div>
-                <div class="roadmap-desc">POH token launch (date TBA)</div>
+                <div class="roadmap-date" style="color: #fff">May-Jun 2026</div>
+                <div class="roadmap-desc" style="color: #fff">Digital Identity Search</div>
+                <div class="roadmap-desc" style="color: #fff">SDK, Widget, Dev tools</div>
+                <div class="roadmap-desc" style="color: #fff">Conviction Curves</div>
               </div>
             </div>
             <div class="roadmap-item">
               <div class="roadmap-dot"></div>
               <div class="roadmap-content">
                 <div class="roadmap-date">Jun-Jul 2026</div>
-                <div class="roadmap-desc">Multi-chain support across Bitcoin, Litecoin, and Tron</div>
+                <div class="roadmap-desc">Support Bitcoin, Tron, TON search</div>
               </div>
             </div>
 
@@ -928,7 +898,7 @@ onUnmounted(() => {
               <div class="roadmap-dot"></div>
               <div class="roadmap-content">
                 <div class="roadmap-date">Jul-Aug 2026</div>
-                <div class="roadmap-desc">Trading pair analysis to identify fake liquidity and real market activity</div>
+                <div class="roadmap-desc">Trading analysis</div>
               </div>
             </div>
             
@@ -936,7 +906,7 @@ onUnmounted(() => {
               <div class="roadmap-dot"></div>
               <div class="roadmap-content">
                 <div class="roadmap-date">Aug-Sep 2026</div>
-                <div class="roadmap-desc">Visual analytics powered by charts & behavioral data mapping</div>
+                <div class="roadmap-desc">Getting smarter...</div>
               </div>
             </div>
 
@@ -956,7 +926,7 @@ onUnmounted(() => {
       <div v-if="currentSection === 'checker'" class="scan-page">
         <div class="scan-hero">
           <h2 class="scan-title">AI-powered Identities</h2>
-          <p class="scan-sub">EVM and Solana wallet addresses, Web3 domain names, @handle, twitter:name, or any name</p>
+          <p class="scan-sub">Search by cryptocurrency wallet address, Web3 domain names, X profiles or names</p>
         </div>
 
         <div class="scan-box">
@@ -965,7 +935,7 @@ onUnmounted(() => {
               type="text"
               v-model="scanInput"
               :disabled="!!batchFile"
-              placeholder=""
+              placeholder="Type to search"
               class="scan-input"
               @keydown.enter="runCheck"
             />
@@ -1140,9 +1110,8 @@ onUnmounted(() => {
       <!-- Listing -->
       <div v-if="currentSection === 'listing'" class="content-section">
         <div class="listing-header">
-          <div class="scan-tag">METHOD LISTING</div>
           <h2 class="scan-title">Submit a detection signal</h2>
-          <p class="scan-sub">Define a signal and pay 1000 POH to register it. 500 POH goes to stakers immediately, 500 to the protocol. Earn rewards when your method is used in scans.</p>
+          <p class="scan-sub">Define a signal and earn 4% trading volume lifetime.</p>
         </div>
         <div class="form-section">
           <div class="form-label-row">
@@ -1613,7 +1582,6 @@ const results = await pollJob(jobId)</pre>
       <!-- Staking -->
       <div v-if="currentSection === 'staking'" class="staking-page">
         <div class="scan-hero">
-          <div class="scan-tag">STAKING</div>
           <h2 class="scan-title">Stake POH</h2>
           <p class="scan-sub">Your staked POH determines your vote weight when scoring detection signals.</p>
         </div>
@@ -1900,7 +1868,7 @@ const results = await pollJob(jobId)</pre>
 }
 .benefit-svg {
   width: 100%;
-  /* max-width: 240px; */
+  max-width: 512px;
   height: auto;
   border-radius: 12px;
 }

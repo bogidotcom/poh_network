@@ -253,8 +253,7 @@ function signalStrength(item) {
     </div>
 
     <div class="vqs-header">
-      <div class="scan-tag">CONSENSUS QUEUE</div>
-      <h2 class="scan-title">Signal feedback</h2>
+      <h2 class="scan-title">Community Convictions</h2>
       <h3>Buy to signal human confidence — sell to withdraw trust. <a style="color: white;" href="https://x.com/poh_network/status/2056757621202284886" target="_blank">Learn More</a></h3>
       <br>
       <p class="scan-sub">

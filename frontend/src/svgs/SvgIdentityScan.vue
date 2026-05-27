@@ -11,9 +11,9 @@
                 <rect x="70" y="58" width="8" height="6" rx="1" stroke="#ef4444" stroke-width="1" fill="none"/>
                 <line x1="54" y1="72" x2="74" y2="72" stroke="#ef4444" stroke-width="1"/>
                 <!-- bot label -->
-                <text x="52" y="100" fill="#ef444480" font-size="8" font-family="monospace">BOT</text>
+                <text x="64" y="100" fill="#ef444480" font-size="8" font-family="monospace" text-anchor="middle">BOT</text>
                 <!-- verdict -->
-                <text x="34" y="134" fill="#ef4444" font-size="7" font-family="monospace" opacity="0">
+                <text x="64" y="134" fill="#ef4444" font-size="7" font-family="monospace" text-anchor="middle" opacity="0">
                   <animate attributeName="opacity" values="0;1" dur="0.4s" begin="1.2s" fill="freeze"/>✗ NOT HUMAN</text>
 
                 <!-- right column: human -->
@@ -22,9 +22,9 @@
                 <circle cx="176" cy="62" r="12" stroke="#22c55e" stroke-width="1.2" fill="none"/>
                 <path d="M156 108 Q156 86 176 86 Q196 86 196 108" stroke="#22c55e" stroke-width="1.2" fill="none"/>
                 <!-- human label -->
-                <text x="158" y="122" fill="#22c55e80" font-size="8" font-family="monospace">HUMAN</text>
+                <text x="176" y="122" fill="#22c55e80" font-size="8" font-family="monospace" text-anchor="middle">HUMAN</text>
                 <!-- verdict -->
-                <text x="138" y="134" fill="#22c55e" font-size="7" font-family="monospace" opacity="0">
+                <text x="176" y="134" fill="#22c55e" font-size="7" font-family="monospace" text-anchor="middle" opacity="0">
                   <animate attributeName="opacity" values="0;1" dur="0.4s" begin="1.5s" fill="freeze"/>✓ VERIFIED</text>
 
                 <!-- scanning beam -->

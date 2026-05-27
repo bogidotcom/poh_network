@@ -96,7 +96,7 @@ const emit = defineEmits([
         <button @click="emit('update:batchFile', null)" class="mini-btn"><Trash2 :size="12" /></button>
       </div>
       <button @click="emit('run-check')" :disabled="loading || (!scanInput && !batchFile)" class="submit-listing-btn">
-        {{ isResolving ? 'Resolving...' : loading ? 'Scanning...' : batchFile ? 'Scan Batch' : 'Scan Wallet' }}
+        {{ isResolving ? 'Resolving...' : loading ? 'Scanning...' : batchFile ? 'Scan Batch' : 'Search' }}
       </button>
     </div>
 
