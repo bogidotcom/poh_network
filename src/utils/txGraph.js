@@ -263,8 +263,19 @@ async function analyzeSolana(address) {
 // ── Public entry points ───────────────────────────────────────────────────────
 
 async function analyzeTransactionGraph(address) {
-  if (/^0x[0-9a-fA-F]{40}$/.test(address))          return analyzeEvm(address);
-  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) return analyzeSolana(address);
+  // Use the same robust detection as the main checker (prevents BTC/legacy addresses from being misclassified as Solana)
+  const isEvm     = /^0x[0-9a-fA-F]{40}$/.test(address);
+  const isBitcoin = /^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,87}$/i.test(address);
+  const isTron    = /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(address);
+  const isTon     = /^(EQ|UQ|kQ|0Q)[a-zA-Z0-9_-]{46}$/.test(address);
+  const isXlm     = /^G[A-Z2-7]{55}$/.test(address);
+  const isSolana  = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address) && !isTron && !isBitcoin;
+
+  if (isEvm)     return analyzeEvm(address);
+  if (isSolana)  return analyzeSolana(address);
+
+  // Bitcoin, Tron, TON, XLM: graph analysis not yet implemented for these chains
+  // Return empty so we don't crash or pollute results
   return [];
 }
 

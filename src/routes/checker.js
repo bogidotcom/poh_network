@@ -46,6 +46,21 @@ function computeMethodsHash(methods) {
   return crypto.createHash('sha256').update(ids).digest('hex').slice(0, 12);
 }
 
+// ── Address type validation (Task 3 fix) ─────────────────────────────────────
+function isSupportedAddress(raw) {
+  if (!raw || typeof raw !== 'string') return false;
+  const a = raw.trim();
+
+  const isEvm     = /^0x[0-9a-fA-F]{40}$/.test(a);
+  const isBitcoin = /^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,87}$/i.test(a);
+  const isTron    = /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(a);
+  const isTon     = /^(EQ|UQ|kQ|0Q)[a-zA-Z0-9_-]{46}$/.test(a);
+  const isXlm     = /^G[A-Z2-7]{55}$/.test(a);
+  const isSolana  = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a) && !isTron && !isBitcoin;
+
+  return isEvm || isBitcoin || isTron || isTon || isXlm || isSolana;
+}
+
 // ── OFAC sanctions check ──────────────────────────────────────────────────────
 // 1. Direct address match — O(1) in-memory lookup.
 // 2. 1-hop counterparty check — reuses txGraph cache so no extra API calls if
@@ -327,6 +342,19 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
       inputs = Array.isArray(input) ? input : [input];
     }
     if (inputs.length === 0) return res.status(400).json({ error: 'No input provided' });
+
+    // Early address type validation (Task 3)
+    // If an input looks like a raw address (not a name, @handle, or domain), it must match a supported chain.
+    // This prevents downstream Solana-specific code (txGraph etc.) from blowing up on BTC etc.
+    for (const inp of inputs) {
+      const trimmed = String(inp).trim();
+      const looksLikeAddress = /^0x|^[13bcTGU]|^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(trimmed);
+      if (looksLikeAddress && !isSupportedAddress(trimmed)) {
+        return res.status(400).json({
+          error: `Unrecognised address format: ${trimmed}. Supported: EVM, Bitcoin, Solana, Tron, TON, XLM.`,
+        });
+      }
+    }
 
     // Auth
     let effectiveWallet = walletAddress;
