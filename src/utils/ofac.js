@@ -127,10 +127,15 @@ function getOfacStats() {
 }
 
 // ── Task 4: Additional sanctions lists (UK FCDO, EU) ──────────────────────────
-// UK: https://sanctionslist.fcdo.gov.uk/docs/UK-Sanctions-List.csv
-// EU: https://data.europa.eu/apps/eusanctionstracker/individuals/ (or consolidated XML/CSV)
-// Current: name-only lists (crypto addresses rare in these lists; extend parse when they appear).
-// Also: transaction graph analysis (already wired in checker via analyzeTransactionGraph).
+// UK: https://sanctionslist.fcdo.gov.uk/docs/UK-Sanctions-List.csv (auto-fetched)
+// EU: https://data.europa.eu/apps/eusanctionstracker/individuals/
+//     Built on official EU Consolidated Financial Sanctions List (FSD)
+//     Best source: https://webgate.ec.europa.eu/fsd/fsf (login may be required for bulk export)
+//     Recommended: Periodically download the latest "Consolidated list" (CSV or XML v1.1)
+//     and place it as data/eu_consolidated.csv (or .xml) in this project.
+//
+// Current implementation: name-based fuzzy matching (EU lists rarely contain crypto addresses).
+// Crypto address screening is still best covered by the OFAC SDN list.
 
 const UK_SANCTIONS_URL = 'https://sanctionslist.fcdo.gov.uk/docs/UK-Sanctions-List.csv';
 let ukNames = new Set(); // lowercased names for substring / exact match
@@ -164,16 +169,123 @@ function isUkSanctioned(addressOrName) {
 }
 
 function getAdditionalSanctionsStats() {
-  return { ukCount: ukNames.size };
+  return { ukCount: ukNames.size, euCount: euNames.size };
 }
 
-/** Combined check (OFAC + UK + future EU) */
-function isSanctioned(address) {
-  const ofac = isOfacSanctioned(address);
-  if (ofac.sanctioned) return { ...ofac, list: 'OFAC' };
-  const uk = isUkSanctioned(address);
-  if (uk.sanctioned) return uk;
+// ── EU Sanctions (name-based) ─────────────────────────────────────────────────
+const EU_LOCAL_CSV_PATH = path.join(__dirname, '../../data/eu_consolidated.csv');
+const EU_LOCAL_XML_PATH = path.join(__dirname, '../../data/eu_consolidated.xml');
+
+let euNames = new Set();
+
+async function refreshEuFromRemote() {
+  // The official source often requires auth/token. We try common public patterns as fallback.
+  const candidates = [
+    'https://webgate.ec.europa.eu/fsd/fsf/public/files/csvFullSanctionsList/content',
+    'https://webgate.ec.europa.eu/fsd/fsf/public/files/csvFullSanctionsList_1_1/content',
+  ];
+
+  for (const url of candidates) {
+    try {
+      const res = await axios.get(url, { timeout: 20000, responseType: 'text' });
+      if (res.status === 200 && res.data && res.data.length > 1000) {
+        parseEuCsv(res.data);
+        console.log(`[sanctions] EU list loaded from remote (${euNames.size} names)`);
+        return true;
+      }
+    } catch (e) {
+      // try next
+    }
+  }
+  return false;
+}
+
+function parseEuCsv(csvText) {
+  euNames = new Set();
+  const lines = csvText.split('\n');
+  for (let i = 1; i < lines.length; i++) { // skip header
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    // EU CSV format varies by version. Common: Name is in early columns.
+    // Try splitting and taking plausible name fields.
+    const parts = line.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/); // handle quoted commas
+    for (let p = 0; p < Math.min(6, parts.length); p++) {
+      let name = parts[p].replace(/^"|"$/g, '').trim();
+      if (name.length > 4 && /[A-Za-z]/.test(name)) {
+        euNames.add(name.toLowerCase());
+      }
+    }
+  }
+}
+
+function loadEuFromLocalFile() {
+  const fs = require('fs');
+  try {
+    if (fs.existsSync(EU_LOCAL_CSV_PATH)) {
+      const csv = fs.readFileSync(EU_LOCAL_CSV_PATH, 'utf8');
+      parseEuCsv(csv);
+      console.log(`[sanctions] EU list loaded from local CSV — ${euNames.size} names`);
+      return true;
+    }
+    if (fs.existsSync(EU_LOCAL_XML_PATH)) {
+      // Very basic XML name extraction (for <name> or <wholeName> tags)
+      const xml = fs.readFileSync(EU_LOCAL_XML_PATH, 'utf8');
+      const nameMatches = xml.match(/<wholeName[^>]*>([^<]+)<\/wholeName>|<name[^>]*>([^<]+)<\/name>/gi) || [];
+      euNames = new Set(nameMatches.map(m => m.replace(/<[^>]+>/g, '').trim().toLowerCase()).filter(n => n.length > 4));
+      console.log(`[sanctions] EU list loaded from local XML — ${euNames.size} names`);
+      return true;
+    }
+  } catch (e) {
+    console.warn('[sanctions] Failed to load local EU sanctions file:', e.message);
+  }
+  return false;
+}
+
+async function refreshEu() {
+  const loadedLocal = loadEuFromLocalFile();
+  if (loadedLocal) return;
+
+  const loadedRemote = await refreshEuFromRemote();
+  if (!loadedRemote) {
+    console.warn('[sanctions] EU sanctions list not loaded (no local file + remote fetch failed). Place data/eu_consolidated.csv for best results.');
+  }
+}
+
+// Kick off
+refreshEu().catch(() => {});
+
+function isEuSanctioned(query) {
+  if (!query) return { sanctioned: false };
+  const q = String(query).toLowerCase().trim();
+  for (const name of euNames) {
+    if (q.includes(name) || name.includes(q)) {
+      return { sanctioned: true, name, list: 'EU' };
+    }
+  }
   return { sanctioned: false };
 }
 
-module.exports = { isOfacSanctioned, getOfacStats, isUkSanctioned, isSanctioned, getAdditionalSanctionsStats };
+/** Combined sanctions check (OFAC crypto + UK/EU name matching) */
+function isSanctioned(addressOrName) {
+  const ofac = isOfacSanctioned(addressOrName);
+  if (ofac.sanctioned) return { ...ofac, list: 'OFAC' };
+
+  const uk = isUkSanctioned(addressOrName);
+  if (uk.sanctioned) return uk;
+
+  const eu = isEuSanctioned(addressOrName);
+  if (eu.sanctioned) return eu;
+
+  return { sanctioned: false };
+}
+
+module.exports = {
+  isOfacSanctioned,
+  getOfacStats,
+  isUkSanctioned,
+  isEuSanctioned,
+  isSanctioned,
+  getAdditionalSanctionsStats,
+  refreshEu,           // exposed for manual refresh if needed
+};
