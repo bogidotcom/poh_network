@@ -218,9 +218,16 @@ async function scanWallet(rawInput, { allMethods, chainFilter }) {
     address = resolved;
   }
 
-  const isEvm    = /^0x[0-9a-fA-F]{40}$/.test(address);
-  const isSolana = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address);
-  if (!isEvm && !isSolana) return [{ input: address, error: 'Unrecognised address format' }];
+  // Chain detection (Tron before Solana — Tron T... base58 can overlap Solana range)
+  const isEvm     = /^0x[0-9a-fA-F]{40}$/.test(address);
+  const isBitcoin = /^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,87}$/i.test(address);
+  const isTron    = /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(address);
+  const isTon     = /^(EQ|UQ|kQ|0Q)[a-zA-Z0-9_-]{46}$/.test(address);
+  const isXlm     = /^G[A-Z2-7]{55}$/.test(address);
+  const isSolana  = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address) && !isTron;
+
+  const chain = isEvm ? 'evm' : isBitcoin ? 'bitcoin' : isTron ? 'tron' : isTon ? 'ton' : isXlm ? 'xlm' : isSolana ? 'solana' : null;
+  if (!chain) return [{ input: address, error: 'Unrecognised address format' }];
 
   let methods = [...allMethods];
   if (isEvm) {
@@ -230,9 +237,17 @@ async function scanWallet(rawInput, { allMethods, chainFilter }) {
       const allowed = chainFilter.split(',').map(Number);
       methods = methods.filter(m => m.type === 'rest' || allowed.includes(Number(m.chainId)));
     }
-  } else {
+  } else if (isSolana) {
     methods = methods.filter(m => m.type === 'solana' || m.type === 'rest' || m.type === 'labeled');
     methods = methods.filter(m => !m.addressType || m.addressType === 'solana');
+  } else {
+    // Bitcoin, Tron, TON, XLM — allow matching rest methods (by chain) + any native type if present
+    const nativeType = chain; // 'bitcoin' | 'tron' | 'ton' | 'xlm'
+    methods = methods.filter(m =>
+      m.type === nativeType ||
+      m.type === 'rest' && (!m.chain || m.chain === chain) ||
+      m.type === 'labeled'
+    );
   }
   if (methods.length === 0) return [];
 
@@ -656,8 +671,13 @@ async function resolveIdentity(raw) {
   if (!q) return [];
 
   const isEvmAddr    = /^0x[0-9a-fA-F]{40}$/.test(q);
-  const isSolanaAddr = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(q);
-  if (isEvmAddr || isSolanaAddr) {
+  const isBitcoin    = /^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,87}$/i.test(q);
+  const isTron       = /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(q);
+  const isTon        = /^(EQ|UQ|kQ|0Q)[a-zA-Z0-9_-]{46}$/.test(q);
+  const isXlm        = /^G[A-Z2-7]{55}$/.test(q);
+  const isSolanaAddr = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(q) && !isTron;
+
+  if (isEvmAddr || isSolanaAddr || isBitcoin || isTron || isTon || isXlm) {
     return [{ address: q, platform: null, handle: null, displayName: null, avatar: null }];
   }
 

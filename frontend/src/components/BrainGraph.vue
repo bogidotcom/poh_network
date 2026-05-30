@@ -8,6 +8,10 @@
       <span class="bg-stat"><span class="bg-dot bg-dot--evm" />{{ counts.evm }} EVM</span>
       <span class="bg-stat"><span class="bg-dot bg-dot--rest" />{{ counts.rest }} REST</span>
       <span class="bg-stat"><span class="bg-dot bg-dot--solana" />{{ counts.solana }} Solana</span>
+      <span class="bg-stat"><span class="bg-dot bg-dot--bitcoin" />{{ counts.bitcoin }} BTC</span>
+      <span class="bg-stat"><span class="bg-dot bg-dot--tron" />{{ counts.tron }} Tron</span>
+      <span class="bg-stat"><span class="bg-dot bg-dot--ton" />{{ counts.ton }} TON</span>
+      <span class="bg-stat"><span class="bg-dot bg-dot--xlm" />{{ counts.xlm }} XLM</span>
     </div>
   </div>
 </template>
@@ -22,15 +26,27 @@ const wrapRef  = ref(null)
 const canvasRef = ref(null)
 const tooltip   = ref(null)
 
-const TYPE_COLOR = { evm: '#627EEA', rest: '#00D395', solana: '#9945FF' }
+const TYPE_COLOR = {
+  evm:     '#627EEA',
+  rest:    '#00D395',
+  solana:  '#9945FF',
+  bitcoin: '#F7931A',
+  tron:    '#FF001F',
+  ton:     '#0098EA',
+  xlm:     '#08B5E5',
+}
 const BRAIN_COLOR = '#00D4B0'
 const HUMAN_COLOR = '#22c55e'
 const BOT_COLOR   = '#ef4444'
 
 const counts = computed(() => ({
-  evm:    props.methods.filter(m => m.type === 'evm').length,
-  rest:   props.methods.filter(m => m.type === 'rest').length,
-  solana: props.methods.filter(m => m.type === 'solana').length,
+  evm:     props.methods.filter(m => m.type === 'evm').length,
+  rest:    props.methods.filter(m => m.type === 'rest').length,
+  solana:  props.methods.filter(m => m.type === 'solana').length,
+  bitcoin: props.methods.filter(m => m.type === 'bitcoin' || (m.type === 'rest' && m.chain === 'bitcoin')).length,
+  tron:    props.methods.filter(m => m.type === 'tron'    || (m.type === 'rest' && m.chain === 'tron')).length,
+  ton:     props.methods.filter(m => m.type === 'ton'     || (m.type === 'rest' && m.chain === 'ton')).length,
+  xlm:     props.methods.filter(m => m.type === 'xlm'     || (m.type === 'rest' && m.chain === 'xlm')).length,
 }))
 
 // ── Graph state ───────────────────────────────────────────────────────────────
@@ -412,7 +428,11 @@ onUnmounted(() => {
   border-radius: 50%;
   display: inline-block;
 }
-.bg-dot--evm    { background: #627EEA; box-shadow: 0 0 5px #627EEA; }
-.bg-dot--rest   { background: #00D395; box-shadow: 0 0 5px #00D395; }
-.bg-dot--solana { background: #9945FF; box-shadow: 0 0 5px #9945FF; }
+.bg-dot--evm     { background: #627EEA; box-shadow: 0 0 5px #627EEA; }
+.bg-dot--rest    { background: #00D395; box-shadow: 0 0 5px #00D395; }
+.bg-dot--solana  { background: #9945FF; box-shadow: 0 0 5px #9945FF; }
+.bg-dot--bitcoin { background: #F7931A; box-shadow: 0 0 5px #F7931A; }
+.bg-dot--tron    { background: #FF001F; box-shadow: 0 0 5px #FF001F; }
+.bg-dot--ton     { background: #0098EA; box-shadow: 0 0 5px #0098EA; }
+.bg-dot--xlm     { background: #08B5E5; box-shadow: 0 0 5px #08B5E5; }
 </style>

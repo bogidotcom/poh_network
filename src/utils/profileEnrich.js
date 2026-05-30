@@ -258,6 +258,12 @@ function buildGraphData(address, counterparties) {
 async function enrichProfile(address, counterparties) {
   const isEvm = /^0x[0-9a-fA-F]{40}$/.test(address);
 
+  const isBitcoin = /^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,87}$/i.test(address);
+  const isTron    = /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(address);
+  const isTon     = /^(EQ|UQ|kQ|0Q)[a-zA-Z0-9_-]{46}$/.test(address);
+  const isXlm     = /^G[A-Z2-7]{55}$/.test(address);
+  const isSolana  = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address) && !isTron;
+
   const tasks = {
     web3bio:   fetchWeb3Bio(address),
     txStats:   isEvm ? fetchTxStats(address)         : Promise.resolve(null),
@@ -271,10 +277,15 @@ async function enrichProfile(address, counterparties) {
     humanTech: isEvm ? fetchHumanTech(address)       : Promise.resolve(null),
     safeWallets: isEvm ? fetchSafeWallets(address)   : Promise.resolve(null),
     link3:     isEvm ? fetchLink3Profile(address)    : Promise.resolve(null),
+    bitcoin:   isBitcoin ? fetchBitcoinProfile(address) : Promise.resolve(null),
+    tron:      isTron    ? fetchTronProfile(address)    : Promise.resolve(null),
+    ton:       isTon     ? fetchTonProfile(address)     : Promise.resolve(null),
+    xlm:       isXlm     ? fetchXlmProfile(address)     : Promise.resolve(null),
   };
 
   const [web3bio, txStats, gitcoin, ens, galxe,
-         brightid, bab, nomis, humanity, humanTech, safeWallets, link3] = await Promise.all(
+         brightid, bab, nomis, humanity, humanTech, safeWallets, link3,
+         bitcoin, tron, ton, xlm] = await Promise.all(
     Object.values(tasks).map(p => p.catch(() => null))
   );
 
@@ -384,6 +395,11 @@ async function enrichProfile(address, counterparties) {
     },
     link3Profile:      link3       || null,  // { handle, subscribers, url } or null
     associatedWallets: safeWallets || null,  // Safe multisig addresses or null
+    // New chain-specific enrichment (Task 1)
+    bitcoin: bitcoin || null,
+    tron:    tron    || null,
+    ton:     ton     || null,
+    xlm:     xlm     || null,
   };
 }
 

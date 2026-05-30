@@ -2350,5 +2350,77 @@
     "score": 0,
     "voteCount": 0,
     "created_at": "2026-05-26T00:00:00.000Z"
+  },
+  {
+    "id": "btc_tx_count",
+    "type": "rest",
+    "chain": "bitcoin",
+    "address": "https://mempool.space/api/address/{address}",
+    "description": "Bitcoin tx count \u2265 5 \u2014 wallet has on-chain history",
+    "expression": "data.chain_stats.tx_count >= 5",
+    "headers": "{}",
+    "score": 0,
+    "voteCount": 0,
+    "created_at": "2026-05-30T00:00:00.000Z"
+  },
+  {
+    "id": "btc_balance",
+    "type": "rest",
+    "chain": "bitcoin",
+    "address": "https://mempool.space/api/address/{address}",
+    "description": "Bitcoin has positive balance (funded UTXOs)",
+    "expression": "(data.chain_stats.funded_txo_sum - data.chain_stats.spent_txo_sum) > 0",
+    "headers": "{}",
+    "score": 0,
+    "voteCount": 0,
+    "created_at": "2026-05-30T00:00:00.000Z"
+  },
+  {
+    "id": "tron_trx_balance",
+    "type": "rest",
+    "chain": "tron",
+    "address": "https://api.trongrid.io/v1/accounts/{address}",
+    "description": "Tron TRX balance > 1 TRX",
+    "expression": "data.data?.[0]?.balance > 1000000",
+    "headers": "{}",
+    "score": 0,
+    "voteCount": 0,
+    "created_at": "2026-05-30T00:00:00.000Z"
+  },
+  {
+    "id": "ton_balance",
+    "type": "rest",
+    "chain": "ton",
+    "address": "https://tonapi.io/v2/accounts/{address}",
+    "description": "TON balance > 0",
+    "expression": "data.balance > 0",
+    "headers": "{}",
+    "score": 0,
+    "voteCount": 0,
+    "created_at": "2026-05-30T00:00:00.000Z"
+  },
+  {
+    "id": "ton_dns",
+    "type": "rest",
+    "chain": "ton",
+    "address": "https://tonapi.io/v2/accounts/{address}/dns/backresolve",
+    "description": "Has .ton domain",
+    "expression": "Array.isArray(data.domains) && data.domains.length > 0",
+    "headers": "{}",
+    "score": 0,
+    "voteCount": 0,
+    "created_at": "2026-05-30T00:00:00.000Z"
+  },
+  {
+    "id": "xlm_account_exists",
+    "type": "rest",
+    "chain": "xlm",
+    "address": "https://horizon.stellar.org/accounts/{address}",
+    "description": "Stellar account exists (funded)",
+    "expression": "status !== 404",
+    "headers": "{}",
+    "score": 0,
+    "voteCount": 0,
+    "created_at": "2026-05-30T00:00:00.000Z"
   }
 ]

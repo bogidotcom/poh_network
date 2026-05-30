@@ -48,6 +48,10 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
     const v = scanInput.value?.trim()
     if (!v) return null
     if (/^0x[0-9a-fA-F]{40}$/.test(v)) return 'evm'
+    if (/^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,87}$/i.test(v)) return 'bitcoin'
+    if (/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(v)) return 'tron'
+    if (/^(EQ|UQ|kQ|0Q)[a-zA-Z0-9_-]{46}$/.test(v)) return 'ton'
+    if (/^G[A-Z2-7]{55}$/.test(v)) return 'xlm'
     if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(v)) return 'solana'
     // Hint for platform-prefixed or @ searches
     if (v.startsWith('@') || v.includes(':')) return 'custom'
@@ -57,6 +61,10 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
   function isWalletAddress(input) {
     if (!input) return false
     if (/^0x[0-9a-fA-F]{40}$/.test(input)) return true
+    if (/^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,87}$/i.test(input)) return true
+    if (/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(input)) return true
+    if (/^(EQ|UQ|kQ|0Q)[a-zA-Z0-9_-]{46}$/.test(input)) return true
+    if (/^G[A-Z2-7]{55}$/.test(input)) return true
     if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(input)) return true
     return false
   }
