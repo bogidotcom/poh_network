@@ -1,16 +1,18 @@
-# EU Consolidated Sanctions - Local Drop-in File (Task 4)
-# 
-# How to update:
-# 1. Go to the official source: https://webgate.ec.europa.eu/fsd/fsf (Financial Sanctions Database)
-# 2. Or use the nice UI the user linked: https://data.europa.eu/apps/eusanctionstracker/individuals
-# 3. Download the latest "Consolidated list" as CSV (v1.0 or v1.1) or XML.
-# 4. Save it here as eu_consolidated.csv (or eu_consolidated.xml)
+# EU Consolidated Sanctions - Optional Local Drop-in (Task 4)
 #
-# The code will automatically pick it up on next server restart / refresh.
+# AUTOMATIC MODE (recommended):
+# The code now automatically fetches fresh EU sanctions data on startup
+# and every 12 hours using OpenSanctions (https://www.opensanctions.org/datasets/eu_fsf/).
+# This dataset is kept up-to-date daily and sources the **exact same official EU
+# Consolidated list** that powers the page you linked:
+# https://data.europa.eu/apps/eusanctionstracker/individuals
 #
-# Format: The parser is tolerant and looks for name-like fields in the first few columns.
-# Example rows (replace with real data):
-
-"Name 1","Alias","Nationality","Regime","..."
-"Andrei Viktorovich MARCHENKO","","RU","UKR","..."
-"Olga Mikhailovna SOKOLOVA","","RU","UKR","..."
+# No manual action is required for normal operation.
+#
+# MANUAL / FALLBACK:
+# If you want to use a specific snapshot or the direct official export:
+# 1. Download from https://webgate.ec.europa.eu/fsd/fsf (Consolidated CSV or XML)
+# 2. Save the file here as `eu_consolidated.csv` (or .xml)
+# 3. The local file takes precedence over the automatic OpenSanctions fetch.
+#
+# The system will still fall back to automatic if the local file is missing or unparseable.
