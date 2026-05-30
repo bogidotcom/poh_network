@@ -253,6 +253,96 @@ function buildGraphData(address, counterparties) {
   return { nodes, edges };
 }
 
+// ── Bitcoin enrichment (mempool.space, no key) ────────────────────────────────
+// tx count, balance, total received. First-seen omitted (requires paginated tx history).
+
+async function fetchBitcoinProfile(address) {
+  try {
+    const res = await axios.get(`https://mempool.space/api/address/${encodeURIComponent(address)}`, { timeout: 7000 });
+    const cs = res.data?.chain_stats || {};
+    const txCount = cs.tx_count || 0;
+    const funded = cs.funded_txo_sum || 0;
+    const spent = cs.spent_txo_sum || 0;
+    const balance = funded - spent;
+    return {
+      txCount,
+      totalReceived: funded,
+      balance,
+      explorer: `https://mempool.space/address/${address}`
+    };
+  } catch { return null; }
+}
+
+// ── Tron enrichment (TronGrid free tier) ──────────────────────────────────────
+// TRX balance, USDT holdings (TRC-20), basic vote info, TronScan link.
+
+async function fetchTronProfile(address) {
+  try {
+    const res = await axios.get(`https://api.trongrid.io/v1/accounts/${encodeURIComponent(address)}`, { timeout: 7000, validateStatus: () => true });
+    const acc = res.data?.data?.[0] || {};
+    const trxSun = acc.balance || 0;
+    const trx = trxSun / 1_000_000;
+    const trc20 = acc.trc20 || [];
+    const usdtKey = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
+    const usdtEntry = trc20.find(t => t && t[usdtKey] != null);
+    const usdt = usdtEntry ? (parseFloat(usdtEntry[usdtKey]) / 1_000_000) : 0;
+    const hasVotes = !!(acc.votes && acc.votes.length);
+    return {
+      trxBalance: trx,
+      usdtBalance: usdt,
+      hasVotes,
+      explorer: `https://tronscan.org/#/address/${address}`
+    };
+  } catch { return null; }
+}
+
+// ── TON enrichment (tonapi.io) ────────────────────────────────────────────────
+// Balance (TON), .ton domains, rough NFT presence.
+
+async function fetchTonProfile(address) {
+  try {
+    const [acctRes, dnsRes] = await Promise.all([
+      axios.get(`https://tonapi.io/v2/accounts/${encodeURIComponent(address)}`, { timeout: 7000 }),
+      axios.get(`https://tonapi.io/v2/accounts/${encodeURIComponent(address)}/dns/backresolve`, { timeout: 5000, validateStatus: () => true }).catch(() => null)
+    ]);
+    const bal = acctRes.data?.balance || 0;
+    const ton = bal / 1_000_000_000;
+    const domains = dnsRes?.data?.domains || [];
+    // NFT count: light check (full enumeration expensive; returns >0 if any)
+    let nftCount = 0;
+    try {
+      const n = await axios.get(`https://tonapi.io/v2/accounts/${encodeURIComponent(address)}/nfts?limit=1`, { timeout: 5000, validateStatus: s => s < 500 });
+      nftCount = (n.data?.nft_items?.length || 0) > 0 ? 1 : 0;
+    } catch {}
+    return {
+      balance: ton,
+      hasDomain: domains.length > 0,
+      domains: domains.slice(0, 2),
+      hasNfts: nftCount > 0,
+      explorer: `https://tonscan.org/address/${address}`
+    };
+  } catch { return null; }
+}
+
+// ── Stellar/XLM enrichment (Horizon, no auth) ─────────────────────────────────
+// Native balance, home_domain (federation hint), last activity time.
+
+async function fetchXlmProfile(address) {
+  try {
+    const res = await axios.get(`https://horizon.stellar.org/accounts/${encodeURIComponent(address)}`, { timeout: 7000, validateStatus: s => s < 500 });
+    if (res.status === 404 || !res.data) return null;
+    const d = res.data;
+    const native = (d.balances || []).find(b => b.asset_type === 'native');
+    const xlmBal = native ? parseFloat(native.balance) : 0;
+    return {
+      xlmBalance: xlmBal,
+      homeDomain: d.home_domain || null,
+      lastModified: d.last_modified_time || null,
+      explorer: `https://stellarchain.io/address/${address}`
+    };
+  } catch { return null; }
+}
+
 // ── Main enrichment ───────────────────────────────────────────────────────────
 
 async function enrichProfile(address, counterparties) {

@@ -3649,6 +3649,27 @@ const results = await pollJob(jobId)</pre>
   background: #0e0b1c;
 }
 
+.chain-pill--bitcoin {
+  color: #F7931A;
+  border-color: #3a2a1a;
+  background: #1a140a;
+}
+.chain-pill--tron {
+  color: #FF001F;
+  border-color: #3a1014;
+  background: #1a0a0a;
+}
+.chain-pill--ton {
+  color: #0098EA;
+  border-color: #0a2a3a;
+  background: #0a141a;
+}
+.chain-pill--xlm {
+  color: #08B5E5;
+  border-color: #0a2a32;
+  background: #0a161a;
+}
+
 /* ── Platform chips ── */
 .platform-chips {
   display: flex;

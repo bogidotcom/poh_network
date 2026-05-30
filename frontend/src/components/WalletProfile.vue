@@ -208,6 +208,38 @@
       </div>
     </div>
 
+    <!-- Cross-chain on-chain activity (Task 1) -->
+    <div v-if="profile.bitcoin || profile.tron || profile.ton || profile.xlm" class="profile-section">
+      <div class="profile-section-title">Cross-chain Activity</div>
+      <div class="cross-chain-grid">
+        <div v-if="profile.bitcoin" class="cc-card cc-bitcoin">
+          <div class="cc-header">₿ Bitcoin</div>
+          <div class="cc-row">Txs: <strong>{{ profile.bitcoin.txCount?.toLocaleString?.() ?? '—' }}</strong></div>
+          <div class="cc-row">Balance: <strong>{{ (profile.bitcoin.balance / 1e8).toFixed(8) }} BTC</strong></div>
+          <a v-if="profile.bitcoin.explorer" :href="profile.bitcoin.explorer" target="_blank" class="cc-link">mempool.space ↗</a>
+        </div>
+        <div v-if="profile.tron" class="cc-card cc-tron">
+          <div class="cc-header">TRON</div>
+          <div class="cc-row">TRX: <strong>{{ profile.tron.trxBalance?.toFixed?.(2) ?? '—' }}</strong></div>
+          <div class="cc-row">USDT: <strong>{{ profile.tron.usdtBalance?.toFixed?.(2) ?? '—' }}</strong></div>
+          <a v-if="profile.tron.explorer" :href="profile.tron.explorer" target="_blank" class="cc-link">tronscan ↗</a>
+        </div>
+        <div v-if="profile.ton" class="cc-card cc-ton">
+          <div class="cc-header">TON</div>
+          <div class="cc-row">Balance: <strong>{{ profile.ton.balance?.toFixed?.(2) ?? '—' }} TON</strong></div>
+          <div class="cc-row" v-if="profile.ton.hasDomain">.ton domain ✓</div>
+          <div class="cc-row" v-if="profile.ton.hasNfts">NFTs ✓</div>
+          <a v-if="profile.ton.explorer" :href="profile.ton.explorer" target="_blank" class="cc-link">tonscan ↗</a>
+        </div>
+        <div v-if="profile.xlm" class="cc-card cc-xlm">
+          <div class="cc-header">Stellar (XLM)</div>
+          <div class="cc-row">XLM: <strong>{{ profile.xlm.xlmBalance?.toFixed?.(2) ?? '—' }}</strong></div>
+          <div class="cc-row" v-if="profile.xlm.homeDomain">Domain: {{ profile.xlm.homeDomain }}</div>
+          <a v-if="profile.xlm.explorer" :href="profile.xlm.explorer" target="_blank" class="cc-link">stellarchain ↗</a>
+        </div>
+      </div>
+    </div>
+
     <!-- Transaction graph -->
     <div v-if="profile.graph?.nodes?.length > 1" class="profile-section">
       <div class="profile-section-title">
@@ -222,21 +254,29 @@
       <div class="profile-section-title">Evidence</div>
       <div class="evidence-summary">
         <span v-for="r in signals.filter(r => r.methodId !== 'ofac_check').slice(0, 16)" :key="r.methodId"
-              :class="['ev-dot', r.result ? 'ev-pass' : 'ev-fail']" :title="r.description" />
+              :class="['ev-dot', r.methodId && r.methodId.startsWith('usdt_blacklist') && r.result ? 'ev-blacklist' : r.result ? 'ev-pass' : 'ev-fail']" :title="r.description" />
         <span class="ev-count">{{ signals.filter(r => r.result && r.methodId !== 'ofac_check').length }}/{{ signals.filter(r => r.methodId !== 'ofac_check').length }} passed</span>
+      </div>
+
+      <!-- Security Flags (negative signals e.g. Tether blacklist) -->
+      <div v-if="signals.some(r => r.methodId && r.methodId.startsWith('usdt_blacklist') && r.result)" class="ev-flags">
+        <div class="ev-flag-row">
+          <span class="ev-dot ev-blacklist" />
+          <span class="ev-desc" style="color:#fca5a5">{{ signals.find(r => r.methodId && r.methodId.startsWith('usdt_blacklist') && r.result)?.description }}</span>
+        </div>
       </div>
 
       <!-- Passed -->
       <button class="ev-accordion-btn" @click="showPass = !showPass">
-        <span>✓ Passed ({{ signals.filter(r => r.result && r.methodId !== 'ofac_check').length }})</span>
+        <span>✓ Passed ({{ signals.filter(r => r.result && r.methodId !== 'ofac_check' && !(r.methodId && r.methodId.startsWith('usdt_blacklist'))).length }})</span>
         <span class="ev-chevron" :class="{ open: showPass }">›</span>
       </button>
       <div v-show="showPass" class="ev-list">
-        <div v-for="r in signals.filter(r => r.result && r.methodId !== 'ofac_check')" :key="r.methodId" class="ev-row ev-row-pass">
+        <div v-for="r in signals.filter(r => r.result && r.methodId !== 'ofac_check' && !(r.methodId && r.methodId.startsWith('usdt_blacklist')))" :key="r.methodId" class="ev-row ev-row-pass">
           <span class="ev-dot ev-pass" />
           <span class="ev-desc">{{ r.description }}</span>
         </div>
-        <div v-if="!signals.filter(r => r.result && r.methodId !== 'ofac_check').length" class="ev-empty">No signals passed</div>
+        <div v-if="!signals.filter(r => r.result && r.methodId !== 'ofac_check' && !(r.methodId && r.methodId.startsWith('usdt_blacklist'))).length" class="ev-empty">No signals passed</div>
       </div>
 
       <!-- Failed -->
@@ -487,14 +527,32 @@ function platformIcon(p) {
 .assoc-wallet-scan { background: #374151; color: #d1d5db; border: none; border-radius: 5px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
 .assoc-wallet-scan:hover { background: #6366f1; color: #fff; }
 
+/* ── Cross-chain cards (Task 1) ── */
+.cross-chain-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.cc-card { background: rgba(255,255,255,0.03); border: 1px solid #1f2937; border-radius: 8px; padding: 8px 10px; font-size: 12px; }
+.cc-header { font-weight: 600; margin-bottom: 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.cc-row { color: #9ca3af; line-height: 1.3; }
+.cc-row strong { color: #e5e7eb; }
+.cc-link { display: inline-block; margin-top: 4px; font-size: 11px; color: #818cf8; text-decoration: none; }
+.cc-link:hover { text-decoration: underline; }
+.cc-bitcoin { border-color: #3a2a1a; }
+.cc-tron { border-color: #3a1014; }
+.cc-ton { border-color: #0a2a3a; }
+.cc-xlm { border-color: #0a2a32; }
+
 /* ── Evidence ── */
 .evidence-summary { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .ev-dot  { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
 .ev-pass { background: #22c55e; }
 .ev-fail { background: #374151; }
+.ev-blacklist { background: #ef4444; box-shadow: 0 0 0 2px rgba(239,68,68,0.3); }
 .ev-count { font-size: 12px; color: #6b7280; margin-left: 6px; }
 .ev-accordion-btn { display: flex; justify-content: space-between; align-items: center; width: 100%; background: rgba(255,255,255,0.04); border: 1px solid #1f2937; border-radius: 8px; padding: 9px 14px; cursor: pointer; color: #9ca3af; font-size: 13px; transition: border-color 0.15s; }
 .ev-accordion-btn:hover { border-color: #374151; color: #e5e7eb; }
+
+.ev-flags { margin-bottom: 8px; padding: 6px 10px; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.3); border-radius: 6px; }
+.ev-flag-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+
 .ev-chevron { transition: transform 0.2s; font-size: 16px; }
 .ev-chevron.open { transform: rotate(90deg); }
 .ev-list { display: flex; flex-direction: column; gap: 2px; padding: 4px 0; }
