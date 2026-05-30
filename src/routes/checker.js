@@ -15,7 +15,7 @@ const { verifyStablecoinTransfer } = require('../utils/solana');
 const brain                       = require('../utils/brain');
 const { recordMethodResult }      = require('../utils/methodHealth');
 const { analyzeTransactionGraph, getCounterparties } = require('../utils/txGraph');
-const { isOfacSanctioned }                          = require('../utils/ofac');
+const { isOfacSanctioned, isSanctioned }            = require('../utils/ofac');
 const { enrichProfile }                             = require('../utils/profileEnrich');
 const { isInList }                                  = require('../utils/labeledWallets');
 const { checkHumanityVerified }   = require('../utils/humanityProtocol');
@@ -51,9 +51,9 @@ function computeMethodsHash(methods) {
 // 2. 1-hop counterparty check — reuses txGraph cache so no extra API calls if
 //    analyzeTransactionGraph already ran during the same scan.
 async function checkOfacFull(address) {
-  // Direct
-  const direct = isOfacSanctioned(address);
-  if (direct.sanctioned) return { ...direct, type: 'direct', matchedAddress: address };
+  // Direct (OFAC + UK FCDO + future EU via Task 4)
+  const direct = isSanctioned(address);
+  if (direct.sanctioned) return { ...direct, type: 'direct', matchedAddress: address, list: direct.list || 'OFAC' };
 
   // Counterparties (fail-open if fetch errors)
   try {
@@ -411,7 +411,7 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
           results.unshift({
             input,
             methodId:    'ofac_check',
-            description: `⛔ OFAC SDN — ${ofac.name} (${ofac.program})${cp ? ` via counterparty ${ofac.matchedAddress?.slice(0, 10)}…` : ''}`,
+            description: `⛔ ${ofac.list || 'SANCTIONS'} — ${ofac.name} (${ofac.program || ofac.list || 'OFAC'})${cp ? ` via counterparty ${ofac.matchedAddress?.slice(0, 10)}…` : ''}`,
             result:      false,
             ofac,
           });

@@ -126,4 +126,54 @@ function getOfacStats() {
   };
 }
 
-module.exports = { isOfacSanctioned, getOfacStats };
+// ── Task 4: Additional sanctions lists (UK FCDO, EU) ──────────────────────────
+// UK: https://sanctionslist.fcdo.gov.uk/docs/UK-Sanctions-List.csv
+// EU: https://data.europa.eu/apps/eusanctionstracker/individuals/ (or consolidated XML/CSV)
+// Current: name-only lists (crypto addresses rare in these lists; extend parse when they appear).
+// Also: transaction graph analysis (already wired in checker via analyzeTransactionGraph).
+
+const UK_SANCTIONS_URL = 'https://sanctionslist.fcdo.gov.uk/docs/UK-Sanctions-List.csv';
+let ukNames = new Set(); // lowercased names for substring / exact match
+
+async function refreshUk() {
+  try {
+    const res = await axios.get(UK_SANCTIONS_URL, { timeout: 15000, responseType: 'text' });
+    const lines = res.data.split('\n').slice(1); // skip header
+    ukNames = new Set();
+    for (const line of lines) {
+      // Name is usually first or "Name" column; simple split
+      const name = (line.split(',')[0] || '').replace(/^"|"$/g, '').toLowerCase().trim();
+      if (name && name.length > 3) ukNames.add(name);
+    }
+    console.log(`[sanctions] UK list loaded — ${ukNames.size} names`);
+  } catch (e) {
+    console.warn('[sanctions] UK list refresh failed (using empty):', e.message);
+  }
+}
+
+// Kick off (non-blocking)
+refreshUk().catch(() => {});
+
+function isUkSanctioned(addressOrName) {
+  if (!addressOrName) return { sanctioned: false };
+  const q = String(addressOrName).toLowerCase();
+  for (const name of ukNames) {
+    if (q.includes(name) || name.includes(q)) return { sanctioned: true, name, list: 'UK-FCDO' };
+  }
+  return { sanctioned: false };
+}
+
+function getAdditionalSanctionsStats() {
+  return { ukCount: ukNames.size };
+}
+
+/** Combined check (OFAC + UK + future EU) */
+function isSanctioned(address) {
+  const ofac = isOfacSanctioned(address);
+  if (ofac.sanctioned) return { ...ofac, list: 'OFAC' };
+  const uk = isUkSanctioned(address);
+  if (uk.sanctioned) return uk;
+  return { sanctioned: false };
+}
+
+module.exports = { isOfacSanctioned, getOfacStats, isUkSanctioned, isSanctioned, getAdditionalSanctionsStats };
