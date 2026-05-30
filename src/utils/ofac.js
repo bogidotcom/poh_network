@@ -172,87 +172,105 @@ function getAdditionalSanctionsStats() {
   return { ukCount: ukNames.size, euCount: euNames.size };
 }
 
-// ── EU Sanctions (name-based) ─────────────────────────────────────────────────
+// ── EU Sanctions (name-based) - Automatic via OpenSanctions (recommended) ─────
+// Primary automatic source: OpenSanctions eu_fsf (daily updated, sources the same
+// official EU Consolidated list that powers https://data.europa.eu/apps/eusanctionstracker/)
+// Fallback: Local file at data/eu_consolidated.csv (or .xml)
+
 const EU_LOCAL_CSV_PATH = path.join(__dirname, '../../data/eu_consolidated.csv');
 const EU_LOCAL_XML_PATH = path.join(__dirname, '../../data/eu_consolidated.xml');
 
+// OpenSanctions provides clean, automatically refreshed data for the EU list
+const EU_OPENSANCTIONS_CSV = 'https://data.opensanctions.org/datasets/latest/eu_fsf/targets.simple.csv';
+const EU_OPENSANCTIONS_NAMES = 'https://data.opensanctions.org/datasets/latest/eu_fsf/names.txt';
+
 let euNames = new Set();
 
-async function refreshEuFromRemote() {
-  // The official source often requires auth/token. We try common public patterns as fallback.
-  const candidates = [
-    'https://webgate.ec.europa.eu/fsd/fsf/public/files/csvFullSanctionsList/content',
-    'https://webgate.ec.europa.eu/fsd/fsf/public/files/csvFullSanctionsList_1_1/content',
-  ];
+function addEuName(rawName) {
+  if (!rawName) return;
+  const cleaned = String(rawName).replace(/^"|"$/g, '').trim().toLowerCase();
+  if (cleaned.length > 3 && /[a-z]/.test(cleaned)) {
+    euNames.add(cleaned);
+  }
+}
 
-  for (const url of candidates) {
-    try {
-      const res = await axios.get(url, { timeout: 20000, responseType: 'text' });
-      if (res.status === 200 && res.data && res.data.length > 1000) {
-        parseEuCsv(res.data);
-        console.log(`[sanctions] EU list loaded from remote (${euNames.size} names)`);
-        return true;
-      }
-    } catch (e) {
-      // try next
+function parseEuSimpleCsv(csvText) {
+  euNames = new Set();
+  const lines = csvText.split('\n');
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    // targets.simple.csv from OpenSanctions has "name" as a main column
+    const parts = line.split(',');
+    // Usually first column or a "name" column contains the primary name
+    for (const p of parts.slice(0, 4)) {
+      addEuName(p);
     }
+  }
+}
+
+async function refreshEuFromOpenSanctions() {
+  // Try the clean names.txt first (lightweight)
+  try {
+    const namesRes = await axios.get(EU_OPENSANCTIONS_NAMES, { timeout: 25000, responseType: 'text' });
+    if (namesRes.status === 200 && namesRes.data) {
+      euNames = new Set();
+      namesRes.data.split('\n').forEach(line => addEuName(line));
+      console.log(`[sanctions] EU list loaded via OpenSanctions (names.txt) — ${euNames.size} names`);
+      return true;
+    }
+  } catch (e) { /* fall through */ }
+
+  // Fallback to targets.simple.csv
+  try {
+    const csvRes = await axios.get(EU_OPENSANCTIONS_CSV, { timeout: 30000, responseType: 'text' });
+    if (csvRes.status === 200 && csvRes.data && csvRes.data.length > 5000) {
+      parseEuSimpleCsv(csvRes.data);
+      console.log(`[sanctions] EU list loaded via OpenSanctions (targets.simple.csv) — ${euNames.size} names`);
+      return true;
+    }
+  } catch (e) {
+    console.warn('[sanctions] OpenSanctions EU fetch failed:', e.message);
   }
   return false;
 }
 
-function parseEuCsv(csvText) {
-  euNames = new Set();
-  const lines = csvText.split('\n');
-  for (let i = 1; i < lines.length; i++) { // skip header
-    const line = lines[i].trim();
-    if (!line) continue;
-
-    // EU CSV format varies by version. Common: Name is in early columns.
-    // Try splitting and taking plausible name fields.
-    const parts = line.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/); // handle quoted commas
-    for (let p = 0; p < Math.min(6, parts.length); p++) {
-      let name = parts[p].replace(/^"|"$/g, '').trim();
-      if (name.length > 4 && /[A-Za-z]/.test(name)) {
-        euNames.add(name.toLowerCase());
-      }
-    }
-  }
-}
-
 function loadEuFromLocalFile() {
-  const fs = require('fs');
   try {
     if (fs.existsSync(EU_LOCAL_CSV_PATH)) {
       const csv = fs.readFileSync(EU_LOCAL_CSV_PATH, 'utf8');
-      parseEuCsv(csv);
+      parseEuSimpleCsv(csv); // tolerant enough
       console.log(`[sanctions] EU list loaded from local CSV — ${euNames.size} names`);
       return true;
     }
     if (fs.existsSync(EU_LOCAL_XML_PATH)) {
-      // Very basic XML name extraction (for <name> or <wholeName> tags)
       const xml = fs.readFileSync(EU_LOCAL_XML_PATH, 'utf8');
-      const nameMatches = xml.match(/<wholeName[^>]*>([^<]+)<\/wholeName>|<name[^>]*>([^<]+)<\/name>/gi) || [];
-      euNames = new Set(nameMatches.map(m => m.replace(/<[^>]+>/g, '').trim().toLowerCase()).filter(n => n.length > 4));
+      const matches = xml.match(/<name[^>]*>([^<]+)<\/name>|<wholeName[^>]*>([^<]+)<\/wholeName>/gi) || [];
+      euNames = new Set();
+      matches.forEach(m => addEuName(m.replace(/<[^>]+>/g, '')));
       console.log(`[sanctions] EU list loaded from local XML — ${euNames.size} names`);
       return true;
     }
   } catch (e) {
-    console.warn('[sanctions] Failed to load local EU sanctions file:', e.message);
+    console.warn('[sanctions] Failed loading local EU file:', e.message);
   }
   return false;
 }
 
 async function refreshEu() {
-  const loadedLocal = loadEuFromLocalFile();
-  if (loadedLocal) return;
+  // Prefer OpenSanctions for fully automatic daily updates (best for "that list")
+  const loaded = await refreshEuFromOpenSanctions();
+  if (loaded) return;
 
-  const loadedRemote = await refreshEuFromRemote();
-  if (!loadedRemote) {
-    console.warn('[sanctions] EU sanctions list not loaded (no local file + remote fetch failed). Place data/eu_consolidated.csv for best results.');
+  // Fallback to local file the user can drop
+  const local = loadEuFromLocalFile();
+  if (!local) {
+    console.warn('[sanctions] EU list not loaded automatically. OpenSanctions fetch failed and no local data/eu_consolidated.csv found.');
+    console.warn('         The EU Sanctions Tracker UI you linked sources the same official data that OpenSanctions mirrors.');
   }
 }
 
-// Kick off
+// Kick off on load
 refreshEu().catch(() => {});
 
 function isEuSanctioned(query) {
@@ -280,6 +298,40 @@ function isSanctioned(addressOrName) {
   return { sanctioned: false };
 }
 
+// ── Unified Automatic Refresh for ALL sanctions lists ─────────────────────────
+const SANCTIONS_REFRESH_MS = 12 * 60 * 60 * 1000; // every 12 hours
+
+async function refreshAllSanctions() {
+  console.log('[sanctions] Starting automatic refresh of all lists...');
+  await Promise.allSettled([
+    refresh().catch(e => console.warn('[sanctions] OFAC refresh error:', e.message)),
+    refreshUk().catch(e => console.warn('[sanctions] UK refresh error:', e.message)),
+    refreshEu().catch(e => console.warn('[sanctions] EU refresh error:', e.message)),
+  ]);
+  console.log('[sanctions] Automatic refresh complete. Stats:', getAdditionalSanctionsStats());
+}
+
+// Kick off all lists automatically on module load
+Promise.allSettled([
+  refresh().catch(() => {}),
+  refreshUk().catch(() => {}),
+  refreshEu().catch(() => {}),
+]).then(() => {
+  console.log('[sanctions] Initial load complete for OFAC + UK + EU lists');
+});
+
+// Periodic automatic refresh for everything
+setInterval(refreshAllSanctions, SANCTIONS_REFRESH_MS);
+
+function getAllSanctionsStats() {
+  return {
+    ofac: getOfacStats(),
+    uk: { count: ukNames.size },
+    eu: { count: euNames.size },
+    lastRefreshAttempt: new Date().toISOString(),
+  };
+}
+
 module.exports = {
   isOfacSanctioned,
   getOfacStats,
@@ -287,5 +339,7 @@ module.exports = {
   isEuSanctioned,
   isSanctioned,
   getAdditionalSanctionsStats,
-  refreshEu,           // exposed for manual refresh if needed
+  getAllSanctionsStats,
+  refreshAllSanctions, // can be called manually if needed (e.g. from an admin route)
+  refreshEu,
 };
