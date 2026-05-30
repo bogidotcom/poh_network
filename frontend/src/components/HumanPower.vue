@@ -888,7 +888,7 @@ onUnmounted(() => {
                 <li>$0.015 per extra scan</li>
                 <li>API + SDK access</li>
               </ul>
-              <button class="plan-cta" @click="showUpgradeModal">Upgrade →</button>
+              <button class="plan-cta" @click="showSection('profile'); loadProfile()">Upgrade →</button>
             </div>
             <div class="plan-card">
               <div class="plan-name">Enterprise</div>
@@ -2094,8 +2094,6 @@ const results = await pollJob(jobId)</pre>
 /* Plans teaser styles (task 2.md) */
 .plans-teaser {
   padding: 3rem 1rem 4rem;
-  border-top: 1px solid #111;
-  background: #0a0a0f;
 }
 .plans-grid {
   display: grid;
