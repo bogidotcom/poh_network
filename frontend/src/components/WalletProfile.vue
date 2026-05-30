@@ -22,6 +22,18 @@
       </div>
       <div v-else class="badge badge-ok" title="Not on OFAC SDN list">✓ OFAC Clear</div>
 
+      <!-- EU Sanctions (Task 4) -->
+      <div v-if="eu?.sanctioned" class="badge badge-danger" title="EU Consolidated Sanctions">
+        ⛔ EU — {{ eu.name }}
+      </div>
+      <div v-else-if="eu !== undefined" class="badge badge-ok" title="Not on EU sanctions list">✓ EU Clean</div>
+
+      <!-- UK Sanctions (Task 4) -->
+      <div v-if="uk?.sanctioned" class="badge badge-danger" title="UK FCDO Sanctions">
+        ⛔ UK — {{ uk.name }}
+      </div>
+      <div v-else-if="uk !== undefined" class="badge badge-ok" title="Not on UK sanctions list">✓ UK Clean</div>
+
       <!-- Gitcoin Passport -->
       <template v-if="profile.gitcoin">
         <div :class="['badge', profile.gitcoin.passing ? 'badge-ok' : 'badge-warn']" title="Gitcoin Passport score">

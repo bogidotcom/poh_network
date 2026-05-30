@@ -273,9 +273,11 @@ async function analyzeTransactionGraph(address) {
 
   if (isEvm)     return analyzeEvm(address);
   if (isSolana)  return analyzeSolana(address);
+  if (isBitcoin) return analyzeBitcoin(address);
+  if (isTron)    return analyzeTron(address);
+  if (isTon)     return analyzeTon(address);
+  if (isXlm)     return analyzeXlm(address);
 
-  // Bitcoin, Tron, TON, XLM: graph analysis not yet implemented for these chains
-  // Return empty so we don't crash or pollute results
   return [];
 }
 
@@ -293,6 +295,80 @@ async function getCounterparties(address) {
   // analyzeTransactionGraph populates the cache as a side-effect
   await analyzeTransactionGraph(address);
   return _cacheGet(address) || new Set();
+}
+
+// ── New chain support (Task 4) ────────────────────────────────────────────────
+// Basic 1-hop implementations using the same public APIs as profileEnrich.
+// For production, expand with pagination, better error handling, and rate limiting.
+
+async function analyzeBitcoin(address) {
+  try {
+    const res = await axios.get(`https://mempool.space/api/address/${address}/txs`, { timeout: 10000 });
+    const txs = Array.isArray(res.data) ? res.data.slice(0, 30) : [];
+    const counterparties = new Set();
+    txs.forEach(tx => {
+      (tx.vin || []).forEach(v => v.prevout?.scriptpubkey_address && counterparties.add(v.prevout.scriptpubkey_address));
+      (tx.vout || []).forEach(v => v.scriptpubkey_address && counterparties.add(v.scriptpubkey_address));
+    });
+    counterparties.delete(address);
+    return Array.from(counterparties).slice(0, 20).map(cp => ({ from: address, to: cp, chain: 'bitcoin' }));
+  } catch (e) {
+    console.error('[txGraph] Bitcoin error:', e.message);
+    return [];
+  }
+}
+
+async function analyzeTron(address) {
+  try {
+    const res = await axios.get(`https://api.trongrid.io/v1/accounts/${address}/transactions?limit=30`, { timeout: 10000 });
+    const txs = res.data?.data || [];
+    const counterparties = new Set();
+    txs.forEach(tx => {
+      if (tx.from) counterparties.add(tx.from);
+      if (tx.to) counterparties.add(tx.to);
+    });
+    counterparties.delete(address);
+    return Array.from(counterparties).slice(0, 20).map(cp => ({ from: address, to: cp, chain: 'tron' }));
+  } catch (e) {
+    console.error('[txGraph] Tron error:', e.message);
+    return [];
+  }
+}
+
+async function analyzeTon(address) {
+  try {
+    const res = await axios.get(`https://tonapi.io/v2/accounts/${address}/events?limit=30`, { timeout: 10000 });
+    const events = res.data?.events || [];
+    const counterparties = new Set();
+    events.forEach(ev => {
+      (ev.actions || []).forEach(action => {
+        if (action.source) counterparties.add(action.source);
+        if (action.destination) counterparties.add(action.destination);
+      });
+    });
+    counterparties.delete(address);
+    return Array.from(counterparties).slice(0, 20).map(cp => ({ from: address, to: cp, chain: 'ton' }));
+  } catch (e) {
+    console.error('[txGraph] TON error:', e.message);
+    return [];
+  }
+}
+
+async function analyzeXlm(address) {
+  try {
+    const res = await axios.get(`https://horizon.stellar.org/accounts/${address}/payments?limit=30&order=desc`, { timeout: 10000 });
+    const payments = res.data?._embedded?.records || [];
+    const counterparties = new Set();
+    payments.forEach(p => {
+      if (p.from) counterparties.add(p.from);
+      if (p.to) counterparties.add(p.to);
+    });
+    counterparties.delete(address);
+    return Array.from(counterparties).slice(0, 20).map(cp => ({ from: address, to: cp, chain: 'xlm' }));
+  } catch (e) {
+    console.error('[txGraph] XLM error:', e.message);
+    return [];
+  }
 }
 
 module.exports = { analyzeTransactionGraph, getCounterparties };

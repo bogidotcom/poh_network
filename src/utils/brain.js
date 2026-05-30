@@ -10,7 +10,7 @@ const OLLAMA_URL       = process.env.OLLAMA_URL        || 'http://localhost:1143
 const BASE_MODEL       = process.env.OLLAMA_MODEL      || 'qwen2.5:1.5b';
 const EVALUATOR_MODEL  = process.env.EVALUATOR_MODEL   || 'deepseek-r1:1.5b';
 const LEARNER_MODEL    = process.env.LEARNER_MODEL     || 'qwen2.5:1.5b';
-const COMPILER_MODEL   = process.env.COMPILER_MODEL    || 'mixtral:latest';
+const COMPILER_MODEL   = process.env.COMPILER_MODEL    || 'qwen2.5:14b'; // Use a reliable small model for consolidation to avoid 500s
 
 // Cascade evaluator models (for brain verdicts)
 // Use smaller/faster model by default, escalate to heavy reasoning model when needed.
@@ -613,14 +613,21 @@ STYLE:
 - no speculation`;
 
   console.log('[brain] Consolidating knowledge...');
-  const newBrainState = await compilerChat(prompt, {
-    maxTokens: 300,
-    timeLimit: 300000
-  });
+  try {
+    const newBrainState = await compilerChat(prompt, {
+      maxTokens: 300,
+      timeLimit: 300000
+    });
 
-  if (newBrainState) {
-    saveBrainState(`# Brain State — Last updated: ${new Date().toISOString()}\n\n${newBrainState}`);
-    console.log('[brain] Consolidation complete.');
+    if (newBrainState) {
+      saveBrainState(`# Brain State — Last updated: ${new Date().toISOString()}\n\n${newBrainState}`);
+      console.log('[brain] Consolidation complete.');
+    } else {
+      console.warn('[brain] Consolidation returned empty response (model may be unavailable or overloaded)');
+    }
+  } catch (err) {
+    console.error('[brain] Consolidation failed:', err.message);
+    // Do not crash the whole process
   }
 }
 

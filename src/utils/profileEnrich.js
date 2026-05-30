@@ -352,7 +352,7 @@ async function enrichProfile(address, counterparties) {
   const isTron    = /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(address);
   const isTon     = /^(EQ|UQ|kQ|0Q)[a-zA-Z0-9_-]{46}$/.test(address);
   const isXlm     = /^G[A-Z2-7]{55}$/.test(address);
-  const isSolana  = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address) && !isTron;
+  const isSolana  = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address) && !isTron && !isBitcoin;
 
   const tasks = {
     web3bio:   fetchWeb3Bio(address),

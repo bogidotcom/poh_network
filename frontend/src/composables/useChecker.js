@@ -24,6 +24,8 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
   const resolvedInputDisplay = ref('')
   const checkerResults       = ref(null)
   const ofacResult           = ref(null) // top-level OFAC field from single scans
+  const euResult             = ref(null)
+  const ukResult             = ref(null)
   const showEvidence         = ref(false)
   const brainVerdict         = ref(null)
   const brainPolling         = ref(false)
@@ -279,6 +281,8 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
       } else {
         checkerResults.value = res.data.result
         ofacResult.value   = res.data.ofac || null
+        euResult.value     = res.data.eu   || null
+        ukResult.value     = res.data.uk   || null
         brainVerdict.value = null
         brainKey.value     = null
         showEvidence.value = false
@@ -335,6 +339,8 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
     resolvedInputDisplay,
     checkerResults,
     ofacResult,
+    euResult,
+    ukResult,
     showEvidence,
     brainVerdict,
     brainPolling,

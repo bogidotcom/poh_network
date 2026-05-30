@@ -501,6 +501,11 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
     ]);
     const isCex = isInList('cex', inputs[0]);
 
+    // Additional sanctions for badges (Task 4)
+    const sanctionsCheck = isSanctioned(inputs[0]);
+    const euHit = sanctionsCheck.list === 'EU' ? sanctionsCheck : null;
+    const ukHit = sanctionsCheck.list === 'UK-FCDO' ? sanctionsCheck : null;
+
     if (ofac.sanctioned) {
       const cp = ofac.type === 'counterparty';
       results.unshift({
@@ -546,6 +551,8 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
       source:   'processed',
       brainKey: scanKey,
       ofac:     ofac.sanctioned ? ofac : null,
+      eu:       euHit,
+      uk:       ukHit,
       cex:      isCex || null,
       freeScansLeft: effectiveWallet ? getFreeScansLeft(effectiveWallet) : null,
     });

@@ -142,7 +142,7 @@ function dismissNetworkSuggestion() {
 // ── Checker ───────────────────────────────────────────────────────────────────
 const checker = useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, SOLANA_RPC, signAndSendTransaction })
 const {
-  scanInput, resolvedInputDisplay, checkerResults, ofacResult, showEvidence,
+  scanInput, resolvedInputDisplay, checkerResults, ofacResult, euResult, ukResult, showEvidence,
   brainVerdict, brainPolling, brainKey, batchFile, batchRowCount, batchRows,
   isResolving, detectedChain, faucetLoading, faucetMsg,
   runCheck, handleFileSelect, claimFaucet,
@@ -1141,6 +1141,8 @@ onUnmounted(() => {
             :profile="walletProfile"
             :verdict="brainVerdict"
             :ofac="ofacResult"
+            :eu="euResult"
+            :uk="ukResult"
             :signals="checkerResults"
             @scan="handleProfileScan"
           />
@@ -2093,7 +2095,7 @@ const results = await pollJob(jobId)</pre>
 
 /* Plans teaser styles (task 2.md) */
 .plans-teaser {
-  padding: 3rem 1rem 4rem;
+  padding: 10rem 1rem 10rem;
 }
 .plans-grid {
   display: grid;
