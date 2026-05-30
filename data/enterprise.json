@@ -1,0 +1,8 @@
+{
+  "_comment": "Manual enterprise overrides. Key = wallet address. Edit directly. Quota in raw scans.",
+  "EXAMPLE_WALLET_HERE": {
+    "quota": 5000000,
+    "overageRate": 10000,
+    "note": "Acme Corp — signed 2026-05-01"
+  }
+}

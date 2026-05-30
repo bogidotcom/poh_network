@@ -183,6 +183,108 @@ function recordTx(txHash, context) {
   fs.renameSync(tmp, USED_TX_PATH);
 }
 
+// ── Three-tier pricing (Task 3) ───────────────────────────────────────────────
+// Free (default): 100 lifetime free scans (existing freeScansLeft)
+// Startup: $1000/mo → 100k scans included, $0.015 overage
+// Enterprise: custom (via data/enterprise.json)
+
+const ENTERPRISE_PATH = path.join(__dirname, '../../data/enterprise.json');
+const FREE_DEFAULT = { plan: 'free', monthlyQuota: 0 };
+
+function loadEnterprise() {
+  try {
+    if (!fs.existsSync(ENTERPRISE_PATH)) return {};
+    return JSON.parse(fs.readFileSync(ENTERPRISE_PATH, 'utf-8'));
+  } catch { return {}; }
+}
+
+function getPlan(address) {
+  const p = getProfile(address) || {};
+  const ent = loadEnterprise()[address];
+
+  if (ent) {
+    return {
+      plan: 'enterprise',
+      monthlyQuota: ent.quota || 5_000_000,
+      overageRate: ent.overageRate || 10_000, // 6 decimals
+      note: ent.note || null,
+      expiresAt: null,
+      isEnterprise: true,
+    };
+  }
+
+  if (p.plan && p.plan !== 'free' && p.planExpiresAt) {
+    const expires = new Date(p.planExpiresAt);
+    if (Date.now() > expires.getTime()) {
+      // expired → fall back
+      return { ...FREE_DEFAULT, expired: true };
+    }
+    const now = new Date();
+    const reset = p.monthlyResetAt ? new Date(p.monthlyResetAt) : null;
+    const needReset = !reset || now.getMonth() !== reset.getMonth() || now.getFullYear() !== reset.getFullYear();
+
+    return {
+      plan: p.plan,
+      planExpiresAt: p.planExpiresAt,
+      monthlyQuota: p.monthlyQuota || 100_000,
+      monthlyScansUsed: p.monthlyScansUsed || 0,
+      monthlyResetAt: p.monthlyResetAt,
+      overageRate: p.overageRate || 15_000,
+      needReset,
+    };
+  }
+
+  return { ...FREE_DEFAULT, freeScansLeft: getFreeScansLeft(address) };
+}
+
+function consumePlanScan(address, count = 1) {
+  const plan = getPlan(address);
+  if (plan.plan === 'free') {
+    // fall back to legacy free system
+    let remaining = count;
+    for (let i = 0; i < count; i++) {
+      if (!consumeFreeScan(address)) break;
+      remaining--;
+    }
+    return { ok: remaining === 0, usedFree: count - remaining, overage: 0 };
+  }
+
+  const p = getProfile(address) || {};
+  let used = p.monthlyScansUsed || 0;
+  const quota = plan.monthlyQuota || 100_000;
+
+  // Auto monthly reset
+  const now = new Date();
+  const reset = p.monthlyResetAt ? new Date(p.monthlyResetAt) : null;
+  if (!reset || now.getMonth() !== reset.getMonth() || now.getFullYear() !== reset.getFullYear()) {
+    used = 0;
+  }
+
+  const remainingQuota = Math.max(0, quota - used);
+  const fromQuota = Math.min(count, remainingQuota);
+  const overage = count - fromQuota;
+
+  const patch = {
+    monthlyScansUsed: used + fromQuota,
+    monthlyResetAt: reset && now.getMonth() === reset.getMonth() ? p.monthlyResetAt : now.toISOString(),
+    totalScans: (p.totalScans || 0) + count,
+  };
+
+  upsertProfile(address, patch);
+  return { ok: true, usedQuota: fromQuota, overage };
+}
+
+function chargeOverage(address, overageCount, overageRate) {
+  const rate = overageRate || 15_000;
+  const cost = Math.ceil(overageCount * rate);
+  const p = getProfile(address) || {};
+  const balance = p.balance || 0;
+  if (balance < cost) return { ok: false, cost, shortfall: cost - balance };
+
+  upsertProfile(address, { balance: balance - cost });
+  return { ok: true, cost };
+}
+
 module.exports = {
   getProfile, upsertProfile, getProfiles,
   getRewards, saveRewards,
@@ -192,4 +294,6 @@ module.exports = {
   recordVote, getMyVotes, hasVoted,
   isTxUsed, recordTx,
   FREE_SCANS_PER_WALLET,
+  // Pricing (Task 3)
+  getPlan, consumePlanScan, chargeOverage,
 };

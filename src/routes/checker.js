@@ -23,6 +23,7 @@ const { createJob, getJob }       = require('../utils/jobQueue');
 const {
   getProfile, getProfiles, upsertProfile, consumeFreeScan, calcScanCost,
   getFreeScansLeft, distributeRewards, isIpAbuse, recordIp,
+  getPlan, consumePlanScan, chargeOverage,
 } = require('../utils/profiles');
 
 const upload = multer({ dest: 'uploads/' });
