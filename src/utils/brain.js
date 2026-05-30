@@ -12,6 +12,11 @@ const EVALUATOR_MODEL  = process.env.EVALUATOR_MODEL   || 'deepseek-r1:1.5b';
 const LEARNER_MODEL    = process.env.LEARNER_MODEL     || 'qwen2.5:1.5b';
 const COMPILER_MODEL   = process.env.COMPILER_MODEL    || 'mixtral:latest';
 
+// Cascade evaluator models (for brain verdicts)
+// Use smaller/faster model by default, escalate to heavy reasoning model when needed.
+const EVALUATOR_FAST_MODEL  = process.env.EVALUATOR_FAST_MODEL  || EVALUATOR_MODEL;
+const EVALUATOR_HEAVY_MODEL = process.env.EVALUATOR_HEAVY_MODEL || 'deepseek-r1:32b'; // or qwen3:32b etc.
+
 // ── Qvac config (OpenAI-compatible evaluator — set QVAC_URL to enable) ────────
 // Run: qvac serve openai --port 11435
 const QVAC_URL   = process.env.QVAC_URL   || null;
@@ -245,12 +250,15 @@ async function qvacChat(prompt, { model = QVAC_MODEL, maxTokens = 256, timeLimit
 // ── Role routers — Qvac if configured, Ollama otherwise ──────────────────────
 
 async function evaluatorChat(prompt, opts = {}) {
+  // Support explicit model override for cascade (fast vs heavy)
+  const model = opts.model || EVALUATOR_MODEL;
+
   if (QVAC_URL) {
-    const result = await qvacChat(prompt, opts);
+    const result = await qvacChat(prompt, { ...opts, model });
     if (result !== null) return result;
     if (!_qvacCircuitOpenAt) console.warn('[brain] Qvac unavailable — falling back to Ollama for evaluation');
   }
-  return ollamaChat(prompt, { ...opts, model: EVALUATOR_MODEL });
+  return ollamaChat(prompt, { ...opts, model });
 }
 
 async function evaluatorChatJSON(prompt, requiredKeys, opts = {}) {
@@ -354,22 +362,63 @@ async function analyzeHumanness(address, methodResults, methods) {
     ? `\nRecent human corrections (learn from these mistakes):\n${corrections}\n`
     : '';
 
-  const prompt = `Proof of Human evaluator. Is wallet ${address} HUMAN, AI, or UNCERTAIN?
+  // Stronger prompt for signal aggregation + negative signal awareness
+  const basePrompt = `You are an expert Proof-of-Humanity evaluator for cryptocurrency wallet addresses.
+
+Your job is to determine whether the address shows strong evidence of being controlled by a real human versus an AI/bot/Sybil.
+
+You receive a list of signals. Each has:
+- Label: PASS, FAIL, or BLACKLIST (BLACKLIST = strong negative — e.g. address frozen by Tether)
+- Weight (higher = more important)
+- Description
+
+Rules:
+- Weigh positive human signals vs negative ones (BLACKLIST hits are very strong evidence of non-human).
+- Be conservative with "HUMAN" verdict — require multiple strong, diverse signals.
+- "BLACKLIST" or OFAC hits should heavily push the verdict toward "AI".
+- Output ONLY valid JSON.
+
+Address: ${address}
 
 Signals (${passed.length} passed, ${failed.length} failed shown):
 ${signalsStr}
 ${correctionBlock}
-Return ONLY valid JSON. No text outside the JSON object.
-Schema: {"verdict":"HUMAN|AI|UNCERTAIN","confidence":<float 0.0-1.0 reflecting actual signal strength>,"reasoning":"<brief>"}`;
+
+Return exactly this JSON (no extra text):
+{"verdict":"HUMAN|AI|UNCERTAIN","confidence":<float 0.0-1.0>,"reasoning":"<2-4 sentences referencing specific signals and weights>"}`;
+
+  // === CASCADE LOGIC (Fast model first, escalate to heavy when needed) ===
+  const hasNegative = signals.some(s => s.negative && s.pass);
 
   const backend = usingQvac ? 'Qvac' : 'Ollama';
-  console.log(`[brain] Evaluating ${address} via ${backend}`);
+  console.log(`[brain] Evaluating ${address} via ${backend} (cascade mode)`);
 
-  const result = await evaluatorChatJSON(
-    prompt,
+  // Step 1: Fast model
+  let result = await evaluatorChatJSON(
+    basePrompt,
     ['verdict', 'confidence', 'reasoning'],
-    { maxTokens: 200, timeLimit: 60000 }
+    { model: EVALUATOR_FAST_MODEL, maxTokens: 220, timeLimit: 45000 }
   );
+
+  const fastConfidence = result?.confidence ? parseFloat(result.confidence) : 0;
+  const shouldEscalate = !result ||
+                         fastConfidence < 0.72 ||
+                         result.verdict === 'UNCERTAIN' ||
+                         hasNegative;
+
+  if (shouldEscalate) {
+    console.log(`[brain] Escalating to HEAVY model for ${address} (confidence=${fastConfidence}, negative=${hasNegative})`);
+    const heavyResult = await evaluatorChatJSON(
+      basePrompt + '\n\nYou are the HEAVY reasoning model. Think carefully and be precise with confidence.',
+      ['verdict', 'confidence', 'reasoning'],
+      { model: EVALUATOR_HEAVY_MODEL, maxTokens: 280, timeLimit: 90000 }
+    );
+    if (heavyResult) {
+      result = heavyResult;
+      result.escalated = true;
+      result.fastVerdict = result.verdict; // keep original fast verdict for debugging
+    }
+  }
 
   if (!result) {
     // Heuristic fallback: score by pass ratio weighted by method weights
@@ -380,6 +429,7 @@ Schema: {"verdict":"HUMAN|AI|UNCERTAIN","confidence":<float 0.0-1.0 reflecting a
       verdict:    ratio >= 0.55 ? 'HUMAN' : ratio <= 0.35 ? 'AI' : 'UNCERTAIN',
       confidence: Math.round(Math.abs(ratio - 0.5) * 2 * 100) / 100,
       reasoning:  `Heuristic fallback: ${signals.filter(x => x.pass).length}/${signals.length} signals passed`,
+      escalated: false,
     };
   }
 
@@ -387,6 +437,8 @@ Schema: {"verdict":"HUMAN|AI|UNCERTAIN","confidence":<float 0.0-1.0 reflecting a
     verdict:    (result.verdict || 'UNKNOWN').toUpperCase(),
     confidence: Math.min(1, Math.max(0, parseFloat(result.confidence) || 0.5)),
     reasoning:  result.reasoning || '',
+    escalated:  !!result.escalated,
+    modelUsed:  result.escalated ? EVALUATOR_HEAVY_MODEL : EVALUATOR_FAST_MODEL,
   };
 }
 

@@ -457,6 +457,7 @@ const {
   profileData, profileLoading, profileError, signupLoading,
   showDepositModal, depositAmount, depositToken, depositLoading, depositMsg,
   loadProfile, signupProfile, rotateApiKey, submitDeposit,
+  upgradeToStartup,
 } = profile
 
 // ── Referral / deep-link URL params ──────────────────────────────────────────
@@ -861,6 +862,45 @@ onUnmounted(() => {
 
             <SvgApiTooling />
 
+          </div>
+        </section>
+
+        <!-- Plans teaser (added per task 2.md) -->
+        <section class="plans-teaser">
+          <h2 class="feat-title" style="text-align:center; margin-bottom: 0.5rem;">Choose your plan</h2>
+          <div class="plans-grid">
+            <div class="plan-card">
+              <div class="plan-name">Free</div>
+              <div class="plan-price">$0</div>
+              <ul class="plan-features">
+                <li>100 scans per wallet (lifetime)</li>
+                <li>Standard speed</li>
+                <li>Community signals</li>
+              </ul>
+              <div class="plan-note">Great for testing &amp; individuals</div>
+            </div>
+            <div class="plan-card plan-popular">
+              <div class="plan-name">Startup <span class="badge">Most popular</span></div>
+              <div class="plan-price">$1,000 <span class="per">/mo</span></div>
+              <ul class="plan-features">
+                <li>100,000 scans included</li>
+                <li>Priority queue</li>
+                <li>$0.015 per extra scan</li>
+                <li>API + SDK access</li>
+              </ul>
+              <button class="plan-cta" @click="showUpgradeModal">Upgrade →</button>
+            </div>
+            <div class="plan-card">
+              <div class="plan-name">Enterprise</div>
+              <div class="plan-price">Custom</div>
+              <ul class="plan-features">
+                <li>Multi-million scan quotas</li>
+                <li>Dedicated support</li>
+                <li>Custom signals &amp; SLAs</li>
+                <li>Private deployments</li>
+              </ul>
+              <a href="https://calendly.com/poh_network" target="_blank" class="plan-cta secondary">Contact us</a>
+            </div>
           </div>
         </section>
 
@@ -1363,9 +1403,33 @@ onUnmounted(() => {
                 <div class="pstat-val">{{ profileData.profile?.totalScans ?? 0 }}</div>
                 <div class="pstat-label">Total Scans</div>
               </div>
-              <div class="pstat-card deposit-stat" @click="showDepositModal = true" title="Click to deposit">
+              <div
+                v-if="profileData.profile?.plan && profileData.profile.plan !== 'free'"
+                class="pstat-card deposit-stat"
+                @click="showDepositModal = true"
+                title="Click to deposit (extra quota)"
+              >
                 <div class="pstat-val">${{ ((profileData.profile?.balance ?? 0) / 1e6).toFixed(2) }}</div>
-                <div class="pstat-label">Account Balance <br><span class="pstat-deposit-hint">Tap to Deposit</span></div>
+                <div class="pstat-label">Extra Quota Balance <br><span class="pstat-deposit-hint">Tap to Deposit</span></div>
+              </div>
+              <div v-else class="pstat-card" style="opacity:0.6; cursor:default;">
+                <div class="pstat-val">—</div>
+                <div class="pstat-label">Deposit available for<br>Startup &amp; Enterprise</div>
+              </div>
+            </div>
+
+            <!-- Upgrade to Startup (task 2.md) -->
+            <div v-if="profileData.profile?.plan === 'free'" style="margin-top: 0.75rem;">
+              <button
+                class="submit-listing-btn"
+                style="width:100%; padding: 10px;"
+                @click="upgradeToStartupPlan"
+                :disabled="signupLoading"
+              >
+                {{ signupLoading ? 'Processing...' : 'Upgrade to Startup — $1000 USDC/USDT (100k scans/mo)' }}
+              </button>
+              <div style="font-size:0.75rem; color:#666; text-align:center; margin-top:4px;">
+                Charges 1000 USDC/USDT to fee recipient and activates Startup plan
               </div>
             </div>
 
@@ -2025,6 +2089,88 @@ const results = await pollJob(jobId)</pre>
   .feat-svg {
     max-width: 100%;
   }
+}
+
+/* Plans teaser styles (task 2.md) */
+.plans-teaser {
+  padding: 3rem 1rem 4rem;
+  border-top: 1px solid #111;
+  background: #0a0a0f;
+}
+.plans-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  max-width: 980px;
+  margin: 1.5rem auto 0;
+}
+.plan-card {
+  background: #111;
+  border: 1px solid #222;
+  border-radius: 10px;
+  padding: 1rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+}
+.plan-card.plan-popular {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 1px rgba(99,102,241,0.2);
+}
+.plan-name {
+  font-weight: 600;
+  font-size: 1.05rem;
+  margin-bottom: 0.25rem;
+}
+.plan-price {
+  font-size: 1.6rem;
+  font-weight: 700;
+  margin-bottom: 0.6rem;
+}
+.plan-price .per {
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: #888;
+}
+.plan-features {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.8rem;
+  font-size: 0.9rem;
+  color: #ccc;
+  flex: 1;
+}
+.plan-features li {
+  padding: 2px 0;
+}
+.plan-note {
+  font-size: 0.8rem;
+  color: #666;
+  margin-top: auto;
+}
+.plan-cta {
+  margin-top: 0.6rem;
+  background: #6366f1;
+  color: white;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+.plan-cta.secondary {
+  background: #222;
+  color: #ddd;
+}
+.badge {
+  font-size: 0.65rem;
+  background: #6366f1;
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+  vertical-align: middle;
 }
 
 .utility-link {

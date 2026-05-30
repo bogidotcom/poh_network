@@ -128,6 +128,55 @@ export function useProfile({ walletAddress, connected, adapterSignMessage, POH_M
     }
   }
 
+  // Upgrade to Startup plan: pays exactly 1000 USDC/USDT to FEE_RECIPIENT
+  async function upgradeToStartup() {
+    if (!connected.value || !walletAddress.value) {
+      profileError.value = 'Connect wallet first'
+      return false
+    }
+    try {
+      // Reuse the same stablecoin payment flow as deposit, but fixed amount
+      const amount = 1000
+      const token = 'USDC' // or let user choose; for simplicity USDC first
+
+      const connection = new Connection(SOLANA_RPC, 'confirmed')
+      const walletPubkey = new PublicKey(walletAddress.value)
+      const recipientPubkey = new PublicKey(FEE_RECIPIENT)
+      const mintPubkey = new PublicKey(STABLE_MINTS[token])
+
+      const fromAta = await getAssociatedTokenAddress(mintPubkey, walletPubkey)
+      const toAta = await getAssociatedTokenAddress(mintPubkey, recipientPubkey)
+
+      const tx = new Transaction()
+
+      const toAtaInfo = await connection.getAccountInfo(toAta)
+      if (!toAtaInfo) {
+        tx.add(createAssociatedTokenAccountInstruction(
+          walletPubkey, recipientPubkey, recipientPubkey, mintPubkey
+        ))
+      }
+
+      tx.add(
+        createTransferInstruction(fromAta, toAta, walletPubkey, BigInt(1000 * 1_000_000))
+      )
+
+      const txHash = await signAndSendTransaction(tx)
+
+      // Call backend to verify payment and grant startup plan
+      const res = await axios.post('/profile/subscribe', {
+        address: walletAddress.value,
+        txHash,
+        plan: 'startup'
+      })
+
+      profileData.value = res.data
+      return true
+    } catch (err) {
+      profileError.value = err.response?.data?.error || err.message || 'Upgrade failed'
+      return false
+    }
+  }
+
   return {
     profileData,
     profileLoading,
@@ -142,5 +191,6 @@ export function useProfile({ walletAddress, connected, adapterSignMessage, POH_M
     signupProfile,
     rotateApiKey,
     submitDeposit,
+    upgradeToStartup,
   }
 }
