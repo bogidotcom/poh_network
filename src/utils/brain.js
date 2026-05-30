@@ -324,14 +324,29 @@ async function analyzeHumanness(address, methodResults, methods) {
     .sort((a, b) => effectiveWeight(b) - effectiveWeight(a))
     .slice(0, usingQvac ? 4 : 10);
 
-  const signals = [...passed, ...failed].map(r => ({
-    name: r.description,
-    pass: r.result,
-    w: +((weights[r.methodId] ?? 1.0) * getGraduationMult(r.methodId)).toFixed(2),
-  }));
+  // Build signals with negative flag awareness (Task 2)
+  const signals = [...passed, ...failed].map(r => {
+    // Find the method definition to know if this is a "negative" (bad) signal
+    const m = methods.find(x => x.id === r.methodId);
+    const isNegative = !!(m && m.negative);
+    return {
+      name: r.description,
+      pass: r.result,
+      negative: isNegative,
+      w: +((weights[r.methodId] ?? 1.0) * getGraduationMult(r.methodId)).toFixed(2),
+    };
+  });
 
   const signalsStr = signals
-    .map(s => `[${s.pass ? 'PASS' : 'FAIL'}] ${s.name} (w:${s.w})`)
+    .map(s => {
+      let label;
+      if (s.negative) {
+        label = s.pass ? 'BLACKLIST' : 'PASS';   // "pass" on negative method = the bad thing happened
+      } else {
+        label = s.pass ? 'PASS' : 'FAIL';
+      }
+      return `[${label}] ${s.name} (w:${s.w})`;
+    })
     .join('\n');
 
   const corrections = recentCorrectionsStr(5);

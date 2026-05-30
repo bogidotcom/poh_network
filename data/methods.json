@@ -2422,5 +2422,50 @@
     "score": 0,
     "voteCount": 0,
     "created_at": "2026-05-30T00:00:00.000Z"
+  },
+  {
+    "id": "usdt_blacklist_eth",
+    "type": "evm",
+    "chainId": 1,
+    "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+    "method": "isBlacklisted",
+    "abiTypes": "[\"address\"]",
+    "returnTypes": "[\"bool\"]",
+    "expression": "result[0] === true",
+    "negative": true,
+    "description": "USDT blacklisted on Ethereum \u2014 address frozen by Tether (sanctions / fraud)",
+    "score": 0,
+    "voteCount": 0,
+    "created_at": "2026-05-30T00:00:00.000Z"
+  },
+  {
+    "id": "usdt_blacklist_bsc",
+    "type": "evm",
+    "chainId": 56,
+    "address": "0x55d398326f99059fF775485246999027B3197955",
+    "method": "isBlacklisted",
+    "abiTypes": "[\"address\"]",
+    "returnTypes": "[\"bool\"]",
+    "expression": "result[0] === true",
+    "negative": true,
+    "description": "USDT blacklisted on BSC \u2014 address frozen by Tether",
+    "score": 0,
+    "voteCount": 0,
+    "created_at": "2026-05-30T00:00:00.000Z"
+  },
+  {
+    "id": "usdt_blacklist_polygon",
+    "type": "evm",
+    "chainId": 137,
+    "address": "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
+    "method": "isBlacklisted",
+    "abiTypes": "[\"address\"]",
+    "returnTypes": "[\"bool\"]",
+    "expression": "result[0] === true",
+    "negative": true,
+    "description": "USDT blacklisted on Polygon \u2014 address frozen by Tether",
+    "score": 0,
+    "voteCount": 0,
+    "created_at": "2026-05-30T00:00:00.000Z"
   }
 ]

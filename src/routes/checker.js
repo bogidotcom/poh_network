@@ -67,6 +67,19 @@ async function checkOfacFull(address) {
   return { sanctioned: false };
 }
 
+// ── Tether USDT blacklist hard override (Task 2) ─────────────────────────────
+function checkTetherBlacklist(results) {
+  const hit = results.find(r => r.methodId && r.methodId.startsWith('usdt_blacklist') && r.result === true);
+  if (hit) {
+    return {
+      blacklisted: true,
+      methodId: hit.methodId,
+      description: hit.description,
+    };
+  }
+  return { blacklisted: false };
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getMethods() {
@@ -402,6 +415,16 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
             ofac,
           });
         }
+        const tetherBlacklist = checkTetherBlacklist(results);
+        if (tetherBlacklist.blacklisted) {
+          results.unshift({
+            input,
+            methodId:    tetherBlacklist.methodId,
+            description: `⛔ ${tetherBlacklist.description}`,
+            result:      true,
+            tetherBlacklist: true,
+          });
+        }
         if (isInList('cex', input)) {
           results.unshift({
             input,
@@ -462,6 +485,17 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
       });
     }
 
+    const tetherBlacklist = checkTetherBlacklist(results);
+    if (tetherBlacklist.blacklisted) {
+      results.unshift({
+        input:       inputs[0],
+        methodId:    tetherBlacklist.methodId,
+        description: `⛔ ${tetherBlacklist.description}`,
+        result:      true,
+        tetherBlacklist: true,
+      });
+    }
+
     if (!isFree && (txHash || paidFromBalance)) {
       const { total } = calcScanCost(1);
       const executedIds = [...new Set(results.map(r => r.methodId).filter(Boolean))];
@@ -482,6 +516,11 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
 
     brain.analyzeHumanness(scanKey, results, allMethods)
       .then(async verdict => {
+        // Hard override for Tether blacklist (Task 2) — on-chain fact trumps LLM
+        const tetherHit = results.some(r => r.tetherBlacklist);
+        if (tetherHit) {
+          verdict = { verdict: 'AI', confidence: 0.99, reasoning: 'Address frozen by Tether USDT (blacklist)' };
+        }
         brainPending[scanKey] = { status: 'done', ...verdict, signals: results };
         console.log(`[brain] Verdict for ${scanKey}: ${verdict.verdict} (${(verdict.confidence * 100).toFixed(0)}%)`);
 
