@@ -91,11 +91,13 @@ log "Pulling Ollama models (background — this takes a while)"
 disown
 
 # ── 6. Qvac CLI + SDK ─────────────────────────────────────────────────────────
-if ! command -v qvac &>/dev/null; then
-  log "Installing Qvac CLI + SDK globally"
-  sudo npm install -g @qvac/cli @qvac/sdk --quiet
+QVAC_WANT="0.6.0"
+QVAC_CURRENT=$(qvac --version 2>/dev/null | head -1 || echo "none")
+if [ "$QVAC_CURRENT" = "$QVAC_WANT" ]; then
+  ok "Qvac $QVAC_CURRENT already at latest"
 else
-  ok "Qvac $(qvac --version 2>&1 | head -1) already installed"
+  log "Installing/updating Qvac CLI to $QVAC_WANT (was: $QVAC_CURRENT)"
+  sudo npm install -g @qvac/cli@$QVAC_WANT --quiet
 fi
 
 # Pull the Qvac evaluator model (QWEN3_600M_INST_Q4 defined in qvac.config.json)
