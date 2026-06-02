@@ -17,17 +17,13 @@ const COMPILER_MODEL   = process.env.COMPILER_MODEL    || BASE_MODEL; // Small r
 const EVALUATOR_FAST_MODEL  = process.env.EVALUATOR_FAST_MODEL  || EVALUATOR_MODEL;
 const EVALUATOR_HEAVY_MODEL = process.env.EVALUATOR_HEAVY_MODEL || 'deepseek-r1:32b'; // or qwen3:32b etc.
 
-// ── Qvac config (OpenAI-compatible evaluator — set QVAC_URL to enable) ────────
-// Run: qvac serve openai --port 11435
-const QVAC_URL   = process.env.QVAC_URL   || null;
-const QVAC_MODEL = process.env.QVAC_MODEL || EVALUATOR_MODEL;
+// ── QVAC SDK config ────────────────────────────────────────────────────────────
+// Uses @qvac/sdk directly — no separate `qvac serve` process needed.
+// Set QVAC_SDK_MODEL to any exported model constant name, e.g. QWEN3_8B_INST_Q4_K_M
+const QVAC_SDK_MODEL_NAME = process.env.QVAC_SDK_MODEL || 'QWEN3_8B_INST_Q4_K_M';
+const QVAC_ENABLED = process.env.QVAC_DISABLED !== '1'; // opt-out via env
 
-// Startup visibility
-if (QVAC_URL) {
-  console.log(`[brain] QVAC enabled → ${QVAC_URL} (role model: ${QVAC_MODEL})`);
-} else {
-  console.log(`[brain] QVAC disabled — all roles will use Ollama (COMPILER_MODEL=${COMPILER_MODEL})`);
-}
+console.log(`[brain] QVAC SDK: ${QVAC_ENABLED ? `enabled (model=${QVAC_SDK_MODEL_NAME})` : 'disabled — Ollama only'} | COMPILER_MODEL=${COMPILER_MODEL}`);
 
 // BRAIN_DATA_DIR lets each miner (or test environment) have independent brain state.
 // Set process.env.BRAIN_DATA_DIR before requiring this module to override.
@@ -62,12 +58,61 @@ function queueOllama(fn) {
   return _ollamaQueue;
 }
 
-// ── Qvac request queue (separate from Ollama — runs on different port) ────────
+// ── QVAC SDK request queue (serializes SDK calls — llama.cpp is single-threaded) ─
 let _qvacQueue = Promise.resolve();
 
 function queueQvac(fn) {
   _qvacQueue = _qvacQueue.then(fn, fn);
   return _qvacQueue;
+}
+
+// ── QVAC SDK lazy loader ──────────────────────────────────────────────────────
+let _qvacSdk = null;
+let _qvacModelId = null;
+let _qvacModelLoadPromise = null;
+let _qvacLoadFailed = false;
+
+async function getQvacSdk() {
+  if (_qvacSdk) return _qvacSdk;
+  _qvacSdk = await import('@qvac/sdk');
+  return _qvacSdk;
+}
+
+async function loadQvacModel() {
+  if (_qvacModelId) return _qvacModelId;
+  if (_qvacLoadFailed) return null;
+  if (_qvacModelLoadPromise) return _qvacModelLoadPromise;
+
+  _qvacModelLoadPromise = (async () => {
+    try {
+      const sdk = await getQvacSdk();
+      const modelSrc = sdk[QVAC_SDK_MODEL_NAME];
+      if (!modelSrc) throw new Error(`Unknown model constant: ${QVAC_SDK_MODEL_NAME}`);
+
+      console.log(`[brain] Loading QVAC model ${QVAC_SDK_MODEL_NAME}...`);
+      const id = await sdk.loadModel({
+        modelSrc,
+        modelType: 'llm',
+        modelConfig: { ctx_size: 4096, verbosity: 0 },
+        onProgress: (p) => {
+          if (Math.round(p.percentage) % 25 === 0 && p.percentage > 0) {
+            console.log(`[brain] QVAC model download: ${p.percentage.toFixed(0)}%`);
+          }
+        },
+      });
+      _qvacModelId = id;
+      _qvacModelLoadPromise = null;
+      console.log(`[brain] QVAC model ready (id=${id})`);
+      return id;
+    } catch (err) {
+      _qvacLoadFailed = true;
+      _qvacModelLoadPromise = null;
+      console.warn(`[brain] QVAC model load failed: ${err.message} — falling back to Ollama`);
+      return null;
+    }
+  })();
+
+  return _qvacModelLoadPromise;
 }
 
 // Kept for the analyzeHumanness busy-check (prevents stacking verdict requests)
@@ -198,70 +243,67 @@ async function ollamaChatJSON(prompt, requiredKeys, opts = {}) {
   return parsed;
 }
 
-// ── Qvac chat (OpenAI-compatible, for Evaluator role) ────────────────────────
+// ── QVAC SDK chat (native in-process inference) ───────────────────────────────
 
-let _qvacFailures = 0;
-const QVAC_CIRCUIT_OPEN_AFTER = 3;  // disable after this many consecutive failures
-let _qvacCircuitOpenAt = 0;         // timestamp when circuit opened (0 = closed)
-const QVAC_RETRY_AFTER_MS = 5 * 60 * 1000; // re-probe after 5 minutes
+let _qvacSdkFailures = 0;
+const QVAC_SDK_CIRCUIT_OPEN_AFTER = 3;
+let _qvacSdkCircuitOpenAt = 0;
+const QVAC_SDK_RETRY_AFTER_MS = 5 * 60 * 1000;
 
-async function qvacChat(prompt, { model = QVAC_MODEL, maxTokens = 256, timeLimit = 120000, jsonMode = false, systemPrompt } = {}) {
-  // Circuit breaker: skip if too many recent failures; re-probe after cooldown
-  if (_qvacCircuitOpenAt) {
-    if (Date.now() - _qvacCircuitOpenAt < QVAC_RETRY_AFTER_MS) {
-      // Log at most every ~60s to avoid spam during frequent evaluator calls
-      if (!qvacChat._lastCircuitLog || Date.now() - qvacChat._lastCircuitLog > 60000) {
-        console.warn('[brain] Qvac circuit open (cooldown) — falling back to Ollama for this call');
-        qvacChat._lastCircuitLog = Date.now();
+async function qvacChat(prompt, { maxTokens = 512, timeLimit = 120000, jsonMode = false, systemPrompt } = {}) {
+  if (!QVAC_ENABLED) return null;
+
+  // Circuit breaker
+  if (_qvacSdkCircuitOpenAt) {
+    if (Date.now() - _qvacSdkCircuitOpenAt < QVAC_SDK_RETRY_AFTER_MS) {
+      if (!qvacChat._lastLog || Date.now() - qvacChat._lastLog > 60000) {
+        console.warn('[brain] QVAC SDK circuit open — falling back to Ollama');
+        qvacChat._lastLog = Date.now();
       }
       return null;
     }
-    _qvacCircuitOpenAt = 0; // probe again
+    _qvacSdkCircuitOpenAt = 0;
+    _qvacSdkFailures = 0;
+    _qvacLoadFailed = false; // allow retry after cooldown
   }
 
-  const sys = systemPrompt || 'You are a JSON-only responder. Output only valid JSON. No explanations, no markdown, no preamble.';
   return queueQvac(async () => {
-    const body = {
-      model,
-      messages: [
-        { role: 'system', content: sys },
-        { role: 'user', content: prompt + '\n/no_think' }, // suppresses Qwen3 chain-of-thought
-      ],
-      max_tokens: maxTokens,
-      temperature: 0.1,
-      stream: false,
-    };
-
-    const doPost = () => axios.post(`${QVAC_URL}/v1/chat/completions`, body, { timeout: timeLimit });
-
     try {
-      let res;
-      try {
-        res = await doPost();
-      } catch (firstErr) {
-        // 503 = model still loading after restart — wait and retry once, don't count as failure
-        if (firstErr.response?.status === 503) {
-          console.warn('[brain] Qvac 503 (model loading) — retrying in 10s');
-          await new Promise(r => setTimeout(r, 10000));
-          res = await doPost();
-        } else {
-          throw firstErr;
-        }
+      const modelId = await Promise.race([
+        loadQvacModel(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('QVAC model load timeout')), timeLimit)),
+      ]);
+      if (!modelId) return null;
+
+      const sdk = await getQvacSdk();
+      const sys = systemPrompt || (jsonMode
+        ? 'You are a JSON-only responder. Output only valid JSON. No explanations, no markdown.'
+        : 'You are a helpful, concise assistant.');
+
+      const history = [
+        { role: 'system', content: sys },
+        // /no_think suppresses Qwen3 chain-of-thought tokens
+        { role: 'user', content: prompt + '\n/no_think' },
+      ];
+
+      const run = sdk.completion({ modelId, history, stream: true });
+      let text = '';
+      for await (const token of run.tokenStream) {
+        text += token;
       }
-      _qvacFailures = 0;
-      return res.data.choices?.[0]?.message?.content?.trim() || '';
+
+      // Strip any residual <think>...</think> blocks from the output
+      text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
+      _qvacSdkFailures = 0;
+      return text || '';
     } catch (err) {
-      // Don't trip the circuit breaker for transient loading errors
-      if (err.response?.status === 503) {
-        console.warn('[brain] Qvac still loading — skipping, will retry next scan');
-        return null;
-      }
-      _qvacFailures++;
-      if (_qvacFailures >= QVAC_CIRCUIT_OPEN_AFTER) {
-        _qvacCircuitOpenAt = Date.now();
-        console.warn(`[brain] Qvac circuit open after ${_qvacFailures} failures — will retry in 5 min`);
+      _qvacSdkFailures++;
+      if (_qvacSdkFailures >= QVAC_SDK_CIRCUIT_OPEN_AFTER) {
+        _qvacSdkCircuitOpenAt = Date.now();
+        console.warn(`[brain] QVAC SDK circuit open after ${_qvacSdkFailures} failures — will retry in 5 min`);
       } else {
-        console.error('[brain] Qvac call failed:', err.message);
+        console.error('[brain] QVAC SDK call failed:', err.message);
       }
       return null;
     }
@@ -271,13 +313,13 @@ async function qvacChat(prompt, { model = QVAC_MODEL, maxTokens = 256, timeLimit
 // ── Role routers — Qvac if configured, Ollama otherwise ──────────────────────
 
 async function evaluatorChat(prompt, opts = {}) {
-  // Support explicit model override for cascade (fast vs heavy)
   const model = opts.model || EVALUATOR_MODEL;
 
-  if (QVAC_URL) {
-    const result = await qvacChat(prompt, { ...opts, model });
+  // Try QVAC SDK first (in-process, no external server needed)
+  if (QVAC_ENABLED) {
+    const result = await qvacChat(prompt, opts);
     if (result !== null) return result;
-    if (!_qvacCircuitOpenAt) console.warn('[brain] Qvac unavailable — falling back to Ollama for evaluation');
+    if (!_qvacSdkCircuitOpenAt) console.warn('[brain] QVAC SDK unavailable — falling back to Ollama');
   }
   return ollamaChat(prompt, { ...opts, model });
 }

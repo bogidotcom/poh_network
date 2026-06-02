@@ -1,15 +1,18 @@
 'use strict';
 
 /**
- * start-qvac.js — starts the Qvac OpenAI-compatible inference server
- * for the POH brain Evaluator role.
+ * start-qvac.js — SUPERSEDED
  *
- * Uses @qvac/cli + @qvac/sdk with the model defined in qvac.config.json.
- * The server listens on QVAC_PORT (default: 11435) and is called by
- * brain.js via QVAC_URL=http://localhost:11435.
+ * brain.js now uses @qvac/sdk directly (loadModel + completion) so no
+ * separate `qvac serve openai` process is needed. This script is kept
+ * only as a manual fallback if you want to expose an OpenAI-compatible
+ * endpoint on a different port for external tools.
  *
- * Run:  yarn qvac  (or yarn start:qvac)
- * Auto: yarn dev:all / yarn start:all  (via launch.js ensureQvac)
+ * To disable the in-process SDK path and force Ollama-only mode:
+ *   QVAC_DISABLED=1 node src/server.js
+ *
+ * To change the SDK model:
+ *   QVAC_SDK_MODEL=QWEN3_1_7B_INST_Q4 node src/server.js
  */
 
 require('dotenv').config();
