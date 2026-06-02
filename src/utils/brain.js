@@ -10,7 +10,7 @@ const OLLAMA_URL       = process.env.OLLAMA_URL        || 'http://localhost:1143
 const BASE_MODEL       = process.env.OLLAMA_MODEL      || 'qwen2.5:1.5b';
 const EVALUATOR_MODEL  = process.env.EVALUATOR_MODEL   || 'deepseek-r1:1.5b';
 const LEARNER_MODEL    = process.env.LEARNER_MODEL     || 'qwen2.5:1.5b';
-const COMPILER_MODEL   = process.env.COMPILER_MODEL    || 'qwen2.5:14b'; // Use a reliable small model for consolidation to avoid 500s
+const COMPILER_MODEL   = process.env.COMPILER_MODEL    || BASE_MODEL; // Small reliable default (matches your main Ollama model) to avoid 500s. Set COMPILER_MODEL if you want something bigger for summarization.
 
 // Cascade evaluator models (for brain verdicts)
 // Use smaller/faster model by default, escalate to heavy reasoning model when needed.
@@ -22,11 +22,24 @@ const EVALUATOR_HEAVY_MODEL = process.env.EVALUATOR_HEAVY_MODEL || 'deepseek-r1:
 const QVAC_URL   = process.env.QVAC_URL   || null;
 const QVAC_MODEL = process.env.QVAC_MODEL || EVALUATOR_MODEL;
 
-const BRAIN_STATE_PATH = path.join(__dirname, '../../data/brain_state.md');
-const DATASET_PATH     = path.join(__dirname, '../../data/dataset.json');
-const WEIGHTS_PATH     = path.join(__dirname, '../../data/weights.json');
-const FEEDBACK_PATH    = path.join(__dirname, '../../data/feedback.json');
-const POOLS_PATH       = path.join(__dirname, '../../data/pools.json');
+// Startup visibility
+if (QVAC_URL) {
+  console.log(`[brain] QVAC enabled → ${QVAC_URL} (role model: ${QVAC_MODEL})`);
+} else {
+  console.log(`[brain] QVAC disabled — all roles will use Ollama (COMPILER_MODEL=${COMPILER_MODEL})`);
+}
+
+// BRAIN_DATA_DIR lets each miner (or test environment) have independent brain state.
+// Set process.env.BRAIN_DATA_DIR before requiring this module to override.
+const BRAIN_DATA_DIR   = process.env.BRAIN_DATA_DIR
+  ? path.resolve(process.env.BRAIN_DATA_DIR)
+  : path.join(__dirname, '../../data');
+
+const BRAIN_STATE_PATH = path.join(BRAIN_DATA_DIR, 'brain_state.md');
+const DATASET_PATH     = path.join(BRAIN_DATA_DIR, 'dataset.json');
+const WEIGHTS_PATH     = path.join(BRAIN_DATA_DIR, 'weights.json');
+const FEEDBACK_PATH    = path.join(BRAIN_DATA_DIR, 'feedback.json');
+const POOLS_PATH       = path.join(BRAIN_DATA_DIR, 'pools.json');
 
 // ── Pool graduation multiplier ────────────────────────────────────────────────
 // Returns 1.5 if the signal's bonding curve has graduated to DEX, else 1.0
@@ -109,7 +122,7 @@ function recentCorrectionsStr(n = 5) {
 
 // ── Ollama call (per model) ───────────────────────────────────────────────────
 
-async function ollamaChat(prompt, { model = BASE_MODEL, maxTokens = 512, timeLimit = 30000, jsonMode = false } = {}) {
+async function ollamaChat(prompt, { model = BASE_MODEL, maxTokens = 512, timeLimit = 120000, jsonMode = false } = {}) {
   return queueOllama(async () => {
     ollamaBusy = true;
     try {
@@ -192,18 +205,26 @@ const QVAC_CIRCUIT_OPEN_AFTER = 3;  // disable after this many consecutive failu
 let _qvacCircuitOpenAt = 0;         // timestamp when circuit opened (0 = closed)
 const QVAC_RETRY_AFTER_MS = 5 * 60 * 1000; // re-probe after 5 minutes
 
-async function qvacChat(prompt, { model = QVAC_MODEL, maxTokens = 256, timeLimit = 120000, jsonMode = false } = {}) {
+async function qvacChat(prompt, { model = QVAC_MODEL, maxTokens = 256, timeLimit = 120000, jsonMode = false, systemPrompt } = {}) {
   // Circuit breaker: skip if too many recent failures; re-probe after cooldown
   if (_qvacCircuitOpenAt) {
-    if (Date.now() - _qvacCircuitOpenAt < QVAC_RETRY_AFTER_MS) return null;
+    if (Date.now() - _qvacCircuitOpenAt < QVAC_RETRY_AFTER_MS) {
+      // Log at most every ~60s to avoid spam during frequent evaluator calls
+      if (!qvacChat._lastCircuitLog || Date.now() - qvacChat._lastCircuitLog > 60000) {
+        console.warn('[brain] Qvac circuit open (cooldown) — falling back to Ollama for this call');
+        qvacChat._lastCircuitLog = Date.now();
+      }
+      return null;
+    }
     _qvacCircuitOpenAt = 0; // probe again
   }
 
+  const sys = systemPrompt || 'You are a JSON-only responder. Output only valid JSON. No explanations, no markdown, no preamble.';
   return queueQvac(async () => {
     const body = {
       model,
       messages: [
-        { role: 'system', content: 'You are a JSON-only responder. Output only valid JSON. No explanations, no markdown, no preamble.' },
+        { role: 'system', content: sys },
         { role: 'user', content: prompt + '\n/no_think' }, // suppresses Qwen3 chain-of-thought
       ],
       max_tokens: maxTokens,
@@ -280,7 +301,8 @@ async function evaluatorChatJSON(prompt, requiredKeys, opts = {}) {
 
 async function learnerChat(prompt, opts = {}) {
   if (QVAC_URL) {
-    const result = await qvacChat(prompt, opts);
+    const model = opts.model || QVAC_MODEL;
+    const result = await qvacChat(prompt, { ...opts, model });
     if (result !== null) return result;
   }
   return ollamaChat(prompt, { ...opts, model: LEARNER_MODEL });
@@ -301,9 +323,18 @@ async function learnerChatJSON(prompt, requiredKeys, opts = {}) {
 
 async function compilerChat(prompt, opts = {}) {
   if (QVAC_URL) {
-    const result = await qvacChat(prompt, opts);
+    const model = opts.model || QVAC_MODEL;
+    const result = await qvacChat(prompt, {
+      ...opts,
+      model,
+      systemPrompt: 'You are a precise, technical summarizer for a decentralized Proof-of-Humanity detection system. Output only the requested summary text. Be concise, factual, and avoid speculation or JSON.'
+    });
     if (result !== null) return result;
+    if (!_qvacCircuitOpenAt) {
+      console.warn('[brain] Qvac unavailable — falling back to Ollama for compiler (consolidation)');
+    }
   }
+  console.log(`[brain] compiler → Ollama (${COMPILER_MODEL})`);
   return ollamaChat(prompt, { ...opts, model: COMPILER_MODEL });
 }
 
@@ -397,7 +428,7 @@ Return exactly this JSON (no extra text):
   let result = await evaluatorChatJSON(
     basePrompt,
     ['verdict', 'confidence', 'reasoning'],
-    { model: EVALUATOR_FAST_MODEL, maxTokens: 220, timeLimit: 45000 }
+    { model: EVALUATOR_FAST_MODEL, maxTokens: 220, timeLimit: 120000 }
   );
 
   const fastConfidence = result?.confidence ? parseFloat(result.confidence) : 0;
@@ -411,7 +442,7 @@ Return exactly this JSON (no extra text):
     const heavyResult = await evaluatorChatJSON(
       basePrompt + '\n\nYou are the HEAVY reasoning model. Think carefully and be precise with confidence.',
       ['verdict', 'confidence', 'reasoning'],
-      { model: EVALUATOR_HEAVY_MODEL, maxTokens: 280, timeLimit: 90000 }
+      { model: EVALUATOR_HEAVY_MODEL, maxTokens: 280, timeLimit: 180000 }
     );
     if (heavyResult) {
       result = heavyResult;
@@ -615,15 +646,16 @@ STYLE:
   console.log('[brain] Consolidating knowledge...');
   try {
     const newBrainState = await compilerChat(prompt, {
-      maxTokens: 300,
+      maxTokens: 700,
       timeLimit: 300000
     });
 
-    if (newBrainState) {
-      saveBrainState(`# Brain State — Last updated: ${new Date().toISOString()}\n\n${newBrainState}`);
-      console.log('[brain] Consolidation complete.');
+    const cleaned = (newBrainState || '').trim();
+    if (cleaned.length > 20) {
+      saveBrainState(`# Brain State — Last updated: ${new Date().toISOString()}\n\n${cleaned}`);
+      console.log('[brain] Consolidation complete. (' + cleaned.length + ' chars)');
     } else {
-      console.warn('[brain] Consolidation returned empty response (model may be unavailable or overloaded)');
+      console.warn('[brain] Consolidation returned empty/short response (model may be unavailable or overloaded). Got:', JSON.stringify(cleaned.slice(0, 80)));
     }
   } catch (err) {
     console.error('[brain] Consolidation failed:', err.message);
