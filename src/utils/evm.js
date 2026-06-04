@@ -40,6 +40,17 @@ const CHAIN_REGISTRY = {
   8217:     'https://public-en-cypress.klaytn.net',        // Kaia (ex-Klaytn)
   999:      'https://rpc.hyperliquid.xyz/evm',             // Hyperliquid HyperEVM
   7771:     'https://mainnet.coti.io/rpc',                 // Coti Network
+  // Extra L2s seen in live methods (ZNS + BAB etc.) — public fallbacks so signals don't hard-fail
+  // when user config only covers majors. (User should still add via GUI + key for reliability/ high-value.)
+  81457:    'https://rpc.blast.io',                          // Blast
+  80094:    'https://rpc.berachain.com',                     // Berachain
+  1301:     'https://mainnet.unichain.org',                  // Unichain
+  1868:     'https://rpc.soneium.org',                       // Soneium
+  2741:     'https://api.mainnet.abs.xyz',                   // Abstract
+  146:      'https://rpc.soniclabs.com',                     // Sonic
+  57073:    'https://rpc-q1.inkonchain.com',                 // Ink
+  204:      'https://opbnb-mainnet-rpc.bnbchain.org',        // opBNB
+  2020:     'https://api.roninchain.com/rpc',                // Ronin / Katana
 };
 
 /**

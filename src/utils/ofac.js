@@ -55,7 +55,7 @@ async function refresh() {
     console.log('[ofac] Downloading SDN list…');
     const res = await axios.get(SDN_URL, {
       maxRedirects: 5,
-      timeout:      30_000,
+      timeout:      45_000,
       responseType: 'text',
     });
     const map   = parseSdnCsv(res.data);
@@ -142,7 +142,7 @@ let ukNames = new Set(); // lowercased names for substring / exact match
 
 async function refreshUk() {
   try {
-    const res = await axios.get(UK_SANCTIONS_URL, { timeout: 15000, responseType: 'text' });
+    const res = await axios.get(UK_SANCTIONS_URL, { timeout: 45000, responseType: 'text' });
     const lines = res.data.split('\n').slice(1); // skip header
     ukNames = new Set();
     for (const line of lines) {
@@ -152,6 +152,21 @@ async function refreshUk() {
     }
     console.log(`[sanctions] UK list loaded — ${ukNames.size} names`);
   } catch (e) {
+    // Retry once on abort/timeout (common during startup or net hiccups)
+    if (e.code === 'ECONNABORTED' || /aborted|timeout/i.test(e.message || '')) {
+      try {
+        await new Promise(r => setTimeout(r, 1500));
+        const res2 = await axios.get(UK_SANCTIONS_URL, { timeout: 45000, responseType: 'text' });
+        const lines = res2.data.split('\n').slice(1);
+        ukNames = new Set();
+        for (const line of lines) {
+          const name = (line.split(',')[0] || '').replace(/^"|"$/g, '').toLowerCase().trim();
+          if (name && name.length > 3) ukNames.add(name);
+        }
+        console.log(`[sanctions] UK list loaded (retry) — ${ukNames.size} names`);
+        return;
+      } catch (e2) {}
+    }
     console.warn('[sanctions] UK list refresh failed (using empty):', e.message);
   }
 }
@@ -212,7 +227,7 @@ function parseEuSimpleCsv(csvText) {
 async function refreshEuFromOpenSanctions() {
   // Try the clean names.txt first (lightweight)
   try {
-    const namesRes = await axios.get(EU_OPENSANCTIONS_NAMES, { timeout: 25000, responseType: 'text' });
+    const namesRes = await axios.get(EU_OPENSANCTIONS_NAMES, { timeout: 45000, responseType: 'text' });
     if (namesRes.status === 200 && namesRes.data) {
       euNames = new Set();
       namesRes.data.split('\n').forEach(line => addEuName(line));
@@ -223,7 +238,7 @@ async function refreshEuFromOpenSanctions() {
 
   // Fallback to targets.simple.csv
   try {
-    const csvRes = await axios.get(EU_OPENSANCTIONS_CSV, { timeout: 30000, responseType: 'text' });
+    const csvRes = await axios.get(EU_OPENSANCTIONS_CSV, { timeout: 45000, responseType: 'text' });
     if (csvRes.status === 200 && csvRes.data && csvRes.data.length > 5000) {
       parseEuSimpleCsv(csvRes.data);
       console.log(`[sanctions] EU list loaded via OpenSanctions (targets.simple.csv) — ${euNames.size} names`);

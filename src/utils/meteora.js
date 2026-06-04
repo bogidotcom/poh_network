@@ -253,6 +253,16 @@ function recordPool(methodId, { poolAddress, mintAddress, configAddress, creator
   };
   savePools(pools);
   console.log(`[meteora] Recorded pool for ${methodId}: ${poolAddress}`);
+
+  // === Miner Network Integration ===
+  // A signal only becomes canonical for miners once its conviction curve pool exists.
+  try {
+    const { publishSignalToMiners } = require('./miner-network');
+    publishSignalToMiners(methodId, pools[methodId]);
+  } catch (e) {
+    console.warn('[meteora] Failed to publish signal to miner network:', e.message);
+  }
+
   return pools[methodId];
 }
 
@@ -318,6 +328,15 @@ async function createSignalPool(methodId, signalName, signalSymbol) {
   savePools(pools);
 
   console.log(`[meteora] Created pool for ${methodId}: ${poolAddress} mint: ${record.mintAddress}`);
+
+  // === Miner Network Integration ===
+  try {
+    const { publishSignalToMiners } = require('./miner-network');
+    publishSignalToMiners(methodId, record);
+  } catch (e) {
+    console.warn('[meteora] Failed to publish signal to miner network:', e.message);
+  }
+
   return record;
 }
 

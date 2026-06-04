@@ -311,7 +311,16 @@ async function analyzeBitcoin(address) {
       (tx.vout || []).forEach(v => v.scriptpubkey_address && counterparties.add(v.scriptpubkey_address));
     });
     counterparties.delete(address);
-    return Array.from(counterparties).slice(0, 20).map(cp => ({ from: address, to: cp, chain: 'bitcoin' }));
+    _cacheSet(address, counterparties);
+    const n = txs.length;
+    const u = counterparties.size;
+    if (u === 0) return [];
+    return [{
+      methodId: 'tx_graph_bitcoin',
+      description: `Tx graph (Bitcoin): ${n} recent txs, ${u} unique counterparties (on-chain activity)`,
+      result: true,
+      input: address,
+    }];
   } catch (e) {
     console.error('[txGraph] Bitcoin error:', e.message);
     return [];
@@ -328,7 +337,15 @@ async function analyzeTron(address) {
       if (tx.to) counterparties.add(tx.to);
     });
     counterparties.delete(address);
-    return Array.from(counterparties).slice(0, 20).map(cp => ({ from: address, to: cp, chain: 'tron' }));
+    _cacheSet(address, counterparties);
+    const u = counterparties.size;
+    if (u === 0) return [];
+    return [{
+      methodId: 'tx_graph_tron',
+      description: `Tx graph (Tron): ${txs.length} recent txs, ${u} unique counterparties (on-chain activity)`,
+      result: true,
+      input: address,
+    }];
   } catch (e) {
     console.error('[txGraph] Tron error:', e.message);
     return [];
@@ -347,7 +364,15 @@ async function analyzeTon(address) {
       });
     });
     counterparties.delete(address);
-    return Array.from(counterparties).slice(0, 20).map(cp => ({ from: address, to: cp, chain: 'ton' }));
+    _cacheSet(address, counterparties);
+    const u = counterparties.size;
+    if (u === 0) return [];
+    return [{
+      methodId: 'tx_graph_ton',
+      description: `Tx graph (TON): ${events.length} recent events, ${u} unique counterparties (on-chain activity)`,
+      result: true,
+      input: address,
+    }];
   } catch (e) {
     console.error('[txGraph] TON error:', e.message);
     return [];
@@ -364,7 +389,15 @@ async function analyzeXlm(address) {
       if (p.to) counterparties.add(p.to);
     });
     counterparties.delete(address);
-    return Array.from(counterparties).slice(0, 20).map(cp => ({ from: address, to: cp, chain: 'xlm' }));
+    _cacheSet(address, counterparties);
+    const u = counterparties.size;
+    if (u === 0) return [];
+    return [{
+      methodId: 'tx_graph_xlm',
+      description: `Tx graph (XLM): ${payments.length} recent payments, ${u} unique counterparties (on-chain activity)`,
+      result: true,
+      input: address,
+    }];
   } catch (e) {
     console.error('[txGraph] XLM error:', e.message);
     return [];

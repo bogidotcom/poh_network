@@ -28,10 +28,28 @@ app.use('/abi', require('./routes/abi'));
 app.use('/profile', require('./routes/profile'));
 app.use('/ecosystem', require('./routes/ecosystem'));
 app.use('/curves', require('./routes/curves'));
+app.use('/brain', require('./routes/brain'));
+app.use('/miner', require('./routes/miner'));
+
+// Temporary internal endpoint for miners to submit results during transition
+const { ResultCollector } = require('./network/result-collector');
+const resultCollector = new ResultCollector();
+
+app.post('/internal/miner-result', express.json(), async (req, res) => {
+  try {
+    const result = await resultCollector.submitResult(req.body);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Expose collector for use inside checker route (temporary)
+global.resultCollector = resultCollector;
 
 // Health check
 app.get('/', (req, res) => {
-  res.json({ status: 'ok', endpoints: ['POST /evm', 'POST /rest'] });
+  res.json({ status: 'ok', endpoints: ['/brain (decentralized miner AI workers)', 'POST /evm', 'POST /rest'] });
 });
 
 // Global error handler

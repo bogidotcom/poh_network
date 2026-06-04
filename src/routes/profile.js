@@ -6,7 +6,7 @@ const nacl  = require('tweetnacl');
 const bs58  = require('bs58');
 const fs    = require('fs');
 const path  = require('path');
-const { getProfile, upsertProfile, getRewards, saveRewards, getProfiles, getMyVotes } = require('../utils/profiles');
+const { getProfile, upsertProfile, getRewards, saveRewards, getProfiles, getMyVotes, isTxUsed, recordTx } = require('../utils/profiles');
 const { verifyStablecoinTransfer, sendPohTokens } = require('../utils/solana');
 
 const METHODS_PATH = path.join(__dirname, '../../data/methods.json');
@@ -111,6 +111,41 @@ router.post('/deposit', async (req, res, next) => {
     const p = getProfile(address) || {};
     const updated = upsertProfile(address, { balance: (p.balance || 0) + amountRaw });
     res.json({ success: true, balance: updated.balance });
+  } catch (err) { next(err); }
+});
+
+// ── POST /profile/subscribe — one-time 1000 USDC/USDT payment for Startup plan ─
+router.post('/subscribe', async (req, res, next) => {
+  try {
+    const { address, txHash, plan } = req.body;
+    if (!address || !txHash || plan !== 'startup') {
+      return res.status(400).json({ error: 'address, txHash and plan=startup are required' });
+    }
+
+    const amountRaw = 1000 * 1_000_000;
+    if (isTxUsed(txHash)) {
+      return res.status(409).json({ error: 'Payment transaction already used' });
+    }
+
+    const isValid = await verifyStablecoinTransfer(txHash, amountRaw, address);
+    if (!isValid) return res.status(402).json({ error: 'USDC/USDT transfer of 1000 not verified' });
+
+    const p = getProfile(address) || {};
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // ~30 days
+
+    const updated = upsertProfile(address, {
+      plan: 'startup',
+      planExpiresAt: expiresAt.toISOString(),
+      monthlyQuota: 100_000,
+      monthlyScansUsed: 0,
+      monthlyResetAt: now.toISOString(),
+      overageRate: 15_000,
+    });
+
+    recordTx(txHash, { address, type: 'startup-subscribe', amountRaw });
+
+    res.json({ success: true, profile: sanitize(updated) });
   } catch (err) { next(err); }
 });
 

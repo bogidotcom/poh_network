@@ -19,6 +19,7 @@ const { isOfacSanctioned, isSanctioned } = require('../utils/ofac');
 const { enrichProfile }                             = require('../utils/profileEnrich');
 const { isInList }                                  = require('../utils/labeledWallets');
 const { checkHumanityVerified }   = require('../utils/humanityProtocol');
+const { getFarcasterData, getParagraphData } = require('../utils/social');
 const { createJob, getJob }       = require('../utils/jobQueue');
 const {
   getProfile, getProfiles, upsertProfile, consumeFreeScan, calcScanCost,
@@ -235,6 +236,81 @@ async function executeMethod(m, address) {
     } else if (m.type === 'labeled') {
       const result = isInList(m.file, address);
       return evaluate(m.expression, { result }, m.lang || 'js');
+
+    } else if (m.type === 'ton') {
+      // Improved TON get-method support with proper typed arguments
+      try {
+        let args = [];
+        if (m.tonArgs) {
+          args = JSON.parse(m.tonArgs);
+        } else if (m.abiTypes) {
+          // Fallback: support old simple array style ["123", "EQ..."] → convert to typed args
+          const raw = JSON.parse(m.abiTypes);
+          if (Array.isArray(raw)) {
+            args = raw.map(val => {
+              if (typeof val === 'string' && val.startsWith('EQ')) return { type: 'slice', value: val };
+              if (typeof val === 'number' || /^\d+$/.test(val)) return { type: 'int', value: String(val) };
+              return { type: 'slice', value: val };
+            });
+          }
+        }
+
+        const res = await axios.post(
+          `https://tonapi.io/v2/blockchain/accounts/${m.address}/methods/${m.method}`,
+          { args },
+          { timeout: 15000 }
+        );
+        const result = res.data?.stack || [];
+        const decimals = m.decimals != null ? Number(m.decimals) : 9;
+        return evaluate(m.expression, { result, decimals }, m.lang || 'js');
+      } catch (e) {
+        let details = e.message;
+        if (e.response?.data) {
+          // TonAPI often returns structured errors
+          const errData = e.response.data;
+          details = errData.error || errData.message || JSON.stringify(errData);
+        }
+        console.error('[execute] TON call failed:', details);
+        // Return false but could be extended to return error object if executeMethod signature is updated
+        return false;
+      }
+
+    } else if (m.type === 'tron') {
+      // Proper TRON contract call with ABI encoding (using ethers, same as EVM)
+      try {
+        const { ethers } = require('ethers');
+        const tronGridUrl = 'https://api.trongrid.io/wallet/triggerconstantcontract';
+
+        const inputTypes = JSON.parse(m.abiTypes || '[]');
+        const args = [address, ...(m.extraParams ? JSON.parse(m.extraParams) : [])];
+
+        const iface = new ethers.Interface([`function ${m.method}(${inputTypes.join(',')})`]);
+        const data = iface.encodeFunctionData(m.method, args); // 0x + selector + encoded params
+
+        const body = {
+          contract_address: m.address,
+          function_selector: m.method + '(' + inputTypes.join(',') + ')',
+          parameter: data.slice(2), // remove 0x
+          owner_address: address
+        };
+
+        const res = await axios.post(tronGridUrl, body, { timeout: 15000, validateStatus: () => true });
+        const constantResult = res.data?.constant_result?.[0] || '';
+
+        // Decode the result
+        const returnTypes = JSON.parse(m.returnTypes || '[]');
+        let result = [];
+        if (constantResult && returnTypes.length > 0) {
+          const decoded = iface.decodeFunctionResult(m.method, '0x' + constantResult);
+          result = Array.from(decoded);
+        }
+
+        const decimals = m.decimals != null ? Number(m.decimals) : 6;
+        return evaluate(m.expression, { result, decimals }, m.lang || 'js');
+      } catch (e) {
+        console.error('[execute] TRON call failed:', e.message);
+        return false;
+      }
     }
     return false;
   })();
@@ -260,7 +336,7 @@ async function scanWallet(rawInput, { allMethods, chainFilter }) {
   const isTron    = /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(address);
   const isTon     = /^(EQ|UQ|kQ|0Q)[a-zA-Z0-9_-]{46}$/.test(address);
   const isXlm     = /^G[A-Z2-7]{55}$/.test(address);
-  const isSolana  = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address) && !isTron;
+  const isSolana  = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address) && !isTron && !isBitcoin && !isTon && !isXlm;
 
   const chain = isEvm ? 'evm' : isBitcoin ? 'bitcoin' : isTron ? 'tron' : isTon ? 'ton' : isXlm ? 'xlm' : isSolana ? 'solana' : null;
   if (!chain) return [{ input: address, error: 'Unrecognised address format' }];
@@ -273,9 +349,20 @@ async function scanWallet(rawInput, { allMethods, chainFilter }) {
       const allowed = chainFilter.split(',').map(Number);
       methods = methods.filter(m => m.type === 'rest' || allowed.includes(Number(m.chainId)));
     }
+    // For REST: only if no supportedChains specified or includes 'evm'
+    methods = methods.filter(m =>
+      m.type !== 'rest' ||
+      !m.supportedChains || m.supportedChains.length === 0 ||
+      m.supportedChains.includes('evm')
+    );
   } else if (isSolana) {
     methods = methods.filter(m => m.type === 'solana' || m.type === 'rest' || m.type === 'labeled');
     methods = methods.filter(m => !m.addressType || m.addressType === 'solana');
+    // Strict for REST: require explicit supportedChains include (consistent with BTC etc; legacy must be updated via checklist)
+    methods = methods.filter(m =>
+      m.type !== 'rest' ||
+      (Array.isArray(m.supportedChains) && m.supportedChains.includes('solana'))
+    );
   } else {
     // Bitcoin, Tron, TON, XLM — allow matching rest methods (by chain) + any native type if present
     const nativeType = chain; // 'bitcoin' | 'tron' | 'ton' | 'xlm'
@@ -283,6 +370,13 @@ async function scanWallet(rawInput, { allMethods, chainFilter }) {
       m.type === nativeType ||
       m.type === 'rest' && (!m.chain || m.chain === chain) ||
       m.type === 'labeled'
+    );
+    // Respect addressType (e.g. block EVM-only Farcaster/ENS/Lens REST methods on BTC/Tron etc.)
+    methods = methods.filter(m => !m.addressType || m.addressType === nativeType);
+    // For REST on non-EVM chains: only if explicitly opted-in via supportedChains checklist (prevents legacy EVM-only social/ENS methods from leaking to BTC etc.)
+    methods = methods.filter(m =>
+      m.type !== 'rest' ||
+      (Array.isArray(m.supportedChains) && m.supportedChains.includes(chain))
     );
   }
   if (methods.length === 0) return [];
@@ -375,13 +469,20 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
       const fullCached   = await getCachedResponse(fullCacheKey);
       if (fullCached) {
         console.log(`[checker] Cache hit for ${inputs[0]} (cached ${fullCached.cachedAt})`);
+        // Recompute sanctions (cheap in-mem + auto-refresh) so EU/UK badges always appear even on cache hits
+        const sanctionsCheck = isSanctioned(inputs[0]);
+        const eu = sanctionsCheck.list === 'EU'      ? sanctionsCheck : { sanctioned: false, list: 'EU' };
+        const uk = sanctionsCheck.list === 'UK-FCDO' ? sanctionsCheck : { sanctioned: false, list: 'UK-FCDO' };
+        const cex  = isInList('cex', inputs[0]);
         return res.json({
           result:     fullCached.results,
           count:      fullCached.results.length,
           source:     'cache',
           cachedAt:   fullCached.cachedAt,
-          ofac:       fullCached.ofac      || null,
-          cex:        fullCached.cex       || null,
+          ofac:       fullCached.ofac || null,
+          cex,
+          eu,
+          uk,
           verdict:    fullCached.verdict,
           confidence: fullCached.confidence,
           reasoning:  fullCached.reasoning,
@@ -501,10 +602,11 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
     ]);
     const isCex = isInList('cex', inputs[0]);
 
-    // Additional sanctions for badges (Task 4)
+    // Additional sanctions for badges (Task 4) — always return structured objects
     const sanctionsCheck = isSanctioned(inputs[0]);
-    const euHit = sanctionsCheck.list === 'EU' ? sanctionsCheck : null;
-    const ukHit = sanctionsCheck.list === 'UK-FCDO' ? sanctionsCheck : null;
+    const ofacHit = ofac.sanctioned ? ofac : null;
+    const euHit   = sanctionsCheck.list === 'EU'       ? sanctionsCheck : { sanctioned: false, list: 'EU' };
+    const ukHit   = sanctionsCheck.list === 'UK-FCDO'  ? sanctionsCheck : { sanctioned: false, list: 'UK-FCDO' };
 
     if (ofac.sanctioned) {
       const cp = ofac.type === 'counterparty';
@@ -550,7 +652,7 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
       count:    results.length,
       source:   'processed',
       brainKey: scanKey,
-      ofac:     ofac.sanctioned ? ofac : null,
+      ofac:     ofacHit,
       eu:       euHit,
       uk:       ukHit,
       cex:      isCex || null,
@@ -567,21 +669,51 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
         brainPending[scanKey] = { status: 'done', ...verdict, signals: results };
         console.log(`[brain] Verdict for ${scanKey}: ${verdict.verdict} (${(verdict.confidence * 100).toFixed(0)}%)`);
 
+        // ── Social vibe: fetch Farcaster + Paragraph content, run vibe LLM ──
+        // Only for EVM addresses (Farcaster/Paragraph are EVM-based)
+        const isEvm = /^0x[0-9a-fA-F]{40}$/.test(scanKey);
+        if (isEvm) {
+          try {
+            const [farcasterData, paragraphData] = await Promise.all([
+              getFarcasterData(scanKey).catch(() => null),
+              getParagraphData(scanKey).catch(() => null),
+            ]);
+            if (farcasterData || paragraphData) {
+              const vibeData = await brain.vibeCheck(scanKey, { farcasterData, paragraphData });
+              if (vibeData) {
+                brainPending[scanKey] = { ...brainPending[scanKey], vibeData };
+                console.log(`[vibe] Generated vibe for ${scanKey}`);
+              }
+              // Store raw social content for profile enrichment
+              if (farcasterData) brainPending[scanKey].farcasterData = farcasterData;
+              if (paragraphData) brainPending[scanKey].paragraphData = paragraphData;
+            }
+          } catch (vibeErr) {
+            console.warn('[vibe] Failed:', vibeErr.message);
+          }
+        }
+
         // ── Cache full scan bundle for 7 days ──────────────────────────────
         try {
           const methodsHash  = computeMethodsHash(allMethods);
           const fullCacheKey = `fullscan:v1:${scanKey}:${methodsHash}`;
           const counterparties = await getCounterparties(scanKey).catch(() => []);
           const profile = await enrichProfile(scanKey, counterparties);
+          const pending = brainPending[scanKey] || {};
           await setCachedResponse(fullCacheKey, {
             results,
-            ofac:       ofac.sanctioned ? ofac : null,
-            cex:        isCex || null,
-            verdict:    verdict.verdict,
-            confidence: verdict.confidence,
-            reasoning:  verdict.reasoning,
+            ofac:          ofacHit,
+            cex:           isCex || null,
+            eu:            euHit,
+            uk:            ukHit,
+            verdict:       verdict.verdict,
+            confidence:    verdict.confidence,
+            reasoning:     verdict.reasoning,
+            vibeData:      pending.vibeData      || null,
+            farcasterData: pending.farcasterData || null,
+            paragraphData: pending.paragraphData || null,
             profile,
-            cachedAt:   new Date().toISOString(),
+            cachedAt:      new Date().toISOString(),
           }, SCAN_CACHE_TTL);
           console.log(`[checker] Full scan cached for ${scanKey} (7 days)`);
         } catch (cacheErr) {
@@ -757,7 +889,7 @@ async function resolveIdentity(raw) {
   const isTron       = /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(q);
   const isTon        = /^(EQ|UQ|kQ|0Q)[a-zA-Z0-9_-]{46}$/.test(q);
   const isXlm        = /^G[A-Z2-7]{55}$/.test(q);
-  const isSolanaAddr = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(q) && !isTron;
+  const isSolanaAddr = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(q) && !isTron && !isBitcoin && !isTon && !isXlm;
 
   if (isEvmAddr || isSolanaAddr || isBitcoin || isTron || isTon || isXlm) {
     return [{ address: q, platform: null, handle: null, displayName: null, avatar: null }];
@@ -1019,13 +1151,32 @@ router.get('/profile/:address', async (req, res) => {
   try {
     const profileCacheKey = `profile:v1:${address}`;
     const cachedProfile   = await getCachedResponse(profileCacheKey);
-    if (cachedProfile) return res.json(cachedProfile);
+    if (cachedProfile) {
+      // Always augment with current sanctions (lists auto-refresh; cheap lookup)
+      const s = isSanctioned(address);
+      const o = isOfacSanctioned(address);
+      return res.json({
+        ...cachedProfile,
+        ofac: o.sanctioned ? o : { sanctioned: false, list: 'OFAC' },
+        eu:   s.list === 'EU'      ? s : { sanctioned: false, list: 'EU' },
+        uk:   s.list === 'UK-FCDO' ? s : { sanctioned: false, list: 'UK-FCDO' },
+        cex:  isInList('cex', address) || null,
+      });
+    }
 
     // Reuse counterparty cache if address was recently scanned (zero extra calls)
     const counterparties = await getCounterparties(address);
     const profile = await enrichProfile(address, counterparties);
     await setCachedResponse(profileCacheKey, profile, SCAN_CACHE_TTL);
-    res.json(profile);
+    const s = isSanctioned(address);
+    const o = isOfacSanctioned(address);
+    res.json({
+      ...profile,
+      ofac: o.sanctioned ? o : { sanctioned: false, list: 'OFAC' },
+      eu:   s.list === 'EU'      ? s : { sanctioned: false, list: 'EU' },
+      uk:   s.list === 'UK-FCDO' ? s : { sanctioned: false, list: 'UK-FCDO' },
+      cex:  isInList('cex', address) || null,
+    });
   } catch (err) {
     console.error('[profile] enrichment failed:', err.message);
     res.status(500).json({ error: 'Profile enrichment failed' });
@@ -1033,3 +1184,111 @@ router.get('/profile/:address', async (req, res) => {
 });
 
 module.exports = router;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Exported library function for the PoH Miner Network
+// Allows external nodes (miners) to run the full real check + brain verdict
+// without going through HTTP.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Run a full POH check on an address using the real signal set + AI brain.
+ * This is the function the decentralized miner nodes should call.
+ *
+ * @param {string} input - address, ENS, .sol, etc.
+ * @param {object} [options]
+ * @param {string} [options.chainFilter] - comma separated chainIds for EVM
+ * @returns {Promise<{results: any[], verdict: string, confidence: number, reasoning: string, profile?: any}>}
+ */
+async function runFullCheck(input, options = {}) {
+  const allMethods = getMethods();
+  const scanCtx = { allMethods, chainFilter: options.chainFilter };
+
+  // 1. Run signals
+  let results = await scanWallet(input, scanCtx);
+
+  // 2. Add sanctions / special signals
+  const ofac = await checkOfacFull(input);
+  if (ofac.sanctioned) {
+    results.unshift({
+      input,
+      methodId: 'ofac_check',
+      description: `⛔ ${ofac.list || 'SANCTIONS'} — ${ofac.name}`,
+      result: false,
+      ofac,
+    });
+  }
+
+  const tether = checkTetherBlacklist(results);
+  if (tether.blacklisted) {
+    results.unshift({
+      input,
+      methodId: tether.methodId,
+      description: `⛔ ${tether.description}`,
+      result: true,
+      tetherBlacklist: true,
+    });
+  }
+
+  if (isInList('cex', input)) {
+    results.unshift({
+      input,
+      methodId: 'cex_check',
+      description: '🏦 CEX wallet',
+      result: false,
+    });
+  }
+
+  // 3. Run the real brain
+  let verdict = await brain.analyzeHumanness(input, results, allMethods);
+
+  const tetherHit = results.some(r => r.tetherBlacklist);
+  if (tetherHit) {
+    verdict = { verdict: 'AI', confidence: 0.99, reasoning: 'Address frozen by Tether USDT (blacklist)' };
+  }
+
+  // 4. Profile (light)
+  let profile = null;
+  try {
+    const counterparties = await getCounterparties(input).catch(() => []);
+    profile = await enrichProfile(input, counterparties);
+  } catch {}
+
+  // 5. Social vibe: fetch Farcaster + Paragraph content, run vibe LLM
+  let vibeData = null;
+  let farcasterData = null;
+  let paragraphData = null;
+
+  const isEvm = /^0x[0-9a-fA-F]{40}$/.test(input);
+  if (isEvm) {
+    try {
+      const [fc, pg] = await Promise.all([
+        getFarcasterData(input).catch(() => null),
+        getParagraphData(input).catch(() => null),
+      ]);
+      farcasterData = fc;
+      paragraphData = pg;
+      if (farcasterData || paragraphData) {
+        vibeData = await brain.vibeCheck(input, { farcasterData, paragraphData }).catch(() => null);
+      }
+    } catch (vibeErr) {
+      console.warn('[vibe] runFullCheck Failed:', vibeErr.message);
+    }
+  }
+
+  return {
+    input,
+    results,
+    verdict: verdict.verdict || 'UNCERTAIN',
+    confidence: verdict.confidence || 0.5,
+    reasoning: verdict.reasoning || '',
+    profile,
+    realPoh: true,
+    vibeData,
+    farcasterData,
+    paragraphData,
+  };
+}
+
+module.exports.runFullCheck = runFullCheck;
+

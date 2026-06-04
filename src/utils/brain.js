@@ -342,9 +342,8 @@ async function evaluatorChatJSON(prompt, requiredKeys, opts = {}) {
 }
 
 async function learnerChat(prompt, opts = {}) {
-  if (QVAC_URL) {
-    const model = opts.model || QVAC_MODEL;
-    const result = await qvacChat(prompt, { ...opts, model });
+  if (QVAC_ENABLED) {
+    const result = await qvacChat(prompt, opts);
     if (result !== null) return result;
   }
   return ollamaChat(prompt, { ...opts, model: LEARNER_MODEL });
@@ -364,16 +363,14 @@ async function learnerChatJSON(prompt, requiredKeys, opts = {}) {
 }
 
 async function compilerChat(prompt, opts = {}) {
-  if (QVAC_URL) {
-    const model = opts.model || QVAC_MODEL;
+  if (QVAC_ENABLED) {
     const result = await qvacChat(prompt, {
       ...opts,
-      model,
       systemPrompt: 'You are a precise, technical summarizer for a decentralized Proof-of-Humanity detection system. Output only the requested summary text. Be concise, factual, and avoid speculation or JSON.'
     });
     if (result !== null) return result;
-    if (!_qvacCircuitOpenAt) {
-      console.warn('[brain] Qvac unavailable — falling back to Ollama for compiler (consolidation)');
+    if (!_qvacSdkCircuitOpenAt) {
+      console.warn('[brain] QVAC unavailable — falling back to Ollama for compiler (consolidation)');
     }
   }
   console.log(`[brain] compiler → Ollama (${COMPILER_MODEL})`);
@@ -383,13 +380,13 @@ async function compilerChat(prompt, opts = {}) {
 // ── 1. EVALUATOR — analyzeHumanness ──────────────────────────────────────────
 
 async function analyzeHumanness(address, methodResults, methods) {
-  if (!QVAC_URL && ollamaBusy) {
+  if (!QVAC_ENABLED && ollamaBusy) {
     console.log('[brain] Ollama busy — skipping verdict for', address);
     return { verdict: 'PENDING', confidence: 0, reasoning: 'Brain is busy, try again shortly' };
   }
 
   const weights = getWeights();
-  const usingQvac = QVAC_URL && !_qvacCircuitOpenAt;
+  const usingQvac = QVAC_ENABLED && !_qvacSdkCircuitOpenAt;
 
   // Qvac 600M has ~2k token context — keep prompt tiny
   // Ollama: all passed + top-10 failed; Qvac: top-4 passed + top-4 failed
@@ -821,4 +818,73 @@ Which signal type was most misleading? One sentence max.
   console.log(`[brain] Feedback recorded: ${aiVerdict}→${correction} for ${address}`);
 }
 
-module.exports = { analyzeHumanness, onNewMethod, onVote, onVerdictFeedback, consolidate, getWeights, validateDescription, validateFeedback };
+// ── vibeCheck ─────────────────────────────────────────────────────────────────
+// Reads Farcaster casts and Paragraph publications for an address and asks the
+// LLM to characterise the person's topics, writing style, and human signals.
+// Returns null (silently) if no social content is available.
+
+async function vibeCheck(address, { farcasterData = null, paragraphData = null } = {}) {
+  if (!farcasterData && !paragraphData) return null;
+
+  const lines = [];
+
+  if (farcasterData) {
+    lines.push(`Farcaster @${farcasterData.username} (${farcasterData.followerCount} followers, ${farcasterData.followingCount} following)`);
+    if (farcasterData.bio) lines.push(`Bio: "${farcasterData.bio}"`);
+    if (farcasterData.casts.length) {
+      lines.push('Recent casts:');
+      farcasterData.casts.slice(0, 8).forEach(c => {
+        const engage = [c.likes && `${c.likes}♥`, c.replies && `${c.replies} replies`].filter(Boolean).join(' ');
+        lines.push(`  • "${c.text.slice(0, 200)}"${engage ? ` [${engage}]` : ''}`);
+      });
+    }
+    if (farcasterData.following.length) {
+      lines.push(`Follows: ${farcasterData.following.slice(0, 6).join(', ')}`);
+    }
+  }
+
+  if (paragraphData) {
+    lines.push(`\nParagraph blog: "${paragraphData.title}" (${paragraphData.subscriberCount} subscribers, ${paragraphData.postCount} posts)`);
+    if (paragraphData.description) lines.push(`Description: "${paragraphData.description}"`);
+    if (paragraphData.posts.length) {
+      lines.push('Recent articles:');
+      paragraphData.posts.forEach(p => {
+        lines.push(`  • "${p.title}"${p.subtitle ? ` — ${p.subtitle}` : ''}`);
+      });
+    }
+  }
+
+  const context = lines.join('\n');
+
+  const prompt = `You are analyzing public social media content to understand the person behind a crypto wallet.
+
+Content:
+${context}
+
+Provide a brief, insightful vibe analysis. Focus on:
+- What topics they care about (DeFi, governance, art, tech, community, etc.)
+- Writing style and engagement patterns (builder, commenter, sharer, thought-leader)
+- Signals this is a real, active human (not a bot or Sybil)
+
+Return ONLY valid JSON, no extra text:
+{"vibe":"<2-3 sentence personality and interest summary>","topics":["<topic1>","<topic2>","<topic3>"],"humanSignals":["<signal1>","<signal2>"]}`;
+
+  const result = await learnerChatJSON(prompt, ['vibe', 'topics', 'humanSignals'], {
+    maxTokens: 180,
+    timeLimit: 30000,
+  });
+
+  if (!result) return null;
+
+  return {
+    vibe:         result.vibe         || '',
+    topics:       Array.isArray(result.topics)       ? result.topics.slice(0, 5)       : [],
+    humanSignals: Array.isArray(result.humanSignals) ? result.humanSignals.slice(0, 4) : [],
+    sources: [
+      farcasterData  ? `farcaster:${farcasterData.username}` : null,
+      paragraphData  ? `paragraph:${paragraphData.title}`    : null,
+    ].filter(Boolean),
+  };
+}
+
+module.exports = { analyzeHumanness, vibeCheck, onNewMethod, onVote, onVerdictFeedback, consolidate, getWeights, validateDescription, validateFeedback };

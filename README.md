@@ -19,9 +19,9 @@ cp .env.example .env
 #   QVAC_URL           — set to http://localhost:11435 to enable Qvac brain (recommended)
 
 # Pull Ollama fallback models (used only when Qvac is unavailable)
+ollama pull qwen2.5:3b         # Compiler fallback (recommended small default)
 ollama pull qwen2.5:1.5b      # Learner + Evaluator fallback
-ollama pull deepseek-r1:1.5b  # Evaluator fallback
-ollama pull mixtral            # Compiler fallback
+ollama pull deepseek-r1:1.5b  # Evaluator fallback (reasoning)
 
 # Install Qvac CLI + SDK (primary AI runtime for all 3 brain roles)
 npm install -g @qvac/cli @qvac/sdk
@@ -258,9 +258,9 @@ Any OpenAI-compatible server works in place of Qvac (LM Studio, llama.cpp ≥ b3
 ### Ollama (fallback models)
 
 ```bash
+ollama pull qwen2.5:3b         # Compiler fallback (recommended small default)
 ollama pull qwen2.5:1.5b      # Learner + Evaluator fallback
-ollama pull deepseek-r1:1.5b  # Evaluator fallback
-ollama pull mixtral            # Compiler fallback
+ollama pull deepseek-r1:1.5b  # Evaluator fallback (reasoning)
 ```
 
 Ollama is used automatically only when Qvac is unavailable (circuit breaker open after 3 consecutive failures, retries every 5 minutes).
@@ -366,7 +366,7 @@ Supported languages: **JS · Go · Rust · PHP · Java** (all normalised to JS s
 | Backend | Node.js · Express · ethers.js v6 · @solana/web3.js |
 | Frontend | Vue 3 · Vite · Lucide icons |
 | AI (all roles — primary) | Qvac 0.3.0 · Qwen3-8B Q4_K_M · 8192 ctx |
-| AI (all roles — fallback) | Ollama — qwen2.5:1.5b · deepseek-r1:1.5b · mixtral |
+| AI (all roles — fallback) | Ollama — qwen2.5:3b (compiler) · qwen2.5:1.5b · deepseek-r1:1.5b |
 | Tx graph | Etherscan v2 (ETH · Base · Arbitrum) · Alchemy (BNB) · Solana RPC |
 | Cache | Redis (in-memory fallback) |
 | Scheduler | node-cron (hourly brain consolidation) |
