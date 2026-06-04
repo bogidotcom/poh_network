@@ -20,19 +20,44 @@
       <div v-if="ofac?.sanctioned" class="badge badge-danger" title="OFAC SDN list">
         ⛔ OFAC — {{ ofac.name }}
       </div>
-      <div v-else class="badge badge-ok" title="Not on OFAC SDN list">✓ OFAC Clear</div>
+      <div v-else-if="ofac" class="badge badge-ok" title="Not on OFAC SDN list">✓ OFAC Clear</div>
 
-      <!-- EU Sanctions (Task 4) -->
+      <!-- EU Sanctions -->
       <div v-if="eu?.sanctioned" class="badge badge-danger" title="EU Consolidated Sanctions">
         ⛔ EU — {{ eu.name }}
       </div>
-      <div v-else-if="eu !== undefined" class="badge badge-ok" title="Not on EU sanctions list">✓ EU Clean</div>
+      <div v-else-if="eu" class="badge badge-ok" title="Not on EU sanctions list">✓ EU Clean</div>
 
-      <!-- UK Sanctions (Task 4) -->
+      <!-- UK Sanctions -->
       <div v-if="uk?.sanctioned" class="badge badge-danger" title="UK FCDO Sanctions">
         ⛔ UK — {{ uk.name }}
       </div>
-      <div v-else-if="uk !== undefined" class="badge badge-ok" title="Not on UK sanctions list">✓ UK Clean</div>
+      <div v-else-if="uk" class="badge badge-ok" title="Not on UK sanctions list">✓ UK Clean</div>
+
+      <!-- Compact Identity / Social Badges -->
+      <div v-if="ensName" class="badge badge-ok" :title="ensName">
+        ENS: {{ ensName.slice(0, 12) }}{{ ensName.length > 12 ? '…' : '' }}
+      </div>
+
+      <div v-if="farcasterHandle" class="badge badge-ok" title="Farcaster">
+        🟣 {{ farcasterHandle }}
+      </div>
+
+      <div v-if="worldIdFlag" class="badge badge-ok" title="World ID verified">
+        🌍 World ID
+      </div>
+
+      <div v-if="pohFlag" class="badge badge-ok" title="Proof of Humanity">
+        ⚖️ PoH
+      </div>
+
+      <div v-if="brightidFlag" class="badge badge-ok" title="BrightID verified unique">
+        🔆 BrightID
+      </div>
+
+      <div v-if="babFlag" class="badge badge-ok" title="Binance KYC (BAB token)">
+        🏦 BAB KYC
+      </div>
 
       <!-- Gitcoin Passport -->
       <template v-if="profile.gitcoin">
@@ -316,6 +341,8 @@ const props = defineProps({
   profile: { type: Object, required: true },
   verdict: { type: Object, default: null },
   ofac:    { type: Object, default: null },
+  eu:      { type: Object, default: null },
+  uk:      { type: Object, default: null },
   signals: { type: Array,  default: () => [] },
 })
 defineEmits(['scan'])
@@ -370,6 +397,22 @@ const pohFlag = computed(() => {
   // Proof of Humanity — Kleros biometric registry on Ethereum
   if (sigMap.value['1776780461275Ethereum'] != null) return sigMap.value['1776780461275Ethereum']
   return null
+})
+
+// Social / ENS quick badges for top row
+const ensName = computed(() => {
+  if (props.profile?.domains?.length) {
+    const ens = props.profile.domains.find(d => d.platform === 'ENS' || d.name?.endsWith('.eth'))
+    return ens?.name || null
+  }
+  // fallback from links
+  const link = props.profile?.links?.find(l => l.platform?.toLowerCase() === 'ens')
+  return link?.identity || null
+})
+
+const farcasterHandle = computed(() => {
+  const link = props.profile?.links?.find(l => l.platform?.toLowerCase() === 'farcaster')
+  return link?.identity ? link.identity.replace('@', '') : null
 })
 
 // Show identity section when at least one protocol has any data

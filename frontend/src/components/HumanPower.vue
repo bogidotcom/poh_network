@@ -29,6 +29,7 @@ import SvgCommunity from '../svgs/SvgCommunity.vue'
 import SvgAiBrain from '../svgs/SvgAiBrain.vue'
 import SvgApiTooling from '../svgs/SvgApiTooling.vue'
 import { useChecker } from '../composables/useChecker.js'
+import { useMinerNetwork } from '../composables/useMinerNetwork.js'
 import { useVoting } from '../composables/useVoting.js'
 import { useListing } from '../composables/useListing.js'
 import { useProfile } from '../composables/useProfile.js'
@@ -50,7 +51,38 @@ const desktopDropOpen   = ref(false)
 const desktopDropRef    = ref(null)
 const loading = ref(false)
 const error = ref(null)
-const showSection = (id) => { currentSection.value = id; mobileMenuOpen.value = false }
+
+// ── Miner Network setup (declared early so showSection and other early code can reference) ─
+const minerNet = useMinerNetwork()
+const {
+  peers: minerPeers,
+  selectedPeer: selectedMinerPeer,
+  isDiscovering: minerDiscovering,
+  isSubmitting: minerSubmitting,
+  lastError: minerLastError,
+  discoverPeers: discoverMinerPeers,
+  searchOnNetwork: searchOnMinerNetwork,
+  postFeedback: minerPostFeedback,
+  fetchProfile: minerFetchProfile,
+} = minerNet
+
+const minerNodeBase = computed(() => minerNet.getNodeBase())
+
+const useDecentralizedSearch = ref(true)  // when true, "Search" publishes to a miner peer and pulls result
+
+// Auto-discover on load (non-blocking)
+onMounted(() => {
+  // fire and forget
+  discoverMinerPeers().catch(() => {})
+})
+
+const showSection = (id) => {
+  currentSection.value = id
+  mobileMenuOpen.value = false
+  if (id === 'checker' && useDecentralizedSearch.value && minerPeers.value.length === 0) {
+    discoverMinerPeers()
+  }
+}
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const { POH_MINT, FEE_RECIPIENT, SOLANA_RPC, STAKING_CONTRACT, fetchConfig } = useConfig()
@@ -146,11 +178,93 @@ const {
   brainVerdict, brainPolling, brainKey, batchFile, batchRowCount, batchRows,
   isResolving, detectedChain, faucetLoading, faucetMsg,
   runCheck, handleFileSelect, claimFaucet,
-  batchPolling, batchProgress, isBatchScan, inlineScanProfile,
+  batchPolling, batchProgress, isBatchScan, inlineScanProfile, vibeData,
   resolveResults, resolveQuery, pickResolveResult,
+  resolveToAddress,
   selectedPlatform,
   loading: checkerLoading,
 } = checker
+
+// Wrapper: decides between decentralized miner-network path (publish job to peer + pull result)
+// and the original central /checker path (with payments, batch support, etc.)
+async function doSearch() {
+  if (!connected.value) {
+    showWalletModal.value = true
+    return
+  }
+  if (!useDecentralizedSearch.value || minerPeers.value.length === 0 || isBatchScan.value) {
+    // fall back to full central flow (resolve + optional pay + /checker + brain polling)
+    return runCheck()
+  }
+
+  // ── Decentralized path ────────────────────────────────────────────────
+  checkerLoading.value = true
+  isResolving.value = true
+  error.value = null
+  brainPolling.value = false
+  try {
+    const resolved = await resolveToAddress(scanInput.value, selectedPlatform.value)
+    if (resolved !== scanInput.value.trim()) {
+      resolvedInputDisplay.value = resolved
+    }
+    isResolving.value = false
+
+    const netRes = await searchOnMinerNetwork(resolved)
+
+    // Populate the same refs the rest of the UI (ScannerSection, evidence, brain card, profile) expects
+    brainVerdict.value = {
+      status: 'done',
+      verdict: netRes.verdict,
+      confidence: netRes.confidence,
+      reasoning: netRes.reasoning,
+    }
+    brainPolling.value = false
+
+    if (netRes.profile) {
+      inlineScanProfile.value = netRes.profile
+      walletProfile.value = netRes.profile
+    }
+
+    const sigs = netRes.evidence?.signalsUsed || netRes.signalsUsed || []
+    checkerResults.value = sigs.map(s => ({
+      methodId: s.methodId || s.id || 'sig',
+      description: s.description || s.methodId || s.id || 'signal',
+      result: s.result !== false && s.result != null,
+      input: resolved,
+    }))
+
+    ofacResult.value = null
+    euResult.value = null
+    ukResult.value = null
+
+    if (resolved && !netRes.profile) {
+      loadWalletProfile(resolved)
+    }
+    showEvidence.value = true
+  } catch (err) {
+    if (err.message === 'MULTI_RESULT') {
+      isResolving.value = false
+      checkerLoading.value = false
+      return
+    }
+    console.warn('[doSearch] miner network failed, falling back to central:', err?.message || err)
+    error.value = err?.message || 'Decentralized search failed — falling back to central...'
+    try {
+      await runCheck()
+    } catch (e2) {
+      error.value = (error.value || '') + ' | fallback: ' + (e2?.message || '')
+    }
+  } finally {
+    checkerLoading.value = false
+    isResolving.value = false
+  }
+}
+
+watch(useDecentralizedSearch, (on) => {
+  if (on && minerPeers.value.length === 0 && !minerDiscovering.value) {
+    discoverMinerPeers()
+  }
+})
 
 // Platform chips — shown below the input when a non-address, non-domain value is typed
 const PLATFORM_CHIPS = [
@@ -181,8 +295,12 @@ async function loadWalletProfile(address) {
   walletProfile.value        = null
   walletProfileLoading.value = true
   try {
-    const res = await axios.get(`/checker/profile/${address}`)
-    walletProfile.value = res.data
+    if (minerNodeBase.value) {
+      walletProfile.value = await minerFetchProfile(address)
+    } else {
+      const res = await axios.get(`/checker/profile/${address}`)
+      walletProfile.value = res.data
+    }
   } catch (err) {
     console.warn('[profile] failed to load:', err.message)
   } finally {
@@ -255,14 +373,20 @@ const feedbackSubmitting = ref(false)
 async function submitFeedback(correction, comment = '') {
   if (feedbackSubmitting.value || feedbackSent.value || !brainVerdict.value) return
   feedbackSubmitting.value = true
+  const address   = resolvedInputDisplay.value || scanInput.value
+  const aiVerdict = brainVerdict.value.verdict
+  const signals   = (checkerResults.value || []).map(s => ({
+    methodId: s.methodId, result: s.result, description: s.description,
+  }))
   try {
-    await axios.post('/checker/feedback', {
-      brainKey:  brainKey.value,
-      address:   resolvedInputDisplay.value || scanInput.value,
-      aiVerdict: brainVerdict.value.verdict,
-      correction,
-      comment:   comment || undefined,
-    })
+    if (minerNodeBase.value) {
+      await minerPostFeedback(address, aiVerdict, correction, comment || '', signals)
+    } else {
+      await axios.post('/checker/feedback', {
+        brainKey: brainKey.value, address, aiVerdict, correction,
+        comment: comment || undefined,
+      })
+    }
     feedbackSent.value = true
   } catch { /* silent */ } finally {
     feedbackSubmitting.value = false
@@ -276,7 +400,7 @@ watch(checkerResults, () => { feedbackSent.value = false })
 watch(checker.error, val => { if (val) error.value = val })
 
 // ── Voting ────────────────────────────────────────────────────────────────────
-const voting = useVoting({ walletAddress, connected, adapterSignMessage })
+const voting = useVoting({ walletAddress, connected, adapterSignMessage, nodeBase: minerNodeBase })
 const {
   votingList, voteIndex, voteSubmitting, voteFeedback,
   voteConfirmPending, feedbackValidating, currentVoteItem, myVotesData,
@@ -352,6 +476,7 @@ const netNodes = computed(() => {
   return nodes
 })
 
+const miningCanvas  = ref(null)
 const netActiveId   = ref(null)
 const netBrainPulse = ref(false)
 let _netTimer = null
@@ -456,9 +581,27 @@ const profile = useProfile({
 const {
   profileData, profileLoading, profileError, signupLoading,
   showDepositModal, depositAmount, depositToken, depositLoading, depositMsg,
+  upgradeToken,
   loadProfile, signupProfile, rotateApiKey, submitDeposit,
   upgradeToStartup,
 } = profile
+
+async function upgradeToStartupPlan() {
+  if (!connected.value) {
+    error.value = 'Please connect your wallet first'
+    return
+  }
+  signupLoading.value = true
+  try {
+    const success = await upgradeToStartup()
+    if (success) {
+      await loadProfile()
+      // Optional: show success message
+    }
+  } finally {
+    signupLoading.value = false
+  }
+}
 
 // ── Referral / deep-link URL params ──────────────────────────────────────────
 const referralWallet = ref(null)
@@ -534,6 +677,28 @@ function autoExpand(e) {
   el.style.height = el.scrollHeight + 'px'
 }
 
+// Helper to safely append common TON argument examples
+function appendTonArg(type) {
+  let example = '';
+  if (type === 'int') {
+    example = '{"type":"int","value":"0"}';
+  } else if (type === 'slice') {
+    example = '{"type":"slice","value":"EQ..."}';
+  } else if (type === 'cell') {
+    example = '{"type":"cell","value":""}';
+  }
+
+  try {
+    let current = listing.value.tonArgs ? JSON.parse(listing.value.tonArgs) : [];
+    if (!Array.isArray(current)) current = [];
+    current.push(JSON.parse(example));
+    listing.value.tonArgs = JSON.stringify(current, null, 2);
+  } catch {
+    // If parse fails, just set the example
+    listing.value.tonArgs = '[' + example + ']';
+  }
+}
+
 // ── Watchers ──────────────────────────────────────────────────────────────────
 watch(walletAddress, (addr) => {
   if (addr) loadPohBalance()
@@ -544,6 +709,65 @@ function onDocClick(e) {
   if (desktopDropOpen.value && desktopDropRef.value && !desktopDropRef.value.contains(e.target)) {
     desktopDropOpen.value = false
   }
+}
+
+// ── Mining canvas animation (matches miner landing mesh) ─────────────────────
+let _miningRaf = null
+function startMiningCanvas() {
+  const canvas = miningCanvas.value
+  if (!canvas) return
+  const ctx = canvas.getContext('2d', { alpha: true })
+  let width, height, nodes = []
+
+  function resize() {
+    width  = canvas.offsetWidth
+    height = canvas.offsetHeight
+    canvas.width  = width  * 2
+    canvas.height = height * 2
+    ctx.scale(2, 2)
+  }
+  resize()
+
+  const COUNTRIES = ['GE','SG','US','DE','JP','BR','AU','IN']
+  nodes = Array.from({ length: 42 }, (_, i) => ({
+    x:       Math.random() * width,
+    y:       Math.random() * height,
+    vx:      (Math.random() - 0.5) * 0.6,
+    vy:      (Math.random() - 0.5) * 0.6,
+    radius:  2.5 + Math.random() * 2,
+    country: COUNTRIES[i % 8],
+  }))
+
+  function frame() {
+    ctx.clearRect(0, 0, width, height)
+    nodes.forEach(n => {
+      n.x += n.vx; n.y += n.vy
+      if (n.x < 0 || n.x > width)  n.vx *= -1
+      if (n.y < 0 || n.y > height) n.vy *= -1
+    })
+    ctx.strokeStyle = 'rgba(34,197,94,0.15)'
+    ctx.lineWidth = 1
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const dx = nodes[i].x - nodes[j].x
+        const dy = nodes[i].y - nodes[j].y
+        if (dx*dx + dy*dy < 180*180) {
+          ctx.beginPath()
+          ctx.moveTo(nodes[i].x, nodes[i].y)
+          ctx.lineTo(nodes[j].x, nodes[j].y)
+          ctx.stroke()
+        }
+      }
+    }
+    nodes.forEach(n => {
+      ctx.fillStyle = ['GE','DE','FR'].includes(n.country) ? '#22c55e' : 'rgba(255,255,255,0.85)'
+      ctx.beginPath()
+      ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2)
+      ctx.fill()
+    })
+    _miningRaf = requestAnimationFrame(frame)
+  }
+  frame()
 }
 
 onMounted(async () => {
@@ -562,11 +786,13 @@ onMounted(async () => {
   if (connected.value || walletAddress.value) loadPohBalance()
   fetchMethodsForGraph()
   startNetAnim()
+  startMiningCanvas()
   document.addEventListener('click', onDocClick)
 })
 
 onUnmounted(() => {
   if (_netTimer) clearInterval(_netTimer)
+  if (_miningRaf) cancelAnimationFrame(_miningRaf)
   document.removeEventListener('click', onDocClick)
 })
 </script>
@@ -820,24 +1046,40 @@ onUnmounted(() => {
 
             <BrainGraph :methods="votingList" />
 
-            <div class="net-legend">
-              <!-- <div class="net-legend-group">
-                <div class="nl-item"><span class="nl-dot nl-dot--evm"></span>EVM</div>
-                <div class="nl-item"><span class="nl-dot nl-dot--solana"></span>Solana</div>
-                <div class="nl-item"><span class="nl-dot nl-dot--rest"></span>REST</div>
-              </div> -->
-              <div class="nl-sep"></div>
-              <div class="net-legend-group">
-                <div class="nl-item"><span class="nl-dot nl-dot--evm"></span>EVM</div>
-                <div class="nl-item"><span class="nl-dot nl-dot--solana"></span>Solana</div>
-                <div class="nl-item"><span class="nl-dot nl-dot--rest"></span>REST</div>
-              </div>
-            </div>
           </div>
           <div class="feat-left">
             <h2 class="feat-title">Search</h2>
             <p class="feat-body">Search for any identity and see the evidence from every imaginable layer.</p>
-            <button class="feat-cta" @click="showSection('votes'); loadVotingFiltered()">Browse Signals →</button>
+            <button class="feat-cta" @click="showSection('checker')">Search →</button>
+          </div>
+        </section>
+
+        <!-- Mining section -->
+        <section class="feat-screen">
+          <div class="feat-left">
+            <h2 class="feat-title">Mine POH</h2>
+            <p class="feat-body">Run a node on any device. Race to verify identities and earn POH for every job you win.</p>
+            <div class="mining-stats">
+              <div class="mining-stat">
+                <span class="mining-stat-val">1 POH</span>
+                <span class="mining-stat-label">per block</span>
+              </div>
+              <div class="mining-stat">
+                <span class="mining-stat-val">FCFS</span>
+                <span class="mining-stat-label">job model</span>
+              </div>
+              <div class="mining-stat">
+                <span class="mining-stat-val">Any</span>
+                <span class="mining-stat-label">hardware</span>
+              </div>
+            </div>
+            <a href="https://proofofhuman.ge/miner" target="_blank" class="feat-cta">Start mining →</a>
+          </div>
+          <div class="feat-right">
+            <div class="mining-visual">
+              <canvas class="mining-canvas" ref="miningCanvas"></canvas>
+              <div class="mining-pulse-ring"></div>
+            </div>
           </div>
         </section>
 
@@ -914,7 +1156,7 @@ onUnmounted(() => {
                 <div class="roadmap-date" style="color: #fff">Apr-May 2026</div>
                 <div class="roadmap-desc" style="color: #fff">Devnet public launch</div>
                 <div class="roadmap-desc" style="color: #fff">Colosseum Hackathon submission</div>
-                <div class="roadmap-desc" style="color: #fff">AI-tutors onboarding</div>
+                <div class="roadmap-desc" style="color: #fff">Detection signals R&D</div>
               </div>
             </div>
             <div class="roadmap-item">
@@ -929,8 +1171,9 @@ onUnmounted(() => {
             <div class="roadmap-item">
               <div class="roadmap-dot"></div>
               <div class="roadmap-content">
-                <div class="roadmap-date">Jun-Jul 2026</div>
-                <div class="roadmap-desc">Support Bitcoin, Tron, TON search</div>
+                <div class="roadmap-date" style="color: #fff">Jun-Jul 2026</div>
+                <div class="roadmap-desc" style="color: #fff">Bitcoin, Tron, TON, XLM integration</div>
+                <div class="roadmap-desc" style="color: #fff">POH Miner testnet launch</div>
               </div>
             </div>
 
@@ -1028,8 +1271,27 @@ onUnmounted(() => {
             <span class="file-name">{{ batchFile.name }} — {{ batchRowCount }} addresses</span>
             <button @click="batchFile = null; batchRowCount = 0; batchRows = []" class="mini-btn"><Trash2 :size="12" /></button>
           </div>
-          <button @click="connected ? runCheck() : showWalletModal = true" :disabled="checkerLoading || isResolving || brainPolling || batchPolling || (checkerResults && !batchFile && !brainVerdict?.reasoning)" class="submit-listing-btn">
-            {{ isResolving ? 'Resolving...' : checkerLoading ? 'Scanning...' : batchPolling ? `Analyzing… (${batchProgress?.done ?? 0}/${batchProgress?.total ?? '?'})` : (brainPolling || (checkerResults && !brainVerdict?.reasoning)) ? 'AI analyzing...' : batchFile ? 'Scan Batch' : connected ? 'Search' : 'Connect Wallet' }}
+
+          <!-- Miner Network discovery + toggle (when enabled, Search publishes job to a peer and pulls verdict/result) -->
+          <!-- <div class="miner-net-row">            
+            <button class="mini-btn" @click="discoverMinerPeers" :disabled="minerDiscovering" title="Refresh peer list from bootnode">
+              {{ minerDiscovering ? '…' : '↻' }}
+            </button>
+            <span v-if="minerPeers.length" class="miner-net-count">{{ minerPeers.length }} peers</span>
+            <span v-else class="miner-net-count muted">no peers yet</span>
+
+            <select v-if="minerPeers.length" v-model="selectedMinerPeer" class="miner-peer-select" title="Choose which verified miner node to publish the job to">
+              <option v-for="p in minerPeers" :key="p.wallet" :value="p">
+                {{ (p.wallet || '').slice(0, 8) }}@{{ p.host }}:{{ p.walletApiPort || 3456 }} {{ p.verified ? '✓' : '' }}
+              </option>
+            </select>
+
+            <span v-if="minerLastError" class="miner-net-err">{{ minerLastError }}</span>
+          </div> -->
+
+          <button class="submit-listing-btn" @click="connected ? doSearch() : showWalletModal = true"
+                  :disabled="checkerLoading || isResolving || brainPolling || batchPolling || minerSubmitting || minerDiscovering || (checkerResults && !batchFile && !brainVerdict?.reasoning)">
+            {{ isResolving ? 'Resolving...' : checkerLoading ? 'Scanning...' : batchPolling ? `Analyzing… (${batchProgress?.done ?? 0}/${batchProgress?.total ?? '?'})` : (brainPolling || (checkerResults && !brainVerdict?.reasoning)) ? 'AI analyzing...' : minerSubmitting ? 'Publishing to network…' : minerDiscovering ? 'Discovering peers…' : batchFile ? 'Scan Batch' : connected ? 'Search' : 'Connect Wallet' }}
           </button>
           <div v-if="batchPolling && batchProgress" class="batch-progress-bar">
             <div class="batch-progress-fill" :style="{ width: (batchProgress.percent ?? 0) + '%' }"></div>
@@ -1131,6 +1393,39 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <!-- Social Vibe — single scans only -->
+        <div v-if="!isBatchScan && vibeData && brainVerdict" class="vibe-card">
+          <div class="vibe-header">
+            <span class="vibe-label">SOCIAL VIBE</span>
+            <div class="vibe-sources">
+              <span v-for="src in vibeData.sources" :key="src" class="vibe-source-pill">{{ src }}</span>
+            </div>
+          </div>
+          <p class="vibe-text">{{ vibeData.vibe }}</p>
+          <div v-if="vibeData.topics?.length" class="vibe-topics">
+            <span v-for="t in vibeData.topics" :key="t" class="vibe-topic">{{ t }}</span>
+          </div>
+          <ul v-if="vibeData.humanSignals?.length" class="vibe-signals">
+            <li v-for="s in vibeData.humanSignals" :key="s">{{ s }}</li>
+          </ul>
+          <!-- Farcaster casts preview -->
+          <div v-if="vibeData.farcasterData?.casts?.length" class="vibe-casts">
+            <div class="vibe-casts-label">Recent Farcaster casts</div>
+            <div v-for="(c, i) in vibeData.farcasterData.casts.slice(0,3)" :key="i" class="vibe-cast">
+              <span class="vibe-cast-text">{{ c.text }}</span>
+              <span v-if="c.likes || c.replies" class="vibe-cast-meta">{{ c.likes ? `♥${c.likes}` : '' }}{{ c.replies ? ` · ${c.replies} replies` : '' }}</span>
+            </div>
+          </div>
+          <!-- Paragraph posts preview -->
+          <div v-if="vibeData.paragraphData?.posts?.length" class="vibe-articles">
+            <div class="vibe-casts-label">Paragraph articles</div>
+            <div v-for="(p, i) in vibeData.paragraphData.posts.slice(0,3)" :key="i" class="vibe-article">
+              <span class="vibe-article-title">{{ p.title }}</span>
+              <span v-if="p.subtitle" class="vibe-article-sub"> — {{ p.subtitle }}</span>
+            </div>
+          </div>
+        </div>
+
         <!-- Wallet Profile — single scans only -->
         <div v-if="!isBatchScan && walletProfileLoading && brainVerdict" class="profile-loading">
           <span class="profile-loading-dot" /><span class="profile-loading-dot" /><span class="profile-loading-dot" />
@@ -1163,6 +1458,8 @@ onUnmounted(() => {
             <button :class="['type-tab', { active: listing.type === 'evm' }]" @click="listing.type = 'evm'; abiFns = []">EVM Contract</button>
             <button :class="['type-tab', { active: listing.type === 'solana' }]" @click="listing.type = 'solana'; abiFns = []">Solana Program</button>
             <button :class="['type-tab', { active: listing.type === 'rest' }]" @click="listing.type = 'rest'; abiFns = []">REST API</button>
+            <button :class="['type-tab', { active: listing.type === 'ton' }]" @click="listing.type = 'ton'; abiFns = []">TON Contract</button>
+            <button :class="['type-tab', { active: listing.type === 'tron' }]" @click="listing.type = 'tron'; abiFns = []">TRON Contract</button>
           </div>
         </div>
 
@@ -1256,6 +1553,94 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <!-- TON Contract fields (new) -->
+        <div v-if="listing.type === 'ton'" class="form-section">
+          <div class="form-label-row"><span class="form-section-label">TON Smart Contract</span></div>
+          <div class="input-group">
+            <div>
+              <label class="field-label">Contract Address</label>
+              <input type="text" v-model="listing.address" placeholder="EQ..." class="premium-input font-mono" />
+            </div>
+            <div class="form-row">
+              <div class="form-col">
+                <label class="field-label">Get Method <span class="field-hint-inline">e.g. get_nft_data</span></label>
+                <input type="text" v-model="listing.method" placeholder="get_nft_data" class="premium-input font-mono" />
+              </div>
+            </div>
+            <div>
+              <label class="field-label">
+                Arguments (JSON array of objects) 
+                <span class="field-hint-inline">e.g. [{"type":"int","value":"12345"}, {"type":"slice","value":"..."}]</span>
+              </label>
+              <textarea v-model="listing.tonArgs" placeholder='[{"type":"int","value":"12345"}]' class="premium-textarea font-mono" rows="2"></textarea>
+
+              <!-- Helper for common TON argument types -->
+              <div style="margin-top: 4px; font-size: 0.75rem;">
+                <span style="color:#888;">Quick add:</span>
+                <button type="button" class="mini-btn" style="margin-left:4px; font-size:0.7rem; padding:1px 6px;" 
+                        @click="appendTonArg('int')">
+                  + int
+                </button>
+                <button type="button" class="mini-btn" style="font-size:0.7rem; padding:1px 6px;" 
+                        @click="appendTonArg('slice')">
+                  + slice/address
+                </button>
+                <button type="button" class="mini-btn" style="font-size:0.7rem; padding:1px 6px;" 
+                        @click="appendTonArg('cell')">
+                  + cell
+                </button>
+                <button type="button" class="mini-btn" style="font-size:0.7rem; padding:1px 6px;" 
+                        @click="listing.tonArgs = '[]'">
+                  Clear
+                </button>
+              </div>
+              <div style="font-size: 0.65rem; color:#666; margin-top:2px;">
+                Common types: <code>int</code>, <code>slice</code> (for addresses), <code>cell</code>. 
+                See TonAPI docs for full list. Complex values may need hex/base64 encoding.
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-col-sm">
+                <label class="field-label">Decimals</label>
+                <input type="number" v-model="listing.decimals" placeholder="9" class="premium-input" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TRON Contract fields (new) -->
+        <div v-if="listing.type === 'tron'" class="form-section">
+          <div class="form-label-row"><span class="form-section-label">TRON Smart Contract (TRC20 / Custom)</span></div>
+          <div class="input-group">
+            <div>
+              <label class="field-label">Contract Address</label>
+              <input type="text" v-model="listing.address" placeholder="T..." class="premium-input font-mono" />
+            </div>
+            <div class="form-row">
+              <div class="form-col">
+                <label class="field-label">Method <span class="field-hint-inline">e.g. balanceOf</span></label>
+                <input type="text" v-model="listing.method" placeholder="balanceOf" class="premium-input font-mono" />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-col">
+                <label class="field-label">Input Types <span class="field-hint-inline">JSON e.g. ["address"]</span></label>
+                <input type="text" v-model="listing.abiTypes" placeholder='["address"]' class="premium-input font-mono" />
+              </div>
+              <div class="form-col">
+                <label class="field-label">Return Types <span class="field-hint-inline">JSON e.g. ["uint256"]</span></label>
+                <input type="text" v-model="listing.returnTypes" placeholder='["uint256"]' class="premium-input font-mono" />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-col-sm">
+                <label class="field-label">Decimals</label>
+                <input type="number" v-model="listing.decimals" placeholder="6" class="premium-input" />
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- REST fields -->
         <div v-if="listing.type === 'rest'" class="form-section">
           <div class="form-label-row"><span class="form-section-label">Endpoint</span></div>
@@ -1292,6 +1677,22 @@ onUnmounted(() => {
                   <input type="text" v-model="h.value" placeholder="Value" class="premium-input flex-grow" />
                   <button @click="removeHeader(i)" class="mini-btn" :disabled="headers.length === 1">×</button>
                 </div>
+              </div>
+            </div>
+
+            <!-- Supported Networks for REST (Task request) -->
+            <div v-if="listing.type === 'rest'" style="margin-top: 0.75rem;">
+              <div class="form-label-row">
+                <span class="field-label">Supported Networks <span class="field-hint-inline">(check all that apply)</span></span>
+              </div>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 0.85rem;">
+                <label v-for="net in ['evm', 'solana', 'bitcoin', 'tron', 'ton', 'xlm']" :key="net" style="display: flex; align-items: center; gap: 4px; background: #1a1a1a; padding: 4px 8px; border-radius: 4px; cursor: pointer;">
+                  <input type="checkbox" :value="net" v-model="listing.supportedChains" style="accent-color: #6366f1;" />
+                  <span>{{ net.toUpperCase() }}</span>
+                </label>
+              </div>
+              <div style="font-size: 0.7rem; color: #666; margin-top: 4px;">
+                If none selected, this REST method will be considered for all networks (legacy behavior).
               </div>
             </div>
           </div>
@@ -1420,18 +1821,48 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <!-- Upgrade to Startup (task 2.md) -->
-            <div v-if="profileData.profile?.plan === 'free'" style="margin-top: 0.75rem;">
-              <button
-                class="submit-listing-btn"
-                style="width:100%; padding: 10px;"
-                @click="upgradeToStartupPlan"
-                :disabled="signupLoading"
-              >
-                {{ signupLoading ? 'Processing...' : 'Upgrade to Startup — $1000 USDC/USDT (100k scans/mo)' }}
-              </button>
-              <div style="font-size:0.75rem; color:#666; text-align:center; margin-top:4px;">
-                Charges 1000 USDC/USDT to fee recipient and activates Startup plan
+            <!-- Always-visible Upgrade to Startup section in profile (prominent as requested) -->
+            <div class="profile-upgrade-section" style="margin: 1rem 0; padding: 1rem; border: 2px solid #6366f1; border-radius: 8px; background: #0f0f1a;">
+              <div style="font-weight: 600; margin-bottom: 0.5rem; color: #a5b4fc;">
+                Current Plan: <strong>{{ profileData.profile?.plan || 'free' }}</strong>
+                <span v-if="profileData.profile?.plan === 'startup'" style="color:#22c55e; font-size:0.8rem;"> (100k scans/mo)</span>
+              </div>
+
+              <div v-if="profileData.profile?.plan !== 'startup' && profileData.profile?.plan !== 'enterprise'">
+                <div style="font-size: 0.9rem; color: #ccc; margin-bottom: 0.75rem;">
+                  Upgrade to Startup: <strong>100,000 scans per month</strong> + priority queue.<br>
+                  One-time payment of <strong>1000 USDC or USDT</strong>.
+                </div>
+
+                <!-- Token Toggle -->
+                <div style="margin-bottom: 0.75rem; display: flex; gap: 8px;">
+                  <button
+                    :class="['token-btn', upgradeToken === 'USDC' && 'token-btn--active']"
+                    @click="upgradeToken = 'USDC'"
+                  >
+                    USDC
+                  </button>
+                  <button
+                    :class="['token-btn', upgradeToken === 'USDT' && 'token-btn--active']"
+                    @click="upgradeToken = 'USDT'"
+                  >
+                    USDT
+                  </button>
+                </div>
+
+                <button
+                  class="submit-listing-btn"
+                  style="width:100%; padding: 12px; font-size: 1rem; background: #6366f1;"
+                  @click="upgradeToStartupPlan"
+                  :disabled="signupLoading"
+                >
+                  {{ signupLoading ? 'Sending 1000 ' + upgradeToken + '...' : 'Pay 1000 ' + upgradeToken + ' & Upgrade to Startup' }}
+                </button>
+              </div>
+
+              <div v-else style="color: #22c55e; font-size: 0.9rem;">
+                You are on a paid plan. Thank you! 
+                <span v-if="profileData.profile?.plan === 'startup'">Contact us for Enterprise upgrades.</span>
               </div>
             </div>
 
@@ -2070,6 +2501,45 @@ const results = await pollJob(jobId)</pre>
   transition: color 0.15s;
 }
 .feat-cta:hover { color: #fff; }
+a.feat-cta { text-decoration: none; display: inline-block; }
+
+/* ── Mining section ───────────────────────────────────────────────────────── */
+.mining-stats {
+  display: flex;
+  gap: 1.5rem;
+  margin: 1.25rem 0 1.5rem;
+}
+.mining-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.mining-stat-val {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #4ade80;
+}
+.mining-stat-label {
+  font-size: 0.7rem;
+  color: #444;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.mining-visual {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #000;
+}
+.mining-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.mining-pulse-ring { display: none; }
 
 .feat-svg {
   width: 100%;
@@ -2727,6 +3197,38 @@ const results = await pollJob(jobId)</pre>
 }
 
 .scan-upload:hover { color: #aaa; }
+
+/* ── Miner Network controls (peer discovery + toggle for decentralized search) ─ */
+.miner-net-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.8rem;
+  color: #888;
+}
+.miner-net-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  user-select: none;
+  color: #aaa;
+}
+.miner-net-toggle input { accent-color: #6366f1; }
+.miner-net-count { font-family: monospace; color: #666; }
+.miner-net-count.muted { opacity: 0.6; }
+.miner-peer-select {
+  font-size: 0.72rem;
+  background: #111;
+  color: #ccc;
+  border: 1px solid #222;
+  border-radius: 4px;
+  padding: 0.1rem 0.35rem;
+  max-width: 220px;
+}
+.miner-net-err { color: #f66; font-size: 0.7rem; }
 
 .scan-btn {
   width: 100%;
@@ -4709,6 +5211,89 @@ const results = await pollJob(jobId)</pre>
   border-radius: 14px;
   padding: 22px;
 }
+
+/* ── Social Vibe card ─────────────────────────────────────────────────────── */
+.vibe-card {
+  margin-top: 14px;
+  background: #080f08;
+  border: 1px solid rgba(34,197,94,0.18);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+.vibe-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.vibe-label {
+  font-family: monospace;
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  color: #22c55e;
+  opacity: 0.8;
+}
+.vibe-sources { display: flex; gap: 6px; flex-wrap: wrap; }
+.vibe-source-pill {
+  font-family: monospace;
+  font-size: 9px;
+  color: #374151;
+  background: #111;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.vibe-text {
+  font-size: 13px;
+  color: #9ca3af;
+  line-height: 1.65;
+  margin: 0 0 12px;
+}
+.vibe-topics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.vibe-topic {
+  font-family: monospace;
+  font-size: 10px;
+  color: #22c55e;
+  background: rgba(34,197,94,0.08);
+  border: 1px solid rgba(34,197,94,0.2);
+  padding: 3px 9px;
+  border-radius: 12px;
+}
+.vibe-signals {
+  margin: 0 0 12px;
+  padding-left: 16px;
+  font-size: 11px;
+  color: #4b5563;
+  line-height: 1.7;
+}
+.vibe-casts-label {
+  font-family: monospace;
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  color: #374151;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.vibe-casts, .vibe-articles { margin-top: 10px; }
+.vibe-cast {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid #0f0f0f;
+  font-size: 11px;
+}
+.vibe-cast:last-child { border-bottom: none; }
+.vibe-cast-text { flex: 1; color: #6b7280; line-height: 1.5; }
+.vibe-cast-meta { flex-shrink: 0; font-family: monospace; font-size: 10px; color: #374151; }
+.vibe-article { padding: 4px 0; font-size: 11px; color: #6b7280; }
+.vibe-article-title { color: #9ca3af; }
+.vibe-article-sub { color: #4b5563; }
 
 .evidence-loading {
   display: flex;

@@ -6,6 +6,8 @@ export function useListing({ walletAddress, walletProvider, connected, POH_MINT,
   const listing = ref({
     type: 'evm', chainId: 1, address: '', method: '', abiTypes: '', returnTypes: '',
     decimals: '', expression: '', lang: 'js', description: '', body: '', httpMethod: 'GET',
+    supportedChains: [], // for REST: array of 'evm' | 'solana' | 'bitcoin' | 'tron' | 'ton' | 'xlm'
+    tonArgs: '',         // for TON: JSON array of { type, value }
   })
   const headers     = ref([{ key: '', value: '' }])
   const abiFns      = ref([])
@@ -111,7 +113,11 @@ export function useListing({ walletAddress, walletProvider, connected, POH_MINT,
 
       await loadPohBalance()
       alert(`Method registered! Paid ${LISTING_FEE_POH} POH — 500 to deployer, 500 distributed to stakers.`)
-      listing.value = { type: 'evm', chainId: 1, address: '', method: '', abiTypes: '', returnTypes: '', decimals: '', expression: '', lang: 'js', description: '', body: '', httpMethod: 'GET' }
+      listing.value = { 
+        type: 'evm', chainId: 1, address: '', method: '', abiTypes: '', returnTypes: '', 
+        decimals: '', expression: '', lang: 'js', description: '', body: '', httpMethod: 'GET', 
+        supportedChains: [], tonArgs: '' 
+      }
       headers.value = [{ key: '', value: '' }]
     } catch (err) {
       error.value = err.message || 'Registration failed'

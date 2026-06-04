@@ -32,6 +32,7 @@ export function useProfile({ walletAddress, connected, adapterSignMessage, POH_M
   const depositToken     = ref('USDC')   // 'USDC' | 'USDT'
   const depositLoading   = ref(false)
   const depositMsg       = ref(null)
+  const upgradeToken     = ref('USDC')  // 'USDC' | 'USDT' for upgrade payment
 
   async function loadProfile() {
     if (!walletAddress.value) return
@@ -135,29 +136,32 @@ export function useProfile({ walletAddress, connected, adapterSignMessage, POH_M
       return false
     }
     try {
-      // Reuse the same stablecoin payment flow as deposit, but fixed amount
       const amount = 1000
-      const token = 'USDC' // or let user choose; for simplicity USDC first
+      const token = upgradeToken.value  // User-selected: USDC or USDT
 
-      const connection = new Connection(SOLANA_RPC, 'confirmed')
+      const connection = new Connection(SOLANA_RPC.value, 'confirmed')
       const walletPubkey = new PublicKey(walletAddress.value)
-      const recipientPubkey = new PublicKey(FEE_RECIPIENT)
+      const recipientPubkey = new PublicKey(FEE_RECIPIENT.value)
       const mintPubkey = new PublicKey(STABLE_MINTS[token])
 
       const fromAta = await getAssociatedTokenAddress(mintPubkey, walletPubkey)
       const toAta = await getAssociatedTokenAddress(mintPubkey, recipientPubkey)
+
+      // Verify sender ATA exists (gives a clearer error)
+      const fromAtaInfo = await connection.getAccountInfo(fromAta)
+      if (!fromAtaInfo) throw new Error(`You don't have a ${token} token account. Send some ${token} to your wallet first.`)
 
       const tx = new Transaction()
 
       const toAtaInfo = await connection.getAccountInfo(toAta)
       if (!toAtaInfo) {
         tx.add(createAssociatedTokenAccountInstruction(
-          walletPubkey, recipientPubkey, recipientPubkey, mintPubkey
+          walletPubkey, toAta, recipientPubkey, mintPubkey
         ))
       }
 
       tx.add(
-        createTransferInstruction(fromAta, toAta, walletPubkey, BigInt(1000 * 1_000_000))
+        createTransferInstruction(fromAta, toAta, walletPubkey, BigInt(amount) * 1_000_000n)
       )
 
       const txHash = await signAndSendTransaction(tx)
@@ -187,6 +191,7 @@ export function useProfile({ walletAddress, connected, adapterSignMessage, POH_M
     depositToken,
     depositLoading,
     depositMsg,
+    upgradeToken,
     loadProfile,
     signupProfile,
     rotateApiKey,

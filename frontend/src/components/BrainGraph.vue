@@ -250,26 +250,6 @@ function renderFrame() {
     ctx.shadowBlur = 0
   }
 
-  // ── Verdict nodes ──────────────────────────────────────────────────────────
-  ;[
-    { id: '__human__', label: 'HUMAN',   col: HUMAN_COLOR },
-    { id: '__bot__',   label: 'BOT / AI', col: BOT_COLOR },
-  ].forEach(({ id, label, col }) => {
-    const n = nodes.find(x => x.id === id)
-    if (!n?.x) return
-    const bw = label.length * 6.5 + 20
-    ctx.beginPath()
-    ctx.roundRect(n.x - bw / 2, n.y - 14, bw, 28, 14)
-    ctx.strokeStyle = col + 'aa'
-    ctx.lineWidth = 1.5
-    ctx.fillStyle = col + '18'
-    ctx.fill()
-    ctx.stroke()
-    ctx.fillStyle = col
-    ctx.font = 'bold 9px monospace'
-    ctx.textAlign = 'center'
-    ctx.fillText(label, n.x, n.y + 4)
-  })
 
   ctx.restore()
 }

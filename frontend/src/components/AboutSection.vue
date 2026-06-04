@@ -396,14 +396,170 @@ TX2 (888 bytes):  Create pool + first buy (backend signs with baseMintKeypair)`}
         <table class="yp-table">
           <thead><tr><th>Phase</th><th>Feature</th></tr></thead>
           <tbody>
-            <tr><td><span class="yp-badge yp-badge--active">Mainnet (current)</span></td><td>Signal registry, voting, AI brain, Conviction Curves, scan API, profile & billing</td></tr>
-            <tr><td>Next</td><td>On-chain staking contract deployment, stake-weighted voting live</td></tr>
+            <tr><td><span class="yp-badge yp-badge--active">Mainnet (current)</span></td><td>Signal registry, voting, AI brain, Conviction Curves, scan API, profile &amp; billing, PoH Miner Network, mobile wallet</td></tr>
+            <tr><td>Next</td><td>On-chain staking contract deployment, stake-weighted voting live, BFT finality layer</td></tr>
             <tr><td>Beta</td><td>On-chain signal storage, DAO governance of brain weights</td></tr>
             <tr><td>V1</td><td>Cross-chain signals, ZK-proof integration for private signals</td></tr>
             <tr><td>V2</td><td>Prediction market settlement, signal expiry, signal composability (AND/OR logic)</td></tr>
           </tbody>
         </table>
       </div>
+    </section>
+
+    <!-- 13. Miner Network -->
+    <section class="yp-section">
+      <h3 class="yp-h2">13. PoH Miner Network</h3>
+      <p class="yp-p">
+        The PoH Miner Network is a purpose-built Proof-of-Work blockchain where miners earn POH by performing real, useful
+        work — executing the full identity verification pipeline (signal evaluation + AI brain inference) on user-submitted
+        wallet addresses. Energy is converted into high-integrity compute, not discarded on pure hash puzzles.
+      </p>
+
+      <h4 class="yp-h3">13.1 Architecture</h4>
+      <div class="yp-code">
+        <pre>{`┌──────────────────────────────────────────────────────────────────┐
+│                   App Layer  (proofofhuman.ge)                   │
+│   Frontend  ·  Profiles  ·  Voting  ·  Conviction Curves        │
+└───────────────────────────┬──────────────────────────────────────┘
+                            │  submits scan jobs ▼  reads results
+┌───────────────────────────▼──────────────────────────────────────┐
+│                    PoH Miner Network                             │
+│                                                                  │
+│   ┌──────────────┐  P2P gossip (blocks, txs, status)            │
+│   │  Miner Node  │◄──────────────────────────────► Miner Node  │
+│   │              │                                              │
+│   │ • PoW mining │  ← race to compute first valid verdict →    │
+│   │ • LLM brain  │                                              │
+│   │ • Chain sync │  ← bootnode for peer discovery / catch-up → │
+│   │ • Wallet API │                                              │
+│   └──────────────┘                                              │
+│                                                                  │
+│   IPFS durability (chain snapshots, brain state, peer list)     │
+└──────────────────────────────────────────────────────────────────┘`}</pre>
+      </div>
+
+      <h4 class="yp-h3">13.2 Block Structure</h4>
+      <p class="yp-p">Each block is a self-contained record of verified identity work:</p>
+      <div class="yp-table-wrap">
+        <table class="yp-table">
+          <thead><tr><th>Field</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>height</code>, <code>previousHash</code>, <code>timestamp</code></td><td>Standard chain linkage</td></tr>
+            <tr><td><code>minerWallet</code></td><td>PoH address of the block proposer</td></tr>
+            <tr><td><code>scanResults[]</code></td><td>Verified wallet verdicts: requestId, address, verdict, confidence, reasoning, signalsUsed, minerWallet, signature</td></tr>
+            <tr><td><code>transactions[]</code></td><td>Signed POH token transfers with nonces (send/receive)</td></tr>
+            <tr><td><code>coinbaseReward</code></td><td>1 POH per block — 60% to block proposer, 40% split among contributing workers</td></tr>
+            <tr><td><code>nonce</code>, <code>difficulty</code>, <code>chainWork</code></td><td>Lightweight PoW fields for Sybil resistance</td></tr>
+            <tr><td><code>minerSignature</code></td><td>ed25519 block authentication by the proposing miner</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4 class="yp-h3">13.3 Consensus &amp; Networking</h4>
+      <p class="yp-p">The current network uses a hybrid model designed for correctness in the bootstrapping phase:</p>
+      <ul class="yp-list">
+        <li><strong>Block production:</strong> useful work + lightweight PoW over the block header prevents spam and adds Sybil resistance without wasting pure compute.</li>
+        <li><strong>Chain sync:</strong> cold-starting nodes pull the canonical chain from the bootnode via <code>HTTP GET /chain/blocks</code>.</li>
+        <li><strong>Gossip:</strong> <code>new-block</code> and <code>new-tx</code> messages are flood-filled across peers (TTL = 4 hops) for fast propagation.</li>
+        <li><strong>Node status:</strong> each node broadcasts its <code>methodsHash</code>, region, and load on a regular interval so peers can route jobs intelligently.</li>
+        <li><strong>IPFS durability:</strong> chain snapshots, brain state, and peer lists are pinned to IPFS and served as fallback for nodes that can't reach the bootnode.</li>
+      </ul>
+      <p class="yp-p"><strong>Planned:</strong> migration to BFT finality (CometBFT-style) for fast, slashable consensus once the network reaches sufficient validator count. Custom proposer selection will weight nodes by recent verified work and staked POH.</p>
+
+      <h4 class="yp-h3">13.4 P2P Sync Summary</h4>
+      <div class="yp-table-wrap">
+        <table class="yp-table">
+          <thead><tr><th>Data</th><th>Transport</th></tr></thead>
+          <tbody>
+            <tr><td>New blocks</td><td>P2P gossip <code>new-block</code> (flood-fill, TTL=4)</td></tr>
+            <tr><td>Pending transactions</td><td>P2P gossip <code>new-tx</code></td></tr>
+            <tr><td>Node status (methodsHash, region, load)</td><td>P2P gossip <code>node-status</code></td></tr>
+            <tr><td>Chain history (cold start)</td><td>HTTP pull from bootnode <code>/chain/blocks</code></td></tr>
+            <tr><td>Canonical signal set + hash</td><td>HTTP from proofofhuman.ge + IPFS fallback</td></tr>
+            <tr><td>Brain feedback events &amp; weight updates</td><td>Peer-to-peer push + bootnode <code>/brain/events</code></td></tr>
+            <tr><td>Peer records</td><td>Bootnode <code>/peers</code> + IPFS peer directory</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 14. Mining -->
+    <section class="yp-section">
+      <h3 class="yp-h2">14. Mining</h3>
+
+      <h4 class="yp-h3">14.1 Job Queue &amp; Geographic Routing</h4>
+      <p class="yp-p">
+        When a user submits a scan request (via proofofhuman.ge or the API), it enters a <strong>global job mempool</strong>
+        visible to all connected miners. Miners do not blindly race on every job — each job is scored individually before
+        a miner decides to compete:
+      </p>
+      <div class="yp-code">
+        <pre>score = fee × geoMultiplier × loadPenalty</pre>
+      </div>
+      <p class="yp-p">
+        Jobs carry an <code>originRegion</code>. A miner in the same region receives a <code>geoMultiplier</code> of up to
+        <strong>2.2×</strong>, giving local nodes a substantial advantage. This incentivizes geographic distribution of
+        compute and keeps latency low for end users.
+      </p>
+      <p class="yp-p">On startup, every miner measures latency to global anchor points and auto-detects its region. No manual configuration is required.</p>
+
+      <h4 class="yp-h3">14.2 Work Verification</h4>
+      <p class="yp-p">A submitted result is only accepted into a block if it passes all of the following checks:</p>
+      <ul class="yp-list">
+        <li>The miner used the <strong>current canonical signal set</strong> — its <code>methodsHash</code> must match the network's authoritative hash from proofofhuman.ge.</li>
+        <li>At least <strong>75%</strong> of live Conviction Curve–backed signals were evaluated.</li>
+        <li>The result includes the full required output: verdict, confidence score, profile data, and reasoning.</li>
+        <li>Computation time is <strong>plausible</strong> for the claimed work (too-fast results indicate skipped signals).</li>
+      </ul>
+      <p class="yp-p">Invalid or low-quality submissions are rejected and trigger a <strong>reputation penalty</strong>. Repeated violations result in slashing — the node is demoted in the job queue and its future submissions require a higher quality threshold before being included.</p>
+
+      <h4 class="yp-h3">14.3 Reward Mechanics</h4>
+      <div class="yp-table-wrap">
+        <table class="yp-table">
+          <thead><tr><th>Reward type</th><th>Amount</th><th>Recipients</th></tr></thead>
+          <tbody>
+            <tr><td>Block subsidy (fixed)</td><td>1 POH per block</td><td>60% → block proposer; 40% split among workers whose results were included</td></tr>
+            <tr><td>Job fee (variable)</td><td>Set by job submitter</td><td>100% → the miner whose result wins the scan race for that job</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="yp-p">
+        Rewards are minted directly into the block as coinbase outputs — there is no central treasury disbursement.
+        The mobile wallet and the Electron desktop app both display real-time balances and per-block earnings pulled
+        from the miner's local API (<code>localhost:3456</code>).
+      </p>
+
+      <h4 class="yp-h3">14.4 Running a Miner</h4>
+      <p class="yp-p">Three deployment options:</p>
+      <div class="yp-table-wrap">
+        <table class="yp-table">
+          <thead><tr><th>Method</th><th>How</th><th>Best for</th></tr></thead>
+          <tbody>
+            <tr><td><strong>GUI app</strong></td><td>Download <code>.deb</code> / <code>.AppImage</code> / <code>.dmg</code>. Ollama + <code>qwen2.5:1.5b</code> are installed automatically.</td><td>Non-technical operators; home miners</td></tr>
+            <tr><td><strong>CLI</strong></td><td><code>npm install &amp;&amp; cp config.example.json config.json &amp;&amp; npm start</code></td><td>Servers; automation; custom config</td></tr>
+            <tr><td><strong>Docker</strong></td><td><code>docker run -v ~/.poh-miner:/root/.poh-miner ghcr.io/poh/miner:latest</code></td><td>Cloud VMs; containerized deployments</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="yp-p"><strong>Minimum config required:</strong></p>
+      <div class="yp-code">
+        <pre>{`{
+  "wallet":        "pohYourAddressHere",
+  "bootnodes":     ["https://bootnode.proofofhuman.ge"],
+  "solanaAddress": "YourSolanaAddress",
+  "inferenceMode": "auto",
+  "model":         "qwen2.5:1.5b"
+}`}</pre>
+      </div>
+      <p class="yp-p"><strong>Hardware:</strong> any modern consumer CPU can mine. GPU acceleration is supported via Ollama and increases throughput. Operators running on existing infrastructure (home PCs, server co-lo, Bitcoin ASIC facilities with spare CPU capacity) can begin earning immediately with no additional capital outlay beyond setup time.</p>
+
+      <h4 class="yp-h3">14.5 Miner Wallet</h4>
+      <p class="yp-p">
+        The <strong>PoH Miner Wallet</strong> (Android, iOS in beta) connects directly to the miner node via the local
+        API and provides: live POH balance, per-block reward history, job win log, send/receive, and the AI identity
+        scanner. The wallet requires no exchange or custodian — private keys remain on-device and transactions propagate
+        peer-to-peer through the miner network.
+      </p>
     </section>
 
     <!-- Appendices -->

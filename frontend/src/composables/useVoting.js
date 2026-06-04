@@ -10,7 +10,7 @@ function encodeBase58(bytes) {
   return result
 }
 
-export function useVoting({ walletAddress, connected, adapterSignMessage }) {
+export function useVoting({ walletAddress, connected, adapterSignMessage, nodeBase = null }) {
   const votingList        = ref([])
   const voteIndex         = ref(0)
   const voteSubmitting    = ref(false)
@@ -23,12 +23,25 @@ export function useVoting({ walletAddress, connected, adapterSignMessage }) {
 
   const currentVoteItem = computed(() => votingList.value[voteIndex.value] ?? null)
 
+  // Returns peer base URL string or null
+  function getBase() {
+    return nodeBase?.value ?? null
+  }
+
   const loadVoting = async () => {
     loading.value = true
     try {
-      const params = walletAddress.value ? { address: walletAddress.value } : {}
-      const res = await axios.get('/methods/verifyer', { params })
-      votingList.value = res.data.filter(m => !m.myVoted)
+      const base = getBase()
+      let methods
+      if (base) {
+        const res = await axios.get(`${base}/methods`)
+        methods = res.data
+      } else {
+        const params = walletAddress.value ? { address: walletAddress.value } : {}
+        const res = await axios.get('/methods/verifyer', { params })
+        methods = res.data
+      }
+      votingList.value = methods.filter(m => !m.myVoted)
       voteIndex.value = 0
     } catch (err) {
       error.value = 'Failed to load voting queue'
@@ -40,24 +53,6 @@ export function useVoting({ walletAddress, connected, adapterSignMessage }) {
   const castVote = async (voteVal) => {
     if (voteVal === 'skip') { voteIndex.value++; voteFeedback.value = ''; return }
     if (!connected.value) { error.value = 'Connect wallet to vote'; return }
-    if (!adapterSignMessage.value) { error.value = 'Wallet does not support message signing'; return }
-
-    // const fb = voteFeedback.value.trim()
-    // if (fb) {
-    //   feedbackValidating.value = true
-    //   try {
-    //     const res = await axios.post('/methods/verifyer/validate-feedback', { feedback: fb })
-    //     if (!res.data.valid) {
-    //       error.value = `Comment rejected: ${res.data.reason}`
-    //       feedbackValidating.value = false
-    //       return
-    //     }
-    //   } catch {
-    //     // validation down — proceed
-    //   } finally {
-    //     feedbackValidating.value = false
-    //   }
-    // }
 
     voteConfirmPending.value = voteVal
   }
@@ -66,18 +61,32 @@ export function useVoting({ walletAddress, connected, adapterSignMessage }) {
     const voteVal = voteConfirmPending.value
     voteConfirmPending.value = null
     voteSubmitting.value = true
+    const base = getBase()
     try {
-      const type     = 'method'
-      const methodId = currentVoteItem.value.id
-      const message  = `poh-vote-v1:${methodId}:${voteVal}:${type}:${walletAddress.value}:${Date.now()}`
-      const sig = await adapterSignMessage.value(new TextEncoder().encode(message))
-      const sig58 = encodeBase58(sig)
-      await axios.post('/methods/verifyer/vote', {
-        methodId, vote: voteVal, type,
-        walletAddress: walletAddress.value,
-        signature: sig58, message,
-        feedback: voteFeedback.value.trim() || undefined,
-      })
+      if (base) {
+        // Route through peer — brain weight update, no signature needed
+        await axios.post(`${base}/api/brain/vote`, {
+          method: currentVoteItem.value,
+          voteType: 'method',
+          vote: voteVal,
+          stakeWeight: 1.0,
+          feedback: voteFeedback.value.trim() || null,
+        })
+      } else {
+        // Original path: signed governance vote to dev backend
+        if (!adapterSignMessage.value) { error.value = 'Wallet does not support message signing'; return }
+        const type     = 'method'
+        const methodId = currentVoteItem.value.id
+        const message  = `poh-vote-v1:${methodId}:${voteVal}:${type}:${walletAddress.value}:${Date.now()}`
+        const sig = await adapterSignMessage.value(new TextEncoder().encode(message))
+        const sig58 = encodeBase58(sig)
+        await axios.post('/methods/verifyer/vote', {
+          methodId, vote: voteVal, type,
+          walletAddress: walletAddress.value,
+          signature: sig58, message,
+          feedback: voteFeedback.value.trim() || undefined,
+        })
+      }
       voteFeedback.value = ''
       votingList.value.splice(voteIndex.value, 1)
     } catch (err) {
@@ -97,8 +106,16 @@ export function useVoting({ walletAddress, connected, adapterSignMessage }) {
 
   async function fetchMethodsForGraph() {
     try {
-      const res = await axios.get('/methods/verifyer')
-      votingList.value = res.data.sort((a, b) => (a.score || 0) - (b.score || 0))
+      const base = getBase()
+      let data
+      if (base) {
+        const res = await axios.get(`${base}/methods`)
+        data = res.data
+      } else {
+        const res = await axios.get('/methods/verifyer')
+        data = res.data
+      }
+      votingList.value = data.sort((a, b) => (a.score || 0) - (b.score || 0))
     } catch {}
   }
 

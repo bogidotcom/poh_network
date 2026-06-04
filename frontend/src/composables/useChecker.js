@@ -43,6 +43,7 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
   const batchProgress        = ref(null) // { done, total, percent }
   const isBatchScan          = ref(false)
   const inlineScanProfile    = ref(null) // populated when cache hit includes enriched profile
+  const vibeData             = ref(null) // { vibe, topics, humanSignals, sources, farcasterData, paragraphData }
   const resolveResults       = shallowRef([])  // multi-match list when resolve returns >1
   const resolveQuery         = ref('')         // the original query that produced resolveResults
 
@@ -188,6 +189,8 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
     if (!connected.value) return
     checkerResults.value  = null
     ofacResult.value      = null
+    euResult.value        = null
+    ukResult.value        = null
     brainVerdict.value    = null
     brainPolling.value    = false
     brainKey.value        = null
@@ -195,6 +198,7 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
     batchPolling.value    = false
     isBatchScan.value     = !!batchFile.value
     inlineScanProfile.value = null
+    vibeData.value        = null
     resolveResults.value  = []
     loading.value = true
     isResolving.value = true
@@ -297,9 +301,13 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
           }
           brainPolling.value = false
         }
-        if (res.data.profile) {
-          inlineScanProfile.value = res.data.profile
-        }
+        if (res.data.profile)   inlineScanProfile.value = res.data.profile
+        if (res.data.vibeData)  vibeData.value = { ...res.data.vibeData, farcasterData: res.data.farcasterData || null, paragraphData: res.data.paragraphData || null }
+        // Cache hit may now include eu/uk (recomputed server-side)
+        if (res.data.ofac !== undefined) ofacResult.value = res.data.ofac || null
+        if (res.data.eu   !== undefined) euResult.value   = res.data.eu   || null
+        if (res.data.uk   !== undefined) ukResult.value   = res.data.uk   || null
+        if (res.data.cex  !== undefined) { /* cex not stored in ref but ok */ }
 
         // ── Fresh scan: poll brain endpoint for async verdict ───────────────
         const _brainKey = res.data.brainKey
@@ -311,6 +319,7 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
               const b = await axios.get(`/checker/brain/${encodeURIComponent(_brainKey)}`)
               if (b.data.status === 'done' || b.data.status === 'error') {
                 brainVerdict.value = b.data
+                if (b.data.vibeData)      vibeData.value = { ...b.data.vibeData, farcasterData: b.data.farcasterData || null, paragraphData: b.data.paragraphData || null }
                 brainPolling.value = false
                 clearInterval(poll)
               }
@@ -363,6 +372,7 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
     batchProgress,
     isBatchScan,
     inlineScanProfile,
+    vibeData,
     resolveResults,
     resolveQuery,
     pickResolveResult,
