@@ -1073,7 +1073,7 @@ onUnmounted(() => {
                 <span class="mining-stat-label">hardware</span>
               </div>
             </div>
-            <a href="https://proofofhuman.ge/miner" target="_blank" class="feat-cta">Start mining →</a>
+            <a href="https://miner.proofofhuman.ge/" target="_blank" class="feat-cta">Start mining →</a>
           </div>
           <div class="feat-right">
             <div class="mining-visual">
