@@ -21,6 +21,7 @@ const { isInList }                                  = require('../utils/labeledW
 const { checkHumanityVerified }   = require('../utils/humanityProtocol');
 const { getFarcasterData, getParagraphData } = require('../utils/social');
 const { createJob, getJob }       = require('../utils/jobQueue');
+const { broadcastFeedback }       = require('../utils/brainBroadcast');
 const {
   getProfile, getProfiles, upsertProfile, consumeFreeScan, calcScanCost,
   getFreeScansLeft, distributeRewards, isIpAbuse, recordIp,
@@ -659,6 +660,17 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
       freeScansLeft: effectiveWallet ? getFreeScansLeft(effectiveWallet) : null,
     });
 
+    // Start social fetch immediately in parallel with brain analysis so both
+    // complete faster.  vibeCheck runs after brain verdict but social data is
+    // already ready by then for most addresses.
+    const isEvm = /^0x[0-9a-fA-F]{40}$/.test(scanKey);
+    const socialPromise = isEvm
+      ? Promise.all([
+          getFarcasterData(scanKey).catch(() => null),
+          getParagraphData(scanKey).catch(() => null),
+        ])
+      : Promise.resolve([null, null]);
+
     brain.analyzeHumanness(scanKey, results, allMethods)
       .then(async verdict => {
         // Hard override for Tether blacklist (Task 2) — on-chain fact trumps LLM
@@ -666,32 +678,27 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
         if (tetherHit) {
           verdict = { verdict: 'AI', confidence: 0.99, reasoning: 'Address frozen by Tether USDT (blacklist)' };
         }
-        brainPending[scanKey] = { status: 'done', ...verdict, signals: results };
-        console.log(`[brain] Verdict for ${scanKey}: ${verdict.verdict} (${(verdict.confidence * 100).toFixed(0)}%)`);
 
-        // ── Social vibe: fetch Farcaster + Paragraph content, run vibe LLM ──
-        // Only for EVM addresses (Farcaster/Paragraph are EVM-based)
-        const isEvm = /^0x[0-9a-fA-F]{40}$/.test(scanKey);
-        if (isEvm) {
-          try {
-            const [farcasterData, paragraphData] = await Promise.all([
-              getFarcasterData(scanKey).catch(() => null),
-              getParagraphData(scanKey).catch(() => null),
-            ]);
-            if (farcasterData || paragraphData) {
-              const vibeData = await brain.vibeCheck(scanKey, { farcasterData, paragraphData });
-              if (vibeData) {
-                brainPending[scanKey] = { ...brainPending[scanKey], vibeData };
-                console.log(`[vibe] Generated vibe for ${scanKey}`);
-              }
-              // Store raw social content for profile enrichment
-              if (farcasterData) brainPending[scanKey].farcasterData = farcasterData;
-              if (paragraphData) brainPending[scanKey].paragraphData = paragraphData;
-            }
-          } catch (vibeErr) {
-            console.warn('[vibe] Failed:', vibeErr.message);
+        // ── Social vibe — await social data (likely ready; ran in parallel) ──
+        let vibeData = null, farcasterData = null, paragraphData = null;
+        try {
+          [farcasterData, paragraphData] = await socialPromise;
+          if (farcasterData || paragraphData) {
+            vibeData = await brain.vibeCheck(scanKey, { farcasterData, paragraphData }).catch(() => null);
+            if (vibeData) console.log(`[vibe] Generated vibe for ${scanKey}`);
           }
+        } catch (vibeErr) {
+          console.warn('[vibe] Failed:', vibeErr.message);
         }
+
+        // Mark done — vibeData included so frontend gets it on the same poll
+        brainPending[scanKey] = {
+          status: 'done', ...verdict, signals: results,
+          vibeData:      vibeData      || null,
+          farcasterData: farcasterData || null,
+          paragraphData: paragraphData || null,
+        };
+        console.log(`[brain] Verdict for ${scanKey}: ${verdict.verdict} (${(verdict.confidence * 100).toFixed(0)}%)`);
 
         // ── Cache full scan bundle for 7 days ──────────────────────────────
         try {
@@ -699,7 +706,6 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
           const fullCacheKey = `fullscan:v1:${scanKey}:${methodsHash}`;
           const counterparties = await getCounterparties(scanKey).catch(() => []);
           const profile = await enrichProfile(scanKey, counterparties);
-          const pending = brainPending[scanKey] || {};
           await setCachedResponse(fullCacheKey, {
             results,
             ofac:          ofacHit,
@@ -709,9 +715,9 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
             verdict:       verdict.verdict,
             confidence:    verdict.confidence,
             reasoning:     verdict.reasoning,
-            vibeData:      pending.vibeData      || null,
-            farcasterData: pending.farcasterData || null,
-            paragraphData: pending.paragraphData || null,
+            vibeData,
+            farcasterData,
+            paragraphData,
             profile,
             cachedAt:      new Date().toISOString(),
           }, SCAN_CACHE_TTL);
@@ -774,7 +780,8 @@ router.post('/feedback', async (req, res) => {
 
   // Fire-and-forget — don't block the response on LLM call
   brain.onVerdictFeedback(address, aiVerdict, correction, comment || null, signals)
-    .catch(err => console.error('[feedback] onVerdictFeedback failed:', err.message));
+    .then(() => broadcastFeedback(address, aiVerdict, correction, comment, signals))
+    .catch(err => console.error('[feedback] onVerdictFeedback/broadcast failed:', err.message));
 
   res.json({ ok: true });
 });
@@ -858,6 +865,9 @@ router.get('/particles', async (req, res) => {
 
 router.get('/pricing', (req, res) => {
   const count = Math.max(1, parseInt(req.query.count) || 1);
+
+  console.log(111)
+
   const { total, perAddress } = calcScanCost(count);
   res.json({
     count, perAddress, total,

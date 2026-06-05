@@ -9,6 +9,7 @@ const { parse } = require('csv-parse/sync');
 const { getVoteTokenStake, verifyWalletSignature, verifyTxSuccess } = require('../utils/solana');
 const { recordVote, getMyVotes, hasVoted, isTxUsed, recordTx } = require('../utils/profiles');
 const brain = require('../utils/brain');
+const { broadcastWeightUpdate, broadcastNewMethod } = require('../utils/brainBroadcast');
 
 const METHODS_PATH = path.join(__dirname, '../../data/methods.json');
 const DATASET_PATH = path.join(__dirname, '../../data/dataset.json');
@@ -119,9 +120,11 @@ router.post('/listing', upload.single('csv'), async (req, res, next) => {
     // NOTE: staker share (500 POH) is handled entirely on-chain by the Anchor registerMethod
     // instruction → SFEE_PDA. Stakers claim via claimStakerRewards. No off-chain distribution needed.
 
-    // ── Brain: evaluate each new method ──────────────────────────────────
+    // ── Brain: evaluate + broadcast each new method ──────────────────────
     for (const m of newMethods) {
-      brain.onNewMethod(m).catch(err => console.error('[brain] onNewMethod error:', err.message));
+      brain.onNewMethod(m)
+        .then(() => broadcastNewMethod(m))
+        .catch(err => console.error('[brain] onNewMethod/broadcast error:', err.message));
     }
 
     res.json({ status: 'success', added: newMethods.length, txHash });
@@ -214,7 +217,8 @@ router.post('/verifyer/vote', async (req, res, next) => {
     });
 
     brain.onVote(method, type || 'description', vote, stakeWeight, feedback || null)
-      .catch(err => console.error('[brain] onVote error:', err.message));
+      .then(() => broadcastWeightUpdate(method, type || 'description', vote, stakeWeight, feedback))
+      .catch(err => console.error('[brain] onVote/broadcast error:', err.message));
 
     res.json({ status: 'voted', newScore: method.score });
   } catch (err) {
