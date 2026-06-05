@@ -73,6 +73,51 @@
       </div>
     </div>
 
+    <!-- Social Characteristic — shown right after badges when vibe data is available -->
+    <div v-if="vibeData" class="social-char-section">
+      <div class="profile-section-title">Social Characteristic</div>
+
+      <p class="char-text">{{ vibeData.vibe }}</p>
+
+      <div v-if="vibeData.topics?.length" class="char-topics">
+        <span v-for="t in vibeData.topics" :key="t" class="char-topic">{{ t }}</span>
+      </div>
+
+      <ul v-if="vibeData.humanSignals?.length" class="char-signals">
+        <li v-for="s in vibeData.humanSignals" :key="s">{{ s }}</li>
+      </ul>
+
+      <!-- Farcaster activity -->
+      <div v-if="vibeData.farcasterData" class="char-source">
+        <div class="char-source-label">
+          <span class="char-platform-icon">🟣</span>
+          Farcaster — @{{ vibeData.farcasterData.username }}
+          <span class="char-follow-meta">{{ vibeData.farcasterData.followerCount?.toLocaleString() }} followers</span>
+        </div>
+        <div v-if="vibeData.farcasterData.bio" class="char-bio">"{{ vibeData.farcasterData.bio }}"</div>
+        <div v-for="(c, i) in (vibeData.farcasterData.casts || []).slice(0, 4)" :key="i" class="char-cast">
+          <span class="char-cast-text">{{ c.text }}</span>
+          <span v-if="c.likes || c.replies" class="char-cast-meta">
+            {{ c.likes ? `♥${c.likes}` : '' }}{{ c.replies ? ` · ${c.replies}r` : '' }}
+          </span>
+        </div>
+      </div>
+
+      <!-- Paragraph articles -->
+      <div v-if="vibeData.paragraphData" class="char-source">
+        <div class="char-source-label">
+          <span class="char-platform-icon">✍️</span>
+          Paragraph — {{ vibeData.paragraphData.title }}
+          <span class="char-follow-meta">{{ vibeData.paragraphData.subscriberCount?.toLocaleString() }} subscribers</span>
+        </div>
+        <div v-if="vibeData.paragraphData.description" class="char-bio">"{{ vibeData.paragraphData.description }}"</div>
+        <div v-for="(p, i) in (vibeData.paragraphData.posts || []).slice(0, 4)" :key="i" class="char-article">
+          <span class="char-article-title">{{ p.title }}</span>
+          <span v-if="p.subtitle" class="char-article-sub"> — {{ p.subtitle }}</span>
+        </div>
+      </div>
+    </div>
+
     <!-- Identity Protocols -->
     <div v-if="hasIdentityData" class="profile-section">
       <div class="profile-section-title">Identity Protocols</div>
@@ -330,6 +375,7 @@
       </div>
     </div>
 
+
   </div>
 </template>
 
@@ -338,12 +384,13 @@ import { ref, computed } from 'vue'
 import TxGraph from './TxGraph.vue'
 
 const props = defineProps({
-  profile: { type: Object, required: true },
-  verdict: { type: Object, default: null },
-  ofac:    { type: Object, default: null },
-  eu:      { type: Object, default: null },
-  uk:      { type: Object, default: null },
-  signals: { type: Array,  default: () => [] },
+  profile:  { type: Object, required: true },
+  verdict:  { type: Object, default: null },
+  ofac:     { type: Object, default: null },
+  eu:       { type: Object, default: null },
+  uk:       { type: Object, default: null },
+  signals:  { type: Array,  default: () => [] },
+  vibeData: { type: Object, default: null },
 })
 defineEmits(['scan'])
 
@@ -616,4 +663,24 @@ function platformIcon(p) {
 .ev-row-fail { background: rgba(239,68,68,0.04); }
 .ev-desc { font-size: 12px; color: #9ca3af; }
 .ev-empty { font-size: 12px; color: #4b5563; padding: 6px 10px; }
+
+/* ── Social Characteristic ──────────────────────────────────────────────────── */
+.social-char-section { margin-top: 16px; padding-top: 14px; border-top: 1px solid #111; }
+.char-text { font-size: 13px; color: #9ca3af; line-height: 1.65; margin: 8px 0 10px; }
+.char-topics { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.char-topic { font-size: 10px; font-family: monospace; color: #22c55e; background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2); padding: 3px 9px; border-radius: 12px; }
+.char-signals { margin: 0 0 10px; padding-left: 16px; font-size: 12px; color: #4b5563; line-height: 1.7; }
+.char-source { margin-top: 12px; padding: 10px 12px; background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 8px; }
+.char-source-label { display: flex; align-items: center; gap: 6px; font-size: 11px; font-family: monospace; color: #6b7280; margin-bottom: 6px; font-weight: 600; }
+.char-platform-icon { font-size: 13px; }
+.char-follow-meta { font-size: 10px; color: #374151; margin-left: auto; }
+.char-bio { font-size: 12px; color: #6b7280; font-style: italic; margin-bottom: 8px; line-height: 1.5; }
+.char-cast { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 5px 0; border-bottom: 1px solid #111; font-size: 12px; }
+.char-cast:last-child { border-bottom: none; }
+.char-cast-text { flex: 1; color: #6b7280; line-height: 1.45; }
+.char-cast-meta { flex-shrink: 0; font-family: monospace; font-size: 10px; color: #374151; }
+.char-article { padding: 4px 0; font-size: 12px; border-bottom: 1px solid #111; }
+.char-article:last-child { border-bottom: none; }
+.char-article-title { color: #9ca3af; }
+.char-article-sub { color: #4b5563; font-size: 11px; }
 </style>

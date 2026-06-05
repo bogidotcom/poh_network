@@ -1439,6 +1439,7 @@ onUnmounted(() => {
             :eu="euResult"
             :uk="ukResult"
             :signals="checkerResults"
+            :vibe-data="vibeData"
             @scan="handleProfileScan"
           />
         </div>
