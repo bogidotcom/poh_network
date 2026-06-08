@@ -930,7 +930,7 @@ async function resolveIdentity(raw) {
         validateStatus: () => true,
       });
       if (!res.data) return [];
-      const agents = res.data.agents || res.data.items || (Array.isArray(res.data) ? res.data : []);
+      const agents = res.data?.data?.items || res.data?.agents || res.data?.items || (Array.isArray(res.data) ? res.data : []);
       const out = [];
       for (const a of agents) {
         const address = a.ownerAddress || a.walletAddress;
