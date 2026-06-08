@@ -100,28 +100,34 @@ export function useChecker({ walletAddress, connected, POH_MINT, FEE_RECIPIENT, 
       throw new Error(`Could not resolve "${trimmed}" — SNS domain not found`)
     }
 
-    // ENS / Space ID domains
-    try {
-      const res = await axios.get('https://nameapi.space.id/getAddress', { params: { domain: trimmed } })
-      if (res.data?.code === 0 && res.data.address) return res.data.address
-    } catch { /* fall through to ZNS */ }
-
-    // ZNS domains
-    const ZNS_TLD_CHAIN = {
-      ink: 57073, bnb: 56, base: 8453, blast: 81457, polygon: 137,
-      zora: 7777777, scroll: 534352, taiko: 167000, bera: 80094,
-      sonic: 146, kaia: 8217, abstract: 2741, defi: 130, unichain: 1301,
-      soneium: 1868, plume: 98865, hemi: 43111, xrpl: 1440002,
-    }
-    const tld = trimmed.split('.').pop()?.toLowerCase()
-    const onlyDomain = trimmed.split('.').slice(0, -1).join('.')
-
-    const znsChains = ZNS_TLD_CHAIN[tld] ? [ZNS_TLD_CHAIN[tld]] : Object.values(ZNS_TLD_CHAIN)
-    for (const chain of znsChains) {
+    // Domain resolvers only apply when the input contains a dot (has a TLD-like suffix)
+    if (trimmed.includes('.') && !trimmed.startsWith('@') && !trimmed.includes(':')) {
+      // ENS / Space ID domains
       try {
-        const res = await axios.get('https://zns.bio/api/resolveDomain', { params: { chain, domain: onlyDomain } })
-        if (res.data?.code === 200 && isWalletAddress(res.data.address)) return res.data.address
-      } catch { /* try next chain */ }
+        const res = await axios.get('https://nameapi.space.id/getAddress', { params: { domain: trimmed } })
+        if (res.data?.code === 0 && res.data.address) return res.data.address
+      } catch { /* fall through to ZNS */ }
+
+      // ZNS domains
+      const ZNS_TLD_CHAIN = {
+        ink: 57073, bnb: 56, base: 8453, blast: 81457, polygon: 137,
+        zora: 7777777, scroll: 534352, taiko: 167000, bera: 80094,
+        sonic: 146, kaia: 8217, abstract: 2741, defi: 130, unichain: 1301,
+        soneium: 1868, plume: 98865, hemi: 43111, xrpl: 1440002,
+      }
+      const tld = trimmed.split('.').pop()?.toLowerCase()
+      const onlyDomain = trimmed.split('.').slice(0, -1).join('.')
+
+      // Only try ZNS when onlyDomain is non-empty (guard against bare words with no dot)
+      if (onlyDomain) {
+        const znsChains = ZNS_TLD_CHAIN[tld] ? [ZNS_TLD_CHAIN[tld]] : Object.values(ZNS_TLD_CHAIN)
+        for (const chain of znsChains) {
+          try {
+            const res = await axios.get('https://zns.bio/api/resolveDomain', { params: { chain, domain: onlyDomain } })
+            if (res.data?.code === 200 && isWalletAddress(res.data.address)) return res.data.address
+          } catch { /* try next chain */ }
+        }
+      }
     }
 
     // ── Fallback: backend /checker/resolve (name, @handle, platform:handle, free text) ──
