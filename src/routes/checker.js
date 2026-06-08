@@ -880,15 +880,19 @@ router.get('/pricing', (req, res) => {
 
 // ── GET /checker/resolve?q= — resolve any identity to wallet address(es) ──────
 // Accepts:
-//   • EVM / Solana address → returned as-is
+//   • EVM / Solana / BTC / TON address → returned as-is
 //   • ENS / .sol / ZNS domain → resolved via existing resolvers
-//   • platform:handle  (e.g. twitter:VitalikButerin, farcaster:dwr, lens:vitalik.lens)
-//   • @handle          → tries Farcaster first, then Twitter via web3.bio
-//   • free-text name   → web3.bio /search endpoint
+//   • platform:handle  (twitter, farcaster, lens, github, telegram, ens, …)
+//   • @handle          → tries all social resolvers
+//   • free-text name   → parallel search across all resolvers
 //
 // Returns: { results: [{ address, platform, handle, displayName, avatar }] }
 
-const WEB3BIO_API = 'https://api.web3.bio';
+const WEB3BIO_API    = 'https://api.web3.bio';
+const IH_API         = 'https://api.identityhub.app';
+
+// Platforms that web3.bio doesn't support — route exclusively to IdentityHub
+const IH_ONLY_PLATFORMS = new Set(['telegram', 'tg', 'identityhub', 'ih', 'discord']);
 
 async function resolveIdentity(raw) {
   const q = raw.trim();
@@ -905,7 +909,8 @@ async function resolveIdentity(raw) {
     return [{ address: q, platform: null, handle: null, displayName: null, avatar: null }];
   }
 
-  // Helper: fetch web3.bio profile for an identity string → array of profile objects
+  // ── Resolver helpers ──────────────────────────────────────────────────────
+
   async function w3bProfile(identity) {
     try {
       const res = await axios.get(`${WEB3BIO_API}/profile/${encodeURIComponent(identity)}`,
@@ -915,23 +920,82 @@ async function resolveIdentity(raw) {
     } catch { return []; }
   }
 
-  // Helper: turn a web3.bio profile array into result items (de-dup by address)
-  function toResults(profiles) {
+  // IdentityHub: search agents by query (name, username, social handle, address)
+  // Optionally filter by platform to find e.g. telegram:handle matches
+  async function ihSearch(query, filterPlatform = null) {
+    try {
+      const res = await axios.get(`${IH_API}/agents`, {
+        params: { q: query },
+        timeout: 7000,
+        validateStatus: () => true,
+      });
+      if (!res.data) return [];
+      const agents = res.data.agents || res.data.items || (Array.isArray(res.data) ? res.data : []);
+      const out = [];
+      for (const a of agents) {
+        const address = a.ownerAddress || a.walletAddress;
+        if (!address) continue;
+
+        // If a specific platform filter was requested, only include agents
+        // that have a social account on that platform matching the query handle
+        if (filterPlatform) {
+          const socials = a.socialAccounts || a.social || [];
+          const plat = filterPlatform.toLowerCase();
+          const match = socials.some(s =>
+            (s.platform || s.type || '').toLowerCase() === plat &&
+            (s.handle || s.username || '').toLowerCase() === query.toLowerCase()
+          );
+          if (!match) continue;
+        }
+
+        const socials = a.socialAccounts || a.social || [];
+        const primarySocial = socials[0];
+        out.push({
+          address,
+          platform:    filterPlatform || primarySocial?.platform || 'identityhub',
+          handle:      a.username || a.name || query,
+          displayName: a.name || a.username || null,
+          avatar:      a.avatar || a.avatarUrl || null,
+          bio:         a.bio || a.description || null,
+          source:      'identityhub',
+        });
+      }
+      return out;
+    } catch { return []; }
+  }
+
+  // Merge result arrays, dedup by address (case-insensitive), preserving order
+  function merge(...arrays) {
     const seen = new Set();
     const out  = [];
-    for (const p of profiles) {
-      const addr = p.address;
-      if (!addr || seen.has(addr.toLowerCase())) continue;
-      seen.add(addr.toLowerCase());
-      out.push({
-        address:     addr,
-        platform:    p.platform  || null,
-        handle:      p.identity  || null,
-        displayName: p.displayName || null,
-        avatar:      p.avatar    || null,
-      });
+    for (const arr of arrays) {
+      for (const item of arr) {
+        const key = (item.address || '').toLowerCase();
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        out.push(item);
+      }
     }
     return out;
+  }
+
+  function toResults(profiles) {
+    return merge(profiles.map(p => ({
+      address:     p.address,
+      platform:    p.platform  || null,
+      handle:      p.identity  || p.handle || null,
+      displayName: p.displayName || null,
+      avatar:      p.avatar    || null,
+    })));
+  }
+
+  // Run both resolvers in parallel and merge
+  async function both(w3bIdentity, ihQuery, ihPlatform = null) {
+    const [w3b, ih] = await Promise.all([
+      w3bProfile(w3bIdentity).then(toResults),
+      ihSearch(ihQuery, ihPlatform),
+    ]);
+    return merge(w3b, ih);
   }
 
   // ── platform:handle syntax ────────────────────────────────────────────────
@@ -940,28 +1004,35 @@ async function resolveIdentity(raw) {
     const platform = q.slice(0, colonIdx).toLowerCase().trim();
     const handle   = q.slice(colonIdx + 1).replace(/^@/, '').trim();
     if (handle) {
-      // web3.bio understands "twitter,handle", "farcaster,handle", etc.
-      const identity = `${platform},${handle}`;
-      const profiles = await w3bProfile(identity);
-      if (profiles.length) return toResults(profiles);
-      // fallback: try bare handle
-      const fallback = await w3bProfile(handle);
-      return toResults(fallback);
+      if (IH_ONLY_PLATFORMS.has(platform)) {
+        // web3.bio won't know about this platform — go straight to IdentityHub
+        const results = await ihSearch(handle, platform);
+        if (results.length) return results;
+        // Fallback: search IdentityHub by bare handle without platform filter
+        return ihSearch(handle);
+      }
+      // Platform web3.bio understands: run both in parallel
+      const results = await both(`${platform},${handle}`, handle, platform);
+      if (results.length) return results;
+      // Last-ditch bare handle
+      return both(handle, handle);
     }
   }
 
-  // ── @handle → Farcaster / Twitter via web3.bio ────────────────────────────
+  // ── @handle → try all social resolvers ───────────────────────────────────
   if (q.startsWith('@')) {
-    const handle   = q.slice(1);
-    const profiles = await w3bProfile(`farcaster,${handle}`);
-    if (profiles.length) return toResults(profiles);
-    const tw = await w3bProfile(`twitter,${handle}`);
-    if (tw.length) return toResults(tw);
-    // last-ditch: bare handle
-    return toResults(await w3bProfile(handle));
+    const handle = q.slice(1);
+    const [fc, tw, ih] = await Promise.all([
+      w3bProfile(`farcaster,${handle}`).then(toResults),
+      w3bProfile(`twitter,${handle}`).then(toResults),
+      ihSearch(handle),
+    ]);
+    const merged = merge(fc, tw, ih);
+    if (merged.length) return merged;
+    return both(handle, handle);
   }
 
-  // ── known domain suffixes → existing domain resolvers ────────────────────
+  // ── known domain suffixes → domain resolvers ─────────────────────────────
   const lq  = q.toLowerCase();
   const tld = lq.split('.').pop();
   if (lq.endsWith('.sol')) {
@@ -971,7 +1042,7 @@ async function resolveIdentity(raw) {
         { timeout: 5000 }
       );
       if (res.data?.result) return [{ address: res.data.result, platform: 'sns', handle: q, displayName: null, avatar: null }];
-    } catch { /* fall through */ }
+    } catch {}
   }
   if (lq.endsWith('.eth') || lq.endsWith('.bnb') || lq.endsWith('.base') || lq.endsWith('.arb')) {
     try {
@@ -979,57 +1050,45 @@ async function resolveIdentity(raw) {
       if (res.data?.code === 0 && res.data.address) {
         return [{ address: res.data.address, platform: 'ens', handle: q, displayName: null, avatar: null }];
       }
-    } catch { /* fall through */ }
-    // Try web3.bio for ENS-style names
-    const profiles = await w3bProfile(lq);
-    if (profiles.length) return toResults(profiles);
+    } catch {}
+    const results = await both(lq, lq);
+    if (results.length) return results;
   }
   if (ZNS_TLD_CHAIN[tld]) {
     const resolved = await resolveZnsDomain(lq);
     if (resolved) return [{ address: resolved, platform: 'zns', handle: q, displayName: null, avatar: null }];
   }
 
-  // ── free text / bare handle — no dot, no prefix ─────────────────────────
-  // web3.bio /search only accepts valid identity handles, not display names.
-  // Strategy:
-  //   1. Try exact handle on web3.bio (/profile/{q})
-  //   2. If input has spaces (display name like "Vitalik Buterin"):
-  //      a. Each word as a handle with common TLDs (.eth, .lens, .fc)
-  //      b. Concatenated no-space version, with same TLDs
-  //   3. Single word with common TLDs (.eth first — most likely for human names)
-  const lq2    = q.toLowerCase().trim();
-  const words  = lq2.split(/\s+/).filter(Boolean);
+  // ── free text / bare handle — run all resolvers in parallel ─────────────
+  const lq2     = q.toLowerCase().trim();
+  const words   = lq2.split(/\s+/).filter(Boolean);
   const noSpace = words.join('');
-  const TLDS   = ['.eth', '.lens', '.fc', '.base', '.bnb'];
+  const TLDS    = ['.eth', '.lens', '.fc', '.base', '.bnb'];
 
-  // 1. Exact handle
-  const exactProfiles = await w3bProfile(lq2);
-  if (exactProfiles.length) return toResults(exactProfiles);
+  // 1. Exact handle across web3.bio + IdentityHub simultaneously
+  const [exactW3b, exactIh] = await Promise.all([
+    w3bProfile(lq2).then(toResults),
+    ihSearch(lq2),
+  ]);
+  const exactMerged = merge(exactW3b, exactIh);
+  if (exactMerged.length) return exactMerged;
 
-  // Build candidate list
+  // 2. TLD permutations on web3.bio + bare name on IdentityHub in parallel
   const candidates = new Set();
   if (words.length > 1) {
-    // multi-word: each word + concatenated, with TLDs
-    for (const word of words) {
-      for (const tld of TLDS) candidates.add(word + tld);
-    }
-    for (const tld of TLDS) candidates.add(noSpace + tld);
-    candidates.add(noSpace); // bare concatenated
+    for (const word of words) for (const t of TLDS) candidates.add(word + t);
+    for (const t of TLDS) candidates.add(noSpace + t);
+    candidates.add(noSpace);
   } else {
-    // single word: try with TLDs
-    for (const tld of TLDS) candidates.add(lq2 + tld);
+    for (const t of TLDS) candidates.add(lq2 + t);
   }
 
-  // Fan out in parallel batches of 4 to stay under rate limits
   const candidateArr = [...candidates];
   for (let i = 0; i < candidateArr.length; i += 4) {
     const batch = candidateArr.slice(i, i + 4);
-    const settled = await Promise.allSettled(batch.map(c => w3bProfile(c)));
+    const settled = await Promise.allSettled(batch.map(c => w3bProfile(c).then(toResults)));
     for (const r of settled) {
-      if (r.status === 'fulfilled' && r.value.length) {
-        const results = toResults(r.value);
-        if (results.length) return results;
-      }
+      if (r.status === 'fulfilled' && r.value.length) return r.value;
     }
   }
 
