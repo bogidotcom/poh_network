@@ -5,8 +5,8 @@
  *
  * The bootnode stores events; all miner nodes pull them every 5 minutes and
  * apply them locally via BrainSync.  This is the single place where
- * proofofhuman.ge originates events (votes, feedback, new methods, curve
- * price changes) and makes them available to the whole network.
+ * proofofhuman.ge originates events (votes, feedback, new methods) and makes
+ * them available to the whole network.
  */
 
 const axios  = require('axios');
@@ -82,25 +82,8 @@ async function broadcastNewMethod(method) {
   console.log(`[brainBroadcast] new_method pushed — ${method.id}`);
 }
 
-/**
- * Broadcast a curve price-change signal to all nodes.
- * Called by the scheduler when a pool price moves significantly or graduates.
- */
-async function broadcastCurvePriceChange(method, direction, magnitude, graduated) {
-  const event = _makeEvent('curve_price_change', {
-    methodId:    method.id,
-    description: (method.description || '').slice(0, 120),
-    direction,   // 'up' | 'down'
-    magnitude,   // fraction e.g. 0.12 = 12%
-    graduated:   !!graduated,
-  });
-  await _push(event);
-  console.log(`[brainBroadcast] curve_price_change pushed — ${method.id} ${direction} ${(magnitude * 100).toFixed(1)}%${graduated ? ' GRADUATED' : ''}`);
-}
-
 module.exports = {
   broadcastFeedback,
   broadcastWeightUpdate,
   broadcastNewMethod,
-  broadcastCurvePriceChange,
 };

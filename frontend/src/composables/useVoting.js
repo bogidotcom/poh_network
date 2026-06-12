@@ -25,7 +25,8 @@ export function useVoting({ walletAddress, connected, adapterSignMessage, nodeBa
 
   // Returns peer base URL string or null
   function getBase() {
-    return nodeBase?.value ?? null
+    // return nodeBase?.value ?? null
+    return null
   }
 
   const loadVoting = async () => {

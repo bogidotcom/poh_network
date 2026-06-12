@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { FileUp, Trash2 } from 'lucide-vue-next'
+import EvidenceMap from './EvidenceMap.vue'
 
 const showEvidencePass = ref(true)
 const showEvidenceFail = ref(false)
@@ -102,13 +103,11 @@ const emit = defineEmits([
 
     <div v-if="checkerResults" class="results-accordion">
       <div class="evidence-header">
-        <div class="accordion-dots">
-          <span v-for="r in checkerResults.slice(0, 12)" :key="r.methodId"
-            :class="['acc-dot', r.result ? 'pass' : 'fail']"></span>
-        </div>
         <span class="evidence-title">Evidence</span>
         <span class="accordion-summary">{{ checkerResults.filter(r => r.result).length }}/{{ checkerResults.length }} passed</span>
       </div>
+
+      <EvidenceMap :signals="checkerResults" class="evidence-map-wrap" />
 
       <!-- Pass accordion -->
       <button class="results-accordion-header sub" @click="showEvidencePass = !showEvidencePass">

@@ -326,52 +326,48 @@
     <div v-if="profile.graph?.nodes?.length > 1" class="profile-section">
       <div class="profile-section-title">
         Transaction Graph
-        <span class="graph-hint">click node to inspect</span>
+        <span class="graph-hint">2-hop · {{ profile.graph.nodes.length }} nodes · click to scan</span>
       </div>
       <TxGraph :graph="profile.graph" @scan="addr => $emit('scan', addr)" />
     </div>
 
-    <!-- Evidence (pass / fail accordions) -->
+    <!-- Evidence market-map + accordions -->
     <div v-if="signals?.length" class="profile-section">
-      <div class="profile-section-title">Evidence</div>
-      <div class="evidence-summary">
-        <span v-for="r in signals.filter(r => r.methodId !== 'ofac_check').slice(0, 16)" :key="r.methodId"
-              :class="['ev-dot', r.methodId && r.methodId.startsWith('usdt_blacklist') && r.result ? 'ev-blacklist' : r.result ? 'ev-pass' : 'ev-fail']" :title="r.description" />
-        <span class="ev-count">{{ signals.filter(r => r.result && r.methodId !== 'ofac_check').length }}/{{ signals.filter(r => r.methodId !== 'ofac_check').length }} passed</span>
-      </div>
-
-      <!-- Security Flags (negative signals e.g. Tether blacklist) -->
-      <div v-if="signals.some(r => r.methodId && r.methodId.startsWith('usdt_blacklist') && r.result)" class="ev-flags">
+      <!-- Security Flags (e.g. Tether blacklist) -->
+      <div v-if="signals.some(r => r.methodId?.startsWith('usdt_blacklist') && r.result)" class="ev-flags">
         <div class="ev-flag-row">
           <span class="ev-dot ev-blacklist" />
-          <span class="ev-desc" style="color:#fca5a5">{{ signals.find(r => r.methodId && r.methodId.startsWith('usdt_blacklist') && r.result)?.description }}</span>
+          <span class="ev-desc" style="color:#fca5a5">{{ signals.find(r => r.methodId?.startsWith('usdt_blacklist') && r.result)?.description }}</span>
         </div>
       </div>
 
-      <!-- Passed -->
+      <!-- Treemap market-map -->
+      <EvidenceMap :signals="signals" :weights="weights" />
+
+      <!-- Passed accordion -->
       <button class="ev-accordion-btn" @click="showPass = !showPass">
-        <span>✓ Passed ({{ signals.filter(r => r.result && r.methodId !== 'ofac_check' && !(r.methodId && r.methodId.startsWith('usdt_blacklist'))).length }})</span>
+        <span>✓ Passed ({{ signals.filter(r => r.result !== false && r.methodId !== 'ofac_check' && !r.methodId?.startsWith('usdt_blacklist')).length }})</span>
         <span class="ev-chevron" :class="{ open: showPass }">›</span>
       </button>
       <div v-show="showPass" class="ev-list">
-        <div v-for="r in signals.filter(r => r.result && r.methodId !== 'ofac_check' && !(r.methodId && r.methodId.startsWith('usdt_blacklist')))" :key="r.methodId" class="ev-row ev-row-pass">
+        <div v-for="r in signals.filter(r => r.result !== false && r.methodId !== 'ofac_check' && !r.methodId?.startsWith('usdt_blacklist'))" :key="r.methodId" class="ev-row ev-row-pass">
           <span class="ev-dot ev-pass" />
           <span class="ev-desc">{{ r.description }}</span>
         </div>
-        <div v-if="!signals.filter(r => r.result && r.methodId !== 'ofac_check' && !(r.methodId && r.methodId.startsWith('usdt_blacklist'))).length" class="ev-empty">No signals passed</div>
+        <div v-if="!signals.filter(r => r.result !== false && r.methodId !== 'ofac_check' && !r.methodId?.startsWith('usdt_blacklist')).length" class="ev-empty">No signals passed</div>
       </div>
 
-      <!-- Failed -->
+      <!-- Failed accordion -->
       <button class="ev-accordion-btn" @click="showFail = !showFail">
-        <span>✗ Failed ({{ signals.filter(r => !r.result && r.methodId !== 'ofac_check').length }})</span>
+        <span>✗ Failed ({{ signals.filter(r => r.result === false && r.methodId !== 'ofac_check').length }})</span>
         <span class="ev-chevron" :class="{ open: showFail }">›</span>
       </button>
       <div v-show="showFail" class="ev-list">
-        <div v-for="r in signals.filter(r => !r.result && r.methodId !== 'ofac_check')" :key="r.methodId" class="ev-row ev-row-fail">
+        <div v-for="r in signals.filter(r => r.result === false && r.methodId !== 'ofac_check')" :key="r.methodId" class="ev-row ev-row-fail">
           <span class="ev-dot ev-fail" />
           <span class="ev-desc">{{ r.description }}</span>
         </div>
-        <div v-if="!signals.filter(r => !r.result && r.methodId !== 'ofac_check').length" class="ev-empty">No signals failed</div>
+        <div v-if="!signals.filter(r => r.result === false && r.methodId !== 'ofac_check').length" class="ev-empty">No signals failed</div>
       </div>
     </div>
 
@@ -381,7 +377,8 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import TxGraph from './TxGraph.vue'
+import TxGraph     from './TxGraph.vue'
+import EvidenceMap from './EvidenceMap.vue'
 
 const props = defineProps({
   profile:  { type: Object, required: true },
@@ -390,6 +387,7 @@ const props = defineProps({
   eu:       { type: Object, default: null },
   uk:       { type: Object, default: null },
   signals:  { type: Array,  default: () => [] },
+  weights:  { type: Object, default: () => ({}) },
   vibeData: { type: Object, default: null },
 })
 defineEmits(['scan'])
@@ -643,12 +641,10 @@ function platformIcon(p) {
 .cc-xlm { border-color: #0a2a32; }
 
 /* ── Evidence ── */
-.evidence-summary { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
-.ev-dot  { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
-.ev-pass { background: #22c55e; }
-.ev-fail { background: #374151; }
+.ev-dot       { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.ev-pass      { background: #22c55e; }
+.ev-fail      { background: #374151; }
 .ev-blacklist { background: #ef4444; box-shadow: 0 0 0 2px rgba(239,68,68,0.3); }
-.ev-count { font-size: 12px; color: #6b7280; margin-left: 6px; }
 .ev-accordion-btn { display: flex; justify-content: space-between; align-items: center; width: 100%; background: rgba(255,255,255,0.04); border: 1px solid #1f2937; border-radius: 8px; padding: 9px 14px; cursor: pointer; color: #9ca3af; font-size: 13px; transition: border-color 0.15s; }
 .ev-accordion-btn:hover { border-color: #374151; color: #e5e7eb; }
 

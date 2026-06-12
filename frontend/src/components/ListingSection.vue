@@ -70,7 +70,7 @@ async function runPreview() {
   <div class="content-section">
     <div class="listing-header">
       <h2 class="scan-title">Submit a detection signal</h2>
-      <p class="scan-sub">Define a signal and earn 4% trading volume lifetime.</p>
+      <p class="scan-sub">Submit a human or bot detection signals.</p>
     </div>
 
     <div class="form-section">

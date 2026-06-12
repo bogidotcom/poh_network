@@ -1,13 +1,21 @@
 import { ref } from 'vue'
 import axios from 'axios'
 
+const DEFAULT_BOOTNODES = [
+  'https://poh.assetux.com',
+  'https://bootnode.proofofhuman.ge',
+  'https://proofofhuman.ge',
+]
+
 /**
  * useMinerNetwork
  * Discovers verified poh-miner peers from bootnode and provides helpers
  * to publish a verdict job to a miner node and pull the result (verdict + profile + evidence).
+ * Accepts an array of bootnode URLs and tries each in order until one succeeds.
  */
-export function useMinerNetwork(bootnodeUrl = 'https://bootnode.proofofhuman.ge') {
-// export function useMinerNetwork(bootnodeUrl = 'http://localhost:8080') {
+export function useMinerNetwork(bootnodes = DEFAULT_BOOTNODES) {
+  const _bootnodes = Array.isArray(bootnodes) ? bootnodes : [bootnodes]
+
   const peers = ref([])
   const selectedPeer = ref(null)
   const isDiscovering = ref(false)
@@ -18,7 +26,17 @@ export function useMinerNetwork(bootnodeUrl = 'https://bootnode.proofofhuman.ge'
     isDiscovering.value = true
     lastError.value = null
     try {
-      const { data } = await axios.get(`${bootnodeUrl}/peers`, { timeout: 10000 })
+      let data = null
+      for (const url of _bootnodes) {
+        try {
+          const res = await axios.get(`${url}/peers`, { timeout: 8000 })
+          data = res.data
+          break
+        } catch (e) {
+          console.warn(`[miner-network] bootnode ${url} unavailable:`, e?.message)
+        }
+      }
+      if (!data) throw new Error('All bootnodes unavailable')
       const list = Array.isArray(data?.peers) ? data.peers : []
       // Only keep peers that look usable and preferably verified (post-protection)
       peers.value = list.filter(p => p && p.host && (p.walletApiPort || p.port || 3456))
@@ -134,7 +152,7 @@ export function useMinerNetwork(bootnodeUrl = 'https://bootnode.proofofhuman.ge'
   }
 
   return {
-    BOOTNODE_URL: bootnodeUrl,
+    BOOTNODE_URL: _bootnodes[0],
     peers,
     selectedPeer,
     isDiscovering,

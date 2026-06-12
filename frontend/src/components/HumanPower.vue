@@ -1,5 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+
+const emit = defineEmits(['navigate'])
 import axios from 'axios'
 import BrainGraph from './BrainGraph.vue'
 import WalletProfile from './WalletProfile.vue'
@@ -9,12 +11,11 @@ import ListingSection from './ListingSection.vue'
 import VoteQueueSection from './VoteQueueSection.vue'
 import ProfileSection from './ProfileSection.vue'
 import ApiDocsSection from './ApiDocsSection.vue'
-import EcosystemSection from './EcosystemSection.vue'
 import AboutSection from './AboutSection.vue'
 import {
   Search, PlusSquare, Vote,
   Activity, SquareArrowDown, PersonStanding, FolderCode, CreditCard, Bitcoin, Waypoints, FingerprintPattern, CandlestickChart,
-  FingerprintIcon, FileUp, Trash2, Globe, Coins, Info
+  FingerprintIcon, FileUp, Trash2, Coins, Info
 } from 'lucide-vue-next'
 import {
   Transaction,
@@ -33,7 +34,6 @@ import { useMinerNetwork } from '../composables/useMinerNetwork.js'
 import { useVoting } from '../composables/useVoting.js'
 import { useListing } from '../composables/useListing.js'
 import { useProfile } from '../composables/useProfile.js'
-import { useCurve }   from '../composables/useCurve.js'
 import {
   getPohBalance, getStakeInfo, getGlobalState,
   stakeTokens, unstakeTokens,
@@ -220,9 +220,17 @@ async function doSearch() {
     }
     brainPolling.value = false
 
-    if (netRes.profile) {
+    if (netRes.profile?.address) {
       inlineScanProfile.value = netRes.profile
       walletProfile.value = netRes.profile
+    }
+
+    if (netRes.vibeData) {
+      vibeData.value = {
+        ...netRes.vibeData,
+        farcasterData: netRes.farcasterData || null,
+        paragraphData: netRes.paragraphData || null,
+      }
     }
 
     const sigs = netRes.evidence?.signalsUsed || netRes.signalsUsed || []
@@ -230,14 +238,31 @@ async function doSearch() {
       methodId: s.methodId || s.id || 'sig',
       description: s.description || s.methodId || s.id || 'signal',
       result: s.result !== false && s.result != null,
+      weight: s.weight || 1,
+      details: s.details || null,
       input: resolved,
     }))
+
+    // Fetch brain weights to size evidence map tiles — best-effort, non-blocking
+    const nodeBase = minerNetwork.getNodeBase()
+    if (nodeBase) {
+      fetch(`${nodeBase}/api/brain/weights`, { signal: AbortSignal.timeout(3000) })
+        .then(r => r.ok ? r.json() : null)
+        .then(weights => {
+          if (!weights) return
+          checkerResults.value = checkerResults.value.map(s => ({
+            ...s,
+            weight: weights[s.methodId] ?? s.weight ?? 1,
+          }))
+        })
+        .catch(() => {})
+    }
 
     ofacResult.value = null
     euResult.value = null
     ukResult.value = null
 
-    if (resolved && !netRes.profile) {
+    if (resolved && !netRes.profile?.address) {
       loadWalletProfile(resolved)
     }
     showEvidence.value = true
@@ -295,14 +320,33 @@ async function loadWalletProfile(address) {
   walletProfile.value        = null
   walletProfileLoading.value = true
   try {
+    let data
     if (minerNodeBase.value) {
-      walletProfile.value = await minerFetchProfile(address)
+      data = await minerFetchProfile(address)
     } else {
       const res = await axios.get(`/checker/profile/${address}`)
-      walletProfile.value = res.data
+      data = res.data
+    }
+    // Reject error-shaped responses (e.g. miner returns {error: '...'} with 200)
+    if (data && !data.error && (data.address || data.displayName || data.links)) {
+      walletProfile.value = data
+    } else if (!minerNodeBase.value) {
+      // Central backend: fall back to the raw data even if minimal
+      walletProfile.value = data?.error ? null : data
+    } else {
+      // Miner returned error or empty — fall back to central backend
+      const res = await axios.get(`/checker/profile/${address}`)
+      walletProfile.value = res.data?.error ? null : res.data
     }
   } catch (err) {
     console.warn('[profile] failed to load:', err.message)
+    if (minerNodeBase.value) {
+      // Miner unreachable — try central backend as fallback
+      try {
+        const res = await axios.get(`/checker/profile/${address}`)
+        walletProfile.value = res.data?.error ? null : res.data
+      } catch { /* ignore */ }
+    }
   } finally {
     walletProfileLoading.value = false
   }
@@ -313,7 +357,7 @@ async function loadWalletProfile(address) {
 watch(checkerResults, (results) => {
   walletProfile.value = null
   if (!results?.length || isBatchScan.value) return
-  if (inlineScanProfile.value) {
+  if (inlineScanProfile.value?.address) {
     // Cache hit — profile was returned with the scan response, no extra request needed
     walletProfile.value = inlineScanProfile.value
     return
@@ -409,22 +453,8 @@ const {
 
 watch(voting.error, val => { if (val) error.value = val })
 
-/**
- * Load voting queue then filter to only signals that have a deployed curve.
- * Signals without a Meteora pool record can't be traded, so they're excluded
- * from the Convictions page.
- */
 async function loadVotingFiltered() {
   await loadVoting()
-  try {
-    const { data: pools } = await axios.get('/curves')
-    const pooledIds = new Set(pools.map(p => p.methodId))
-    votingList.value = votingList.value.filter(m => pooledIds.has(m.id))
-    voteIndex.value = 0
-  } catch {
-    // If the endpoint fails, keep the list empty rather than show untraded signals
-    votingList.value = []
-  }
 }
 
 const exprExpanded = ref(false)
@@ -606,49 +636,6 @@ async function upgradeToStartupPlan() {
 // ── Referral / deep-link URL params ──────────────────────────────────────────
 const referralWallet = ref(null)
 
-// ── Curve (signal bonding curve) ──────────────────────────────────────────────
-const curve = useCurve({ walletAddress, walletProvider, SOLANA_RPC, pohFeeRecipient: FEE_RECIPIENT, referralWallet })
-const {
-  curveState, chartCandles, solBalance: curveSolBalance, ownedTokens,
-  quoteResult, loading: curveLoading,
-  loadSolBalance, loadCurveState, loadChart, getQuote, buySignal, sellSignal, claimCreatorFees,
-} = curve
-
-watch(currentVoteItem, async (item) => {
-  if (!item?.id) { curveState.value = null; chartCandles.value = []; return }
-  await Promise.all([loadCurveState(item.id), loadChart(item.id)])
-})
-
-watch(walletAddress, (addr) => { if (addr) loadSolBalance() })
-
-async function onCurveBuy(methodId, solLamports) {
-  try {
-    await buySignal(methodId, solLamports)
-  } catch (err) {
-    error.value = err.message || 'Buy failed'
-  }
-}
-
-async function onCurveSell(methodId, rawTokens) {
-  try {
-    await sellSignal(methodId, rawTokens)
-  } catch (err) {
-    error.value = err.message || 'Sell failed'
-  }
-}
-
-async function onClaimFees(methodId) {
-  try {
-    await claimCreatorFees(methodId)
-  } catch (err) {
-    error.value = err.message || 'Claim failed'
-  }
-}
-
-function onCurveQuote(methodId, action, amount) {
-  getQuote(methodId, action, amount)
-}
-
 // ── Listing ───────────────────────────────────────────────────────────────────
 const listingComposable = useListing({
   walletAddress, walletProvider, connected, POH_MINT, SOLANA_RPC,
@@ -798,7 +785,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="app-container">
+  <div class="hp-root">
     <!-- Devnet banner (hidden on mainnet) -->
     <div v-if="false" class="devnet-bar">
       <span class="devnet-label">DEVNET</span>
@@ -847,26 +834,24 @@ onUnmounted(() => {
     </Transition>
 
     <header class="header">
-      <div @click="showSection('landing')" class="logo">
+      <div @click="emit('navigate', 'landing')" class="logo">
         <img src="/poh-icon.png" alt="POH Logo">
       </div>
 
       <!-- Desktop nav -->
       <nav class="nav desktop-nav">
+        <button class="nav-btn nav-btn--back" @click="emit('navigate', 'landing')">← Back</button>
         <button :class="['nav-btn', { active: currentSection === 'checker' }]" @click="showSection('checker')">
           <Search class="icon" :size="14" /> Scan
         </button>
         <button :class="['nav-btn', { active: currentSection === 'votes' }]" @click="showSection('votes'); loadVotingFiltered()">
-          <Vote class="icon" :size="14" /> Convictions
+          <Vote class="icon" :size="14" /> Vote
         </button>
         <button :class="['nav-btn', { active: currentSection === 'listing' }]" @click="showSection('listing')">
           <PlusSquare class="icon" :size="14" /> Add signal
         </button>
         <button :class="['nav-btn', { active: currentSection === 'staking' }]" @click="showSection('staking')">
           <Coins class="icon" :size="14" /> Staking
-        </button>
-        <button :class="['nav-btn', { active: currentSection === 'ecosystem' }]" @click="showSection('ecosystem')">
-          <Globe class="icon" :size="14" /> Ecosystem
         </button>
         <button :class="['nav-btn', { active: currentSection === 'about' }]" @click="showSection('about')">
           <Info class="icon" :size="14" /> About
@@ -902,12 +887,11 @@ onUnmounted(() => {
     <!-- Mobile menu -->
     <div class="mobile-menu" :class="{ open: mobileMenuOpen }" @click.self="mobileMenuOpen = false">
       <div class="mobile-menu-inner">
-        <button :class="['mobile-nav-btn', { active: currentSection === 'landing' }]" @click="showSection('landing')">POH</button>
+        <button class="mobile-nav-btn" @click="emit('navigate', 'landing'); mobileMenuOpen = false">← Back</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'checker' }]" @click="showSection('checker')">Scan</button>
-        <button :class="['mobile-nav-btn', { active: currentSection === 'votes' }]" @click="showSection('votes'); loadVotingFiltered()">Convictions</button>
+        <button :class="['mobile-nav-btn', { active: currentSection === 'votes' }]" @click="showSection('votes'); loadVotingFiltered()">Vote</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'listing' }]" @click="showSection('listing')">Add signal</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'staking' }]" @click="showSection('staking')">Staking</button>
-        <button :class="['mobile-nav-btn', { active: currentSection === 'ecosystem' }]" @click="showSection('ecosystem')">Ecosystem</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'about' }]" @click="showSection('about')">About</button>
         <div class="mobile-menu-divider"></div>
         <button v-if="!connected" @click="showWalletModal = true; mobileMenuOpen = false" class="mobile-nav-btn mobile-connect">
@@ -995,6 +979,7 @@ onUnmounted(() => {
       </div>
     </div>
 
+    <div class="app-container">
     <main class="main">
       <div v-if="error" class="error-msg" @click="error = null">{{ error }}</div>
 
@@ -1051,35 +1036,6 @@ onUnmounted(() => {
             <h2 class="feat-title">Search</h2>
             <p class="feat-body">Search for any identity and see the evidence from every imaginable layer.</p>
             <button class="feat-cta" @click="showSection('checker')">Search →</button>
-          </div>
-        </section>
-
-        <!-- Mining section -->
-        <section class="feat-screen">
-          <div class="feat-left">
-            <h2 class="feat-title">Mine POH</h2>
-            <p class="feat-body">Run a node on any device. Race to verify identities and earn POH for every job you win.</p>
-            <div class="mining-stats">
-              <div class="mining-stat">
-                <span class="mining-stat-val">1 POH</span>
-                <span class="mining-stat-label">per block</span>
-              </div>
-              <div class="mining-stat">
-                <span class="mining-stat-val">FCFS</span>
-                <span class="mining-stat-label">job model</span>
-              </div>
-              <div class="mining-stat">
-                <span class="mining-stat-val">Any</span>
-                <span class="mining-stat-label">hardware</span>
-              </div>
-            </div>
-            <a href="https://miner.proofofhuman.ge/" target="_blank" class="feat-cta">Start mining →</a>
-          </div>
-          <div class="feat-right">
-            <div class="mining-visual">
-              <canvas class="mining-canvas" ref="miningCanvas"></canvas>
-              <div class="mining-pulse-ring"></div>
-            </div>
           </div>
         </section>
 
@@ -1165,7 +1121,7 @@ onUnmounted(() => {
                 <div class="roadmap-date" style="color: #fff">May-Jun 2026</div>
                 <div class="roadmap-desc" style="color: #fff">Digital Identity Search</div>
                 <div class="roadmap-desc" style="color: #fff">SDK, Widget, Dev tools</div>
-                <div class="roadmap-desc" style="color: #fff">Conviction Curves</div>
+                <div class="roadmap-desc" style="color: #fff">Skills layer launch</div>
               </div>
             </div>
             <div class="roadmap-item">
@@ -1360,6 +1316,7 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <!-- AI Verdict -->
         <div v-if="!isBatchScan && brainVerdict && brainVerdict.status !== 'not_found'" class="brain-card" :class="brainVerdict.verdict === 'HUMAN' ? 'brain-human' : 'brain-bot'">
           <div class="brain-row">
             <span class="brain-label">AI Verdict</span>
@@ -1449,7 +1406,7 @@ onUnmounted(() => {
       <div v-if="currentSection === 'listing'" class="content-section">
         <div class="listing-header">
           <h2 class="scan-title">Submit a detection signal</h2>
-          <p class="scan-sub">Define a signal and earn 4% trading volume lifetime.</p>
+          <p class="scan-sub">Submit a human or bot detection signals.</p>
         </div>
         <div class="form-section">
           <div class="form-label-row">
@@ -1745,7 +1702,7 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Votes / Conviction Curves -->
+      <!-- Votes -->
       <VoteQueueSection
         v-if="currentSection === 'votes'"
         :loading="loading"
@@ -1755,20 +1712,10 @@ onUnmounted(() => {
         :vote-submitting="voteSubmitting"
         :vote-feedback="voteFeedback"
         :feedback-validating="feedbackValidating"
-        :curve-state="curveState"
-        :chart-candles="chartCandles"
-        :sol-balance="curveSolBalance"
-        :owned-tokens="ownedTokens"
-        :quote-result="quoteResult"
-        :curve-loading="curveLoading"
         :wallet-address="walletAddress"
         @update:vote-index="voteIndex = $event"
         @update:vote-feedback="voteFeedback = $event"
         @cast-vote="castVote"
-        @claim-fees="onClaimFees"
-        @curve-buy="onCurveBuy"
-        @curve-sell="onCurveSell"
-        @curve-quote="onCurveQuote"
       />
 
       <!-- Profile -->
@@ -2237,9 +2184,6 @@ const results = await pollJob(jobId)</pre>
         </div>
       </div>
 
-      <!-- Ecosystem -->
-      <EcosystemSection v-if="currentSection === 'ecosystem'" />
-
       <!-- About / Yellow Paper -->
       <AboutSection v-if="currentSection === 'about'" />
 
@@ -2248,6 +2192,7 @@ const results = await pollJob(jobId)</pre>
     <footer class="footer">
       <div class="network-label">CONNECT</div>
     </footer>
+    </div>
   </div>
 </template>
 
@@ -3346,7 +3291,12 @@ a.feat-cta { text-decoration: none; display: inline-block; }
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 1rem 1rem 0.75rem;
+  padding: 1rem 1rem 0.5rem;
+  background: #0a0a0a;
+}
+
+.evidence-map-wrap {
+  padding: 0 1rem 0.75rem;
   background: #0a0a0a;
   border-bottom: 1px solid #111;
 }
@@ -3665,11 +3615,19 @@ a.feat-cta { text-decoration: none; display: inline-block; }
 .vcs-btn-skip:hover { color: #888; border-color: #808080; }
 
 /* ── Layout ──────────────────────────────────────────────────────────────── */
+.hp-root {
+  min-height: 100vh;
+  background: #000;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+}
+
 .app-container {
   max-width: 1280px;
   width: 100%;
   margin: 0 auto;
-  min-height: 100vh;
+  flex: 1;
   display: flex;
   flex-direction: column;
 }
@@ -3760,7 +3718,7 @@ a.feat-cta { text-decoration: none; display: inline-block; }
 
 /* ── Header ──────────────────────────────────────────────────────────────── */
 .header {
-  padding: 1rem 0;
+  padding: 1rem 2rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -3811,6 +3769,16 @@ a.feat-cta { text-decoration: none; display: inline-block; }
 }
 
 .nav-btn.active .icon { opacity: 1; }
+
+.nav-btn--back {
+  color: #555;
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+}
+.nav-btn--back:hover {
+  color: #aaa;
+  background: transparent;
+}
 
 /* ── Wallet ───────────────────────────────────────────────────────────────── */
 .wallet-wrapper { display: flex; align-items: center; }

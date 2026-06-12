@@ -3,13 +3,13 @@
     <div class="scan-hero">
       <div class="scan-tag">YELLOW PAPER</div>
       <h2 class="scan-title">Proof of Human</h2>
-      <p class="scan-sub">A decentralized, AI-augmented protocol for on-chain human identity verification. Mainnet · Solana · May 2026</p>
+      <p class="scan-sub">A decentralized, AI-augmented protocol for on-chain human identity verification. Mainnet · Solana · 2026</p>
     </div>
 
     <!-- Abstract -->
     <section class="yp-section">
       <p class="yp-abstract">
-        POH replaces static allow-lists and centralized KYC with a permissionless, stake-weighted signal market: any party can register a verification method ("signal"), the community votes on its validity, and a local AI brain fuses the resulting signal weights into a probabilistic human/bot verdict for any queried wallet. Signal tokens launched on a Meteora Dynamic Bonding Curve ("Conviction Curves") add a market-pricing layer — price action provides an additional, manipulation-resistant confidence signal that feeds directly back into the AI decision engine.
+        POH replaces static allow-lists and centralized KYC with a permissionless, stake-weighted signal market: any party can register a verification method ("signal"), the community votes on its validity, and a local AI brain fuses the resulting signal weights into a probabilistic human/bot verdict for any queried wallet. A peer-to-peer miner network runs the AI pipeline and earns POH rewards for verified work — no central operator, no single point of failure.
       </p>
     </section>
 
@@ -17,7 +17,7 @@
     <section class="yp-section">
       <h3 class="yp-h2">1. Background and Motivation</h3>
       <p class="yp-p">
-        Sybil resistance is a prerequisite for fair airdrops, governance, quadratic funding, and proof-of-personhood. Existing approaches share a structural flaw: trust is anchored to a central authority (Worldcoin, Gitcoin Passport, Civic) or is trivially gamed by on-chain heuristics alone. POH proposes a different primitive: a living, incentive-aligned signal registry where market participants stake capital on the quality of each verification method, and a continuously-learning AI brain integrates all signals into a calibrated verdict.
+        Sybil resistance is a prerequisite for fair airdrops, governance, quadratic funding, and proof-of-personhood. Existing approaches share a structural flaw: trust is anchored to a central authority (Worldcoin, Gitcoin Passport, Civic) or is trivially gamed by on-chain heuristics alone. POH proposes a different primitive: a living, incentive-aligned signal registry where community members stake capital on the quality of each verification method, and a continuously-learning AI brain integrates all signals into a calibrated verdict.
       </p>
     </section>
 
@@ -38,7 +38,7 @@
         </table>
       </div>
       <p class="yp-p"><strong>Result evaluation:</strong> each signal produces a numeric or boolean value normalized by an optional <code>expression</code> (JavaScript) into a score ∈ ℝ.</p>
-      <p class="yp-p"><strong>Storage:</strong> signals are persisted in a JSON flat-file (<code>data/methods.json</code>) on the backend node. This is a transitional design; a future version will migrate to on-chain account storage.</p>
+      <p class="yp-p"><strong>Storage:</strong> signals are persisted in <code>data/methods.json</code> on the backend node. A future version will migrate to on-chain account storage.</p>
 
       <h4 class="yp-h3">2.2 POH Token (SPL)</h4>
       <div class="yp-table-wrap">
@@ -60,7 +60,7 @@
       <ul class="yp-list">
         <li><code>stakeTokens(amount)</code> — locks POH in staker PDA, mints stake receipt</li>
         <li><code>unstakeTokens(amount)</code> — returns POH after cooldown</li>
-        <li><code>registerMethod(methodHash)</code> — enforces 1,000 POH listing fee payment, routes 500 POH to SFEE vault</li>
+        <li><code>registerMethod(methodHash)</code> — enforces 1,000 POH listing fee, routes 500 POH to SFEE vault</li>
         <li><code>claimStakerRewards()</code> — distributes accumulated listing fees pro-rata to stakers</li>
       </ul>
 
@@ -90,18 +90,7 @@
         <li>Backend verifies the transaction was confirmed on-chain (<code>verifyTxSuccess</code>).</li>
         <li>Duplicate check: REST signals deduplicate by URL; EVM/Solana signals by <code>(address, method)</code> pair.</li>
         <li>Signal is assigned a random UUID, inserted into the registry with <code>score = 0</code>, and a training record is appended to <code>data/dataset.json</code>.</li>
-        <li>If the submitter provides <code>poolAddress</code> and <code>mintAddress</code>, a Conviction Curve pool record is persisted (<code>data/pools.json</code>).</li>
       </ol>
-
-      <h4 class="yp-h3">Conviction Curve</h4>
-      <p class="yp-p">Alongside listing, submitters deploy a Meteora DBC pool for their signal. The full deployment cost is <strong>0.1 SOL</strong> paid by the submitter's wallet:</p>
-      <div class="yp-code">
-        <pre>{`total_charge   = 0.100 SOL
-deploy_rent    = Σ(on-chain account rents) ≈ 0.021 SOL
-tx_fee_buffer  = 0.000025 SOL
-auto_buy       = total_charge − deploy_rent − tx_fee_buffer ≈ 0.079 SOL`}</pre>
-      </div>
-      <p class="yp-p">The <code>auto_buy</code> amount is used to purchase signal tokens from the pool immediately at creation, with tokens deposited into the submitter's wallet. This bootstraps the market and gives the creator initial skin in the game.</p>
     </section>
 
     <!-- 4. Voting -->
@@ -118,7 +107,7 @@ auto_buy       = total_charge − deploy_rent − tx_fee_buffer ≈ 0.079 SOL`}<
           </tbody>
         </table>
       </div>
-      <p class="yp-p">Votes are boolean (<code>true</code> / <code>false</code>).</p>
+      <p class="yp-p">Votes are boolean (<code>true</code> / <code>false</code>). Voters also provide a written feedback comment that feeds directly into AI brain training.</p>
 
       <h4 class="yp-h3">4.2 Stake-Weighted Impact</h4>
       <p class="yp-p">Stakers with more locked POH have proportionally higher influence:</p>
@@ -126,16 +115,11 @@ auto_buy       = total_charge − deploy_rent − tx_fee_buffer ≈ 0.079 SOL`}<
         <pre>{`stakeWeight = walletStakedPOH / totalStakedPOH   ∈ [0, 1]
 impact      = 1 + stakeWeight × 9                ∈ [1, 10]`}</pre>
       </div>
-      <p class="yp-p">For graduated signals (Conviction Curve migrated to DAMM V2):</p>
-      <div class="yp-code">
-        <pre>{`graduationMult  = pool.migrated ? 1.5 : 1.0
-effectiveImpact = impact × graduationMult          ∈ [1, 15]`}</pre>
-      </div>
 
       <h4 class="yp-h3">4.3 Score Update</h4>
       <div class="yp-code">
         <pre>{`// description/method votes:
-method.score += vote === true ? effectiveImpact : −effectiveImpact
+method.score += vote === true ? impact : −impact
 method.voteCount += 1`}</pre>
       </div>
 
@@ -156,9 +140,17 @@ method.voteCount += 1`}</pre>
       <div class="yp-code">
         <pre>newWeight = oldWeight × (1 + stakeWeight × 0.1 × (vote ? 1 : −1))</pre>
       </div>
-      <p class="yp-p">Weights are bounded to <code>[0.01, 10.0]</code> to prevent collapse or runaway amplification. Graduated pool records are checked; if <code>pool.migrated === true</code>, the returned weight is multiplied by 1.5 at read time (non-destructive).</p>
+      <p class="yp-p">Weights are bounded to <code>[0.01, 10.0]</code> to prevent collapse or runaway amplification.</p>
 
-      <h4 class="yp-h3">5.2 AI Brain Architecture</h4>
+      <h4 class="yp-h3">5.2 AI Verdict Inputs</h4>
+      <p class="yp-p">The brain fuses two distinct feedback channels for each signal:</p>
+      <ul class="yp-list">
+        <li><strong>Vote</strong> — community boolean vote (true/false), stake-weighted</li>
+        <li><strong>Feedback</strong> — human correction labels submitted after scans (`HUMAN` / `BOT` correction + comment)</li>
+      </ul>
+      <p class="yp-p">Both update <code>weights.json</code> on the miner nodes. Brain state is committed to chain via <code>brainStateRoot</code> and <code>stateTransitions</code> in every block.</p>
+
+      <h4 class="yp-h3">5.3 AI Brain Architecture</h4>
       <p class="yp-p">The brain is a local multi-model LLM pipeline running on Ollama (optionally augmented by a Qvac/OpenAI-compatible evaluator):</p>
       <div class="yp-table-wrap">
         <table class="yp-table">
@@ -172,71 +164,53 @@ method.voteCount += 1`}</pre>
       <p class="yp-p"><strong>Verdict pipeline for a queried address:</strong></p>
       <ol class="yp-list">
         <li>Each enabled signal is executed against the address (parallel HTTP/RPC calls).</li>
-        <li>Results are normalized and weighted by <code>signal_weight × graduation_mult</code>.</li>
+        <li>Results are normalized and weighted by <code>weights[methodId] ?? 1</code>.</li>
         <li>Weighted signal summary is composed into a structured prompt.</li>
         <li>Evaluator model produces <code>&#123; verdict, confidence, reasoning &#125;</code>.</li>
         <li>Response is cached and returned to the consumer.</li>
       </ol>
-      <p class="yp-p"><strong>Continuous learning:</strong> on every vote, the brain receives the vote signal and feedback comment. The Learner model adjusts the brain state narrative; the Compiler periodically synthesizes a new compressed brain state from accumulated feedback.</p>
-
-      <h4 class="yp-h3">5.3 Signal Strength Display</h4>
-      <div class="yp-code">
-        <pre>signalStrength = score × (1 + ln(1 + supply / 100) × 0.3) × graduationMult</pre>
-      </div>
-      <p class="yp-p">This grows with both community validation (score) and market adoption (token supply / price).</p>
+      <p class="yp-p"><strong>Continuous learning:</strong> on every vote and feedback submission, the brain adjusts weights. The Compiler periodically synthesizes a new compressed brain state from accumulated feedback. Brain state is synchronized across all miner nodes via P2P events and on-chain commitments.</p>
     </section>
 
-    <!-- 6. Conviction Curves -->
+    <!-- 6. Skills -->
     <section class="yp-section">
-      <h3 class="yp-h2">6. Conviction Curves</h3>
+      <h3 class="yp-h2">6. Skills</h3>
 
-      <h4 class="yp-h3">6.1 Design Rationale</h4>
-      <p class="yp-p">A pure vote-based system is vulnerable to coordinated Sybil attacks on the voting layer itself. Conviction Curves add a cost-to-attack layer: expressing conviction in a signal requires purchasing its token on an AMM bonding curve. Attackers must put real capital at risk. Honest believers are compensated if the signal gains community acceptance (price appreciation). This creates a prediction-market-like mechanism where price is an independent signal of community confidence.</p>
+      <h4 class="yp-h3">6.1 What Are Skills?</h4>
+      <p class="yp-p">Skills extend the miner network's compute capabilities beyond wallet identity verification. Any developer can propose a skill — a sandboxed JavaScript module that miners can execute as part of a scan job. Skills go through community review via POH staking before becoming active.</p>
 
-      <h4 class="yp-h3">6.2 Pool Parameters</h4>
+      <h4 class="yp-h3">6.2 Lifecycle</h4>
+      <div class="yp-code">
+        <pre>proposed  →  staking  →  graduated (10,000 POH)  →  active  →  deprecated</pre>
+      </div>
+      <p class="yp-p">Once graduated, the skill is propagated to all nodes via <code>stateTransitions</code> in blocks and becomes available for job routing.</p>
+
+      <h4 class="yp-h3">6.3 Staking Mechanics</h4>
       <div class="yp-table-wrap">
         <table class="yp-table">
-          <thead><tr><th>Parameter</th><th>Value</th><th>Rationale</th></tr></thead>
+          <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
           <tbody>
-            <tr><td>Total supply</td><td>1,000,000,000 (1B)</td><td>Sufficient granularity</td></tr>
-            <tr><td>Token decimals</td><td>6</td><td>Standard SPL</td></tr>
-            <tr><td>Quote token</td><td>SOL (WSOL)</td><td>Liquid, native Solana settlement</td></tr>
-            <tr><td>Bonding fee</td><td>100 BPS (1%) base</td><td>Meteora protocol fee</td></tr>
-            <tr><td>Creator trading fee</td><td>4% of trade volume</td><td>Incentivizes quality signal creation</td></tr>
-            <tr><td>Graduation threshold</td><td>10 SOL raised</td><td>Migration to DAMM V2</td></tr>
-            <tr><td>Post-graduation fee</td><td>400 BPS (4%) pool fee</td><td>Sustained fee for DAMM V2</td></tr>
-            <tr><td>LP distribution</td><td>100% permanently locked</td><td>Rug-pull prevention</td></tr>
-            <tr><td>Supply at migration</td><td>20% of total supply</td><td>Released during bonding phase</td></tr>
+            <tr><td>Proposal fee</td><td>1,000 POH</td></tr>
+            <tr><td>Graduation threshold</td><td>10,000 POH staked total</td></tr>
+            <tr><td>Staking model</td><td>Off-chain (tracked in miner stateTransitions, propagated P2P)</td></tr>
+            <tr><td>Unstaking</td><td>Allowed at any time before graduation</td></tr>
           </tbody>
         </table>
       </div>
 
-      <h4 class="yp-h3">6.3 Pool Creation Transaction Flow</h4>
-      <p class="yp-p">Pool creation uses two transactions (constrained by Solana's 1,232-byte transaction size limit):</p>
-      <div class="yp-code">
-        <pre>{`TX1 (629 bytes):  Create pool config (backend signs with configKeypair)
-TX2 (888 bytes):  Create pool + first buy (backend signs with baseMintKeypair)`}</pre>
-      </div>
-      <p class="yp-p">Both are partially signed by the backend and returned to the frontend as base64-encoded serialized transactions. The user signs both in a single <code>signAllTransactions</code> call, then the frontend broadcasts them sequentially.</p>
-
-      <h4 class="yp-h3">6.4 Graduation</h4>
-      <p class="yp-p">When <code>quoteReserve ≥ migrationQuoteThreshold</code> (10 SOL), the Meteora program automatically migrates the pool to DAMM V2. The backend detects migration by polling <code>pool.migrated</code> on each state fetch and caches the result to <code>pools.json</code>. Graduated pools receive the 1.5× decision multiplier in all downstream consumers.</p>
+      <h4 class="yp-h3">6.4 Skill Auto-Sync</h4>
+      <p class="yp-p">Skills are synchronized across all nodes automatically:</p>
+      <ul class="yp-list">
+        <li>New proposals are gossiped via <code>skill-proposed</code> P2P topic</li>
+        <li>Stake events and graduation are committed as <code>stateTransitions</code> in blocks</li>
+        <li>All nodes replay transitions in <code>_appendBlock</code> to rebuild skill state</li>
+        <li>Cold-starting nodes restore skill state from chain replay</li>
+      </ul>
     </section>
 
-    <!-- 7. Referral -->
+    <!-- 7. API -->
     <section class="yp-section">
-      <h3 class="yp-h2">7. Referral System</h3>
-      <h4 class="yp-h3">7.1 Referral Link Format</h4>
-      <div class="yp-code">
-        <pre>https://&#123;domain&#125;/?ref=&#123;base58_wallet_address&#125;&amp;signal=&#123;methodId&#125;</pre>
-      </div>
-      <h4 class="yp-h3">7.2 Fee Routing</h4>
-      <p class="yp-p">When a swap is executed with a <code>referralTokenAccount</code> set, the Meteora on-chain program routes <code>HOST_FEE_PERCENT</code> (20%) of the Meteora protocol fee to the referral account — equal to <code>20% × 20% = 4%</code> of the base fee, or <code>0.04%</code> of the total trade per 100 BPS of base fee. Without a referral, <code>referralTokenAccount</code> defaults to the POH <code>FEE_RECIPIENT</code> — the protocol treasury receives the referral cut on unaffiliated trades.</p>
-    </section>
-
-    <!-- 8. API -->
-    <section class="yp-section">
-      <h3 class="yp-h2">8. API Reference</h3>
+      <h3 class="yp-h2">7. API Reference</h3>
       <p class="yp-p">All routes are prefixed with their resource path. The backend runs Express on the configured port.</p>
 
       <h4 class="yp-h3">Methods / Signals</h4>
@@ -245,7 +219,7 @@ TX2 (888 bytes):  Create pool + first buy (backend signs with baseMintKeypair)`}
           <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
           <tbody>
             <tr><td><span class="http-get">GET</span></td><td><code>/methods/verifyer</code></td><td>List all signals, stake-weighted shuffle, annotated with myVoted</td></tr>
-            <tr><td><span class="http-post">POST</span></td><td><code>/methods/verifyer/vote</code></td><td>Cast signed vote</td></tr>
+            <tr><td><span class="http-post">POST</span></td><td><code>/methods/verifyer/vote</code></td><td>Cast signed vote + feedback</td></tr>
             <tr><td><span class="http-post">POST</span></td><td><code>/methods/verifyer/validate-feedback</code></td><td>Pre-vote LLM feedback quality check</td></tr>
             <tr><td><span class="http-post">POST</span></td><td><code>/methods/listing</code></td><td>Register new signal (requires confirmed POH payment tx)</td></tr>
             <tr><td><span class="http-post">POST</span></td><td><code>/methods/listing/validate-description</code></td><td>Pre-submit LLM description quality check</td></tr>
@@ -264,7 +238,7 @@ TX2 (888 bytes):  Create pool + first buy (backend signs with baseMintKeypair)`}
             <tr><td><span class="http-get">GET</span></td><td><code>/checker/pricing</code></td><td>Current scan pricing (rate, free tier)</td></tr>
             <tr><td><span class="http-post">POST</span></td><td><code>/checker/preview</code></td><td>Dry-run signal execution without verdict</td></tr>
             <tr><td><span class="http-get">GET</span></td><td><code>/checker/brain/:key</code></td><td>Read brain state (weights, narrative)</td></tr>
-            <tr><td><span class="http-get">GET</span></td><td><code>/checker/profile/:address</code></td><td>Enriched identity profile (web3.bio, protocols, graph)</td></tr>
+            <tr><td><span class="http-get">GET</span></td><td><code>/checker/profile/:address</code></td><td>Enriched identity profile</td></tr>
           </tbody>
         </table>
       </div>
@@ -283,11 +257,25 @@ TX2 (888 bytes):  Create pool + first buy (backend signs with baseMintKeypair)`}
           </tbody>
         </table>
       </div>
+
+      <h4 class="yp-h3">Skills (Miner Node)</h4>
+      <div class="yp-table-wrap">
+        <table class="yp-table">
+          <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="http-get">GET</span></td><td><code>/api/skills</code></td><td>List all skills with status + total POH staked</td></tr>
+            <tr><td><span class="http-post">POST</span></td><td><code>/api/skills/propose</code></td><td>Submit a new skill (manifest + sandboxed JS code)</td></tr>
+            <tr><td><span class="http-get">GET</span></td><td><code>/api/skills/:id/stakes</code></td><td>Staker list + total for a skill</td></tr>
+            <tr><td><span class="http-post">POST</span></td><td><code>/api/skills/:id/stake</code></td><td>Stake POH toward a skill</td></tr>
+            <tr><td><span class="http-post">POST</span></td><td><code>/api/skills/:id/unstake</code></td><td>Unstake POH</td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
-    <!-- 9. Data Model -->
+    <!-- 8. Data Model -->
     <section class="yp-section">
-      <h3 class="yp-h2">9. Data Model</h3>
+      <h3 class="yp-h2">8. Data Model</h3>
       <h4 class="yp-h3">Signal (methods.json entry)</h4>
       <div class="yp-code">
         <pre>{`{
@@ -303,9 +291,7 @@ TX2 (888 bytes):  Create pool + first buy (backend signs with baseMintKeypair)`}
   "score":        "number",
   "voteCount":    "number",
   "ownerWallet":  "base58 public key",
-  "created_at":   "ISO 8601",
-  "poolAddress":  "base58 (optional)",
-  "mintAddress":  "base58 (optional)"
+  "created_at":   "ISO 8601"
 }`}</pre>
       </div>
       <h4 class="yp-h3">Profile (profiles.json entry)</h4>
@@ -321,27 +307,23 @@ TX2 (888 bytes):  Create pool + first buy (backend signs with baseMintKeypair)`}
   "updatedAt":     "ISO 8601"
 }`}</pre>
       </div>
-      <h4 class="yp-h3">Pool Record (pools.json entry)</h4>
+      <h4 class="yp-h3">Skill manifest</h4>
       <div class="yp-code">
         <pre>{`{
-  "methodId":     "string",
-  "poolAddress":  "base58",
-  "mintAddress":  "base58",
-  "creatorWallet":"base58",
-  "createdAt":    "ISO 8601",
-  "txHash":       "base58 tx signature",
-  "migrated":     "boolean",
-  "trades": [
-    { "signature": "base58", "slot": "number",
-      "timestamp": "ms epoch", "type": "buy|sell", "solAmount": "lamports" }
-  ]
+  "skillId":      "string",
+  "name":         "string",
+  "version":      "string (semver)",
+  "description":  "string",
+  "author":       "base58 wallet",
+  "allowedHosts": ["string"],
+  "timeout":      "number (ms, max 15000)"
 }`}</pre>
       </div>
     </section>
 
-    <!-- 10. Security -->
+    <!-- 9. Security -->
     <section class="yp-section">
-      <h3 class="yp-h2">10. Security Considerations</h3>
+      <h3 class="yp-h2">9. Security Considerations</h3>
       <div class="yp-cards">
         <div class="yp-card">
           <div class="yp-card-title">Vote Signature Verification</div>
@@ -360,19 +342,19 @@ TX2 (888 bytes):  Create pool + first buy (backend signs with baseMintKeypair)`}
           <p class="yp-card-body">Scan balance deposits require an on-chain USDC/USDT transfer verified via <code>verifyStablecoinTransfer(txHash, amount, sender)</code>. Each transaction hash is recorded and rejected on reuse to prevent double-crediting.</p>
         </div>
         <div class="yp-card">
-          <div class="yp-card-title">IP Abuse Detection</div>
-          <p class="yp-card-body">Free scan usage is tracked per IP. If an IP address is associated with a different wallet that has already consumed free scans, subsequent wallets from that IP are flagged and denied the free tier.</p>
+          <div class="yp-card-title">Skill Sandbox</div>
+          <p class="yp-card-body">Skill code runs in a <code>worker_threads</code> sandbox. Network access is restricted to the skill's <code>allowedHosts</code> manifest field. Execution is hard-killed after 15 seconds. No filesystem or process access.</p>
         </div>
         <div class="yp-card">
           <div class="yp-card-title">Brain Integrity</div>
-          <p class="yp-card-body">The brain operates entirely on local infrastructure (Ollama). No training data, brain state, or weights are sent to external servers unless Qvac is explicitly configured. Training data is append-only; weights are bounded.</p>
+          <p class="yp-card-body">The brain operates entirely on local infrastructure (Ollama). Brain state is committed to every block as <code>brainStateRoot</code> — a SHA-256 of <code>weights.json</code>. Peers reject blocks whose brainStateRoot doesn't match their local state.</p>
         </div>
       </div>
     </section>
 
-    <!-- 11. Economics -->
+    <!-- 10. Economics -->
     <section class="yp-section">
-      <h3 class="yp-h2">11. Economic Model</h3>
+      <h3 class="yp-h2">10. Economic Model</h3>
       <div class="yp-table-wrap">
         <table class="yp-table">
           <thead><tr><th>Flow</th><th>Amount</th><th>Recipient</th></tr></thead>
@@ -380,57 +362,57 @@ TX2 (888 bytes):  Create pool + first buy (backend signs with baseMintKeypair)`}
             <tr><td>Signal listing fee</td><td>1,000 POH</td><td>500 POH → protocol vault; 500 POH → staker SFEE</td></tr>
             <tr><td>Staker rewards</td><td>500 POH per listing (pro-rata)</td><td>POH stakers via <code>claimStakerRewards</code></td></tr>
             <tr><td>Scan fee (paid tier)</td><td>$0.001 per scan (USDC/USDT)</td><td>100% → protocol FEE_RECIPIENT</td></tr>
-            <tr><td>Pool deployment</td><td>0.1 SOL</td><td>~0.021 SOL rent (Meteora), ~0.079 SOL auto-buy</td></tr>
-            <tr><td>Creator trading fee</td><td>4% per swap</td><td>Signal creator (on-chain claimable)</td></tr>
-            <tr><td>Meteora protocol fee</td><td>20% of 1% base fee</td><td>Meteora treasury</td></tr>
-            <tr><td>Referral cut (when active)</td><td>20% of Meteora's cut</td><td>Referral wallet or POH treasury</td></tr>
+            <tr><td>Block subsidy</td><td>1 POH per block</td><td>60% → block proposer; 40% → workers</td></tr>
+            <tr><td>Job fee</td><td>Set by requester</td><td>100% → winning miner</td></tr>
+            <tr><td>Skill proposal fee</td><td>1,000 POH</td><td>Burned / protocol vault</td></tr>
           </tbody>
         </table>
       </div>
     </section>
 
-    <!-- 12. Roadmap -->
+    <!-- 11. Roadmap -->
     <section class="yp-section">
-      <h3 class="yp-h2">12. Roadmap</h3>
+      <h3 class="yp-h2">11. Roadmap</h3>
       <div class="yp-table-wrap">
         <table class="yp-table">
           <thead><tr><th>Phase</th><th>Feature</th></tr></thead>
           <tbody>
-            <tr><td><span class="yp-badge yp-badge--active">Mainnet (current)</span></td><td>Signal registry, voting, AI brain, Conviction Curves, scan API, profile &amp; billing, PoH Miner Network, mobile wallet</td></tr>
+            <tr><td><span class="yp-badge yp-badge--active">Mainnet (current)</span></td><td>Signal registry, voting, AI brain, scan API, profile &amp; billing, PoH Miner Network, Skills layer, mobile wallet</td></tr>
             <tr><td>Next</td><td>On-chain staking contract deployment, stake-weighted voting live, BFT finality layer</td></tr>
             <tr><td>Beta</td><td>On-chain signal storage, DAO governance of brain weights</td></tr>
             <tr><td>V1</td><td>Cross-chain signals, ZK-proof integration for private signals</td></tr>
-            <tr><td>V2</td><td>Prediction market settlement, signal expiry, signal composability (AND/OR logic)</td></tr>
+            <tr><td>V2</td><td>Skill marketplace with on-chain settlement, signal composability (AND/OR logic)</td></tr>
           </tbody>
         </table>
       </div>
     </section>
 
-    <!-- 13. Miner Network -->
+    <!-- 12. Miner Network -->
     <section class="yp-section">
-      <h3 class="yp-h2">13. PoH Miner Network</h3>
+      <h3 class="yp-h2">12. PoH Miner Network</h3>
       <p class="yp-p">
         The PoH Miner Network is a purpose-built Proof-of-Work blockchain where miners earn POH by performing real, useful
         work — executing the full identity verification pipeline (signal evaluation + AI brain inference) on user-submitted
         wallet addresses. Energy is converted into high-integrity compute, not discarded on pure hash puzzles.
       </p>
 
-      <h4 class="yp-h3">13.1 Architecture</h4>
+      <h4 class="yp-h3">12.1 Architecture</h4>
       <div class="yp-code">
         <pre>{`┌──────────────────────────────────────────────────────────────────┐
 │                   App Layer  (proofofhuman.ge)                   │
-│   Frontend  ·  Profiles  ·  Voting  ·  Conviction Curves        │
+│   Frontend  ·  Profiles  ·  Voting  ·  Skills                   │
 └───────────────────────────┬──────────────────────────────────────┘
                             │  submits scan jobs ▼  reads results
 ┌───────────────────────────▼──────────────────────────────────────┐
 │                    PoH Miner Network                             │
 │                                                                  │
-│   ┌──────────────┐  P2P gossip (blocks, txs, status)            │
+│   ┌──────────────┐  P2P gossip (blocks, txs, skills, status)    │
 │   │  Miner Node  │◄──────────────────────────────► Miner Node  │
 │   │              │                                              │
 │   │ • PoW mining │  ← race to compute first valid verdict →    │
 │   │ • LLM brain  │                                              │
 │   │ • Chain sync │  ← bootnode for peer discovery / catch-up → │
+│   │ • Skills     │                                              │
 │   │ • Wallet API │                                              │
 │   └──────────────┘                                              │
 │                                                                  │
@@ -438,7 +420,7 @@ TX2 (888 bytes):  Create pool + first buy (backend signs with baseMintKeypair)`}
 └──────────────────────────────────────────────────────────────────┘`}</pre>
       </div>
 
-      <h4 class="yp-h3">13.2 Block Structure</h4>
+      <h4 class="yp-h3">12.2 Block Structure</h4>
       <p class="yp-p">Each block is a self-contained record of verified identity work:</p>
       <div class="yp-table-wrap">
         <table class="yp-table">
@@ -447,7 +429,10 @@ TX2 (888 bytes):  Create pool + first buy (backend signs with baseMintKeypair)`}
             <tr><td><code>height</code>, <code>previousHash</code>, <code>timestamp</code></td><td>Standard chain linkage</td></tr>
             <tr><td><code>minerWallet</code></td><td>PoH address of the block proposer</td></tr>
             <tr><td><code>scanResults[]</code></td><td>Verified wallet verdicts: requestId, address, verdict, confidence, reasoning, signalsUsed, minerWallet, signature</td></tr>
-            <tr><td><code>transactions[]</code></td><td>Signed POH token transfers with nonces (send/receive)</td></tr>
+            <tr><td><code>transactions[]</code></td><td>Signed POH token transfers with nonces</td></tr>
+            <tr><td><code>stateTransitions[]</code></td><td>On-chain events: brain feedback, skill proposals, skill stakes, skill graduation</td></tr>
+            <tr><td><code>stateRoot</code></td><td>SHA-256 of all wallet balances (tamper-evident)</td></tr>
+            <tr><td><code>brainStateRoot</code></td><td>SHA-256 of brain weights (tamper-evident)</td></tr>
             <tr><td><code>coinbaseReward</code></td><td>1 POH per block — 60% to block proposer, 40% split among contributing workers</td></tr>
             <tr><td><code>nonce</code>, <code>difficulty</code>, <code>chainWork</code></td><td>Lightweight PoW fields for Sybil resistance</td></tr>
             <tr><td><code>minerSignature</code></td><td>ed25519 block authentication by the proposing miner</td></tr>
@@ -455,137 +440,48 @@ TX2 (888 bytes):  Create pool + first buy (backend signs with baseMintKeypair)`}
         </table>
       </div>
 
-      <h4 class="yp-h3">13.3 Consensus &amp; Networking</h4>
-      <p class="yp-p">The current network uses a hybrid model designed for correctness in the bootstrapping phase:</p>
-      <ul class="yp-list">
-        <li><strong>Block production:</strong> useful work + lightweight PoW over the block header prevents spam and adds Sybil resistance without wasting pure compute.</li>
-        <li><strong>Chain sync:</strong> cold-starting nodes pull the canonical chain from the bootnode via <code>HTTP GET /chain/blocks</code>.</li>
-        <li><strong>Gossip:</strong> <code>new-block</code> and <code>new-tx</code> messages are flood-filled across peers (TTL = 4 hops) for fast propagation.</li>
-        <li><strong>Node status:</strong> each node broadcasts its <code>methodsHash</code>, region, and load on a regular interval so peers can route jobs intelligently.</li>
-        <li><strong>IPFS durability:</strong> chain snapshots, brain state, and peer lists are pinned to IPFS and served as fallback for nodes that can't reach the bootnode.</li>
-      </ul>
-      <p class="yp-p"><strong>Planned:</strong> migration to BFT finality (CometBFT-style) for fast, slashable consensus once the network reaches sufficient validator count. Custom proposer selection will weight nodes by recent verified work and staked POH.</p>
-
-      <h4 class="yp-h3">13.4 P2P Sync Summary</h4>
+      <h4 class="yp-h3">12.3 P2P Sync Summary</h4>
       <div class="yp-table-wrap">
         <table class="yp-table">
           <thead><tr><th>Data</th><th>Transport</th></tr></thead>
           <tbody>
             <tr><td>New blocks</td><td>P2P gossip <code>new-block</code> (flood-fill, TTL=4)</td></tr>
             <tr><td>Pending transactions</td><td>P2P gossip <code>new-tx</code></td></tr>
+            <tr><td>Skill proposals</td><td>P2P gossip <code>skill-proposed</code></td></tr>
             <tr><td>Node status (methodsHash, region, load)</td><td>P2P gossip <code>node-status</code></td></tr>
             <tr><td>Chain history (cold start)</td><td>HTTP pull from bootnode <code>/chain/blocks</code></td></tr>
+            <tr><td>Brain snapshot (cold start)</td><td>IPFS CID stored in <code>state-snapshot</code> stateTransition</td></tr>
             <tr><td>Canonical signal set + hash</td><td>HTTP from proofofhuman.ge + IPFS fallback</td></tr>
             <tr><td>Brain feedback events &amp; weight updates</td><td>Peer-to-peer push + bootnode <code>/brain/events</code></td></tr>
             <tr><td>Peer records</td><td>Bootnode <code>/peers</code> + IPFS peer directory</td></tr>
           </tbody>
         </table>
       </div>
-    </section>
 
-    <!-- 14. Mining -->
-    <section class="yp-section">
-      <h3 class="yp-h2">14. Mining</h3>
-
-      <h4 class="yp-h3">14.1 Job Queue &amp; Geographic Routing</h4>
-      <p class="yp-p">
-        When a user submits a scan request (via proofofhuman.ge or the API), it enters a <strong>global job mempool</strong>
-        visible to all connected miners. Miners do not blindly race on every job — each job is scored individually before
-        a miner decides to compete:
-      </p>
-      <div class="yp-code">
-        <pre>score = fee × geoMultiplier × loadPenalty</pre>
-      </div>
-      <p class="yp-p">
-        Jobs carry an <code>originRegion</code>. A miner in the same region receives a <code>geoMultiplier</code> of up to
-        <strong>2.2×</strong>, giving local nodes a substantial advantage. This incentivizes geographic distribution of
-        compute and keeps latency low for end users.
-      </p>
-      <p class="yp-p">On startup, every miner measures latency to global anchor points and auto-detects its region. No manual configuration is required.</p>
-
-      <h4 class="yp-h3">14.2 Work Verification</h4>
-      <p class="yp-p">A submitted result is only accepted into a block if it passes all of the following checks:</p>
-      <ul class="yp-list">
-        <li>The miner used the <strong>current canonical signal set</strong> — its <code>methodsHash</code> must match the network's authoritative hash from proofofhuman.ge.</li>
-        <li>At least <strong>75%</strong> of live Conviction Curve–backed signals were evaluated.</li>
-        <li>The result includes the full required output: verdict, confidence score, profile data, and reasoning.</li>
-        <li>Computation time is <strong>plausible</strong> for the claimed work (too-fast results indicate skipped signals).</li>
-      </ul>
-      <p class="yp-p">Invalid or low-quality submissions are rejected and trigger a <strong>reputation penalty</strong>. Repeated violations result in slashing — the node is demoted in the job queue and its future submissions require a higher quality threshold before being included.</p>
-
-      <h4 class="yp-h3">14.3 Reward Mechanics</h4>
-      <div class="yp-table-wrap">
-        <table class="yp-table">
-          <thead><tr><th>Reward type</th><th>Amount</th><th>Recipients</th></tr></thead>
-          <tbody>
-            <tr><td>Block subsidy (fixed)</td><td>1 POH per block</td><td>60% → block proposer; 40% split among workers whose results were included</td></tr>
-            <tr><td>Job fee (variable)</td><td>Set by job submitter</td><td>100% → the miner whose result wins the scan race for that job</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="yp-p">
-        Rewards are minted directly into the block as coinbase outputs — there is no central treasury disbursement.
-        The mobile wallet and the Electron desktop app both display real-time balances and per-block earnings pulled
-        from the miner's local API (<code>localhost:3456</code>).
-      </p>
-
-      <h4 class="yp-h3">14.4 Running a Miner</h4>
-      <p class="yp-p">Three deployment options:</p>
+      <h4 class="yp-h3">12.4 Running a Miner</h4>
       <div class="yp-table-wrap">
         <table class="yp-table">
           <thead><tr><th>Method</th><th>How</th><th>Best for</th></tr></thead>
           <tbody>
-            <tr><td><strong>GUI app</strong></td><td>Download <code>.deb</code> / <code>.AppImage</code> / <code>.dmg</code>. Ollama + <code>qwen2.5:1.5b</code> are installed automatically.</td><td>Non-technical operators; home miners</td></tr>
+            <tr><td><strong>GUI app</strong></td><td>Download <code>.deb</code> / <code>.AppImage</code> / <code>.dmg</code>. Ollama + <code>qwen2.5:1.5b</code> installed automatically.</td><td>Non-technical operators; home miners</td></tr>
             <tr><td><strong>CLI</strong></td><td><code>npm install &amp;&amp; cp config.example.json config.json &amp;&amp; npm start</code></td><td>Servers; automation; custom config</td></tr>
             <tr><td><strong>Docker</strong></td><td><code>docker run -v ~/.poh-miner:/root/.poh-miner ghcr.io/poh/miner:latest</code></td><td>Cloud VMs; containerized deployments</td></tr>
           </tbody>
         </table>
       </div>
-      <p class="yp-p"><strong>Minimum config required:</strong></p>
-      <div class="yp-code">
-        <pre>{`{
-  "wallet":        "pohYourAddressHere",
-  "bootnodes":     ["https://bootnode.proofofhuman.ge"],
-  "solanaAddress": "YourSolanaAddress",
-  "inferenceMode": "auto",
-  "model":         "qwen2.5:1.5b"
-}`}</pre>
-      </div>
-      <p class="yp-p"><strong>Hardware:</strong> any modern consumer CPU can mine. GPU acceleration is supported via Ollama and increases throughput. Operators running on existing infrastructure (home PCs, server co-lo, Bitcoin ASIC facilities with spare CPU capacity) can begin earning immediately with no additional capital outlay beyond setup time.</p>
-
-      <h4 class="yp-h3">14.5 Miner Wallet</h4>
-      <p class="yp-p">
-        The <strong>PoH Miner Wallet</strong> (Android, iOS in beta) connects directly to the miner node via the local
-        API and provides: live POH balance, per-block reward history, job win log, send/receive, and the AI identity
-        scanner. The wallet requires no exchange or custodian — private keys remain on-device and transactions propagate
-        peer-to-peer through the miner network.
-      </p>
     </section>
 
-    <!-- Appendices -->
+    <!-- Appendix -->
     <section class="yp-section">
-      <h3 class="yp-h2">Appendix A: Conviction Curve Fee Math</h3>
-      <p class="yp-p">For a 1 SOL trade on a newly-created curve with <code>startingFeeBps = 100</code>:</p>
-      <div class="yp-code">
-        <pre>{`total_fee    = 1 SOL × 100/10000    = 0.01 SOL
-protocol_fee = 0.01 × 20%           = 0.002 SOL  (Meteora)
-referral_fee = 0.002 × 20%          = 0.0004 SOL (referral, if set)
-trading_fee  = 0.01 − 0.002         = 0.008 SOL
-creator_fee  = 0.008 × creatorFee%  = variable
-lp_fee       = 0.008 − creator_fee  = remainder`}</pre>
-      </div>
-    </section>
-
-    <section class="yp-section">
-      <h3 class="yp-h2">Appendix B: Vote Weight Examples</h3>
+      <h3 class="yp-h2">Appendix A: Vote Weight Examples</h3>
       <div class="yp-table-wrap">
         <table class="yp-table">
-          <thead><tr><th>Staked POH</th><th>Total Staked</th><th>stakeWeight</th><th>impact</th><th>+grad impact</th></tr></thead>
+          <thead><tr><th>Staked POH</th><th>Total Staked</th><th>stakeWeight</th><th>impact</th></tr></thead>
           <tbody>
-            <tr><td>0</td><td>any</td><td>0.000</td><td>1.00</td><td>1.50</td></tr>
-            <tr><td>100</td><td>10,000</td><td>0.010</td><td>1.09</td><td>1.64</td></tr>
-            <tr><td>1,000</td><td>10,000</td><td>0.100</td><td>1.90</td><td>2.85</td></tr>
-            <tr><td>10,000</td><td>10,000</td><td>1.000</td><td>10.00</td><td>15.00</td></tr>
+            <tr><td>0</td><td>any</td><td>0.000</td><td>1.00</td></tr>
+            <tr><td>100</td><td>10,000</td><td>0.010</td><td>1.09</td></tr>
+            <tr><td>1,000</td><td>10,000</td><td>0.100</td><td>1.90</td></tr>
+            <tr><td>10,000</td><td>10,000</td><td>1.000</td><td>10.00</td></tr>
           </tbody>
         </table>
       </div>

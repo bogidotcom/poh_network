@@ -1,11 +1,4 @@
-/**
- * Bridge from proofofhuman.ge to the PoH Miner Network.
- *
- * When a new signal's conviction curve pool is created, we emit a
- * "published signal transaction" so that miners can sync the new signal.
- *
- * Miners consider a signal canonical only after its curve pool exists.
- */
+'use strict';
 
 const fs = require('fs');
 const path = require('path');
@@ -13,7 +6,6 @@ const crypto = require('crypto');
 
 const TXS_PATH = path.join(__dirname, '../../data/miner-signals-transactions.json');
 const METHODS_PATH = path.join(__dirname, '../../data/methods.json');
-const POOLS_PATH = path.join(__dirname, '../../data/pools.json');
 
 function loadJson(file, defaultValue) {
   if (!fs.existsSync(file)) return defaultValue;
@@ -35,19 +27,16 @@ function getMethod(methodId) {
   return methods.find(m => m.id === methodId) || null;
 }
 
-function computeSignalsHash(methodsWithPools) {
-  const ids = methodsWithPools
-    .map(m => m.id)
-    .sort()
-    .join(',');
+function computeSignalsHash(methods) {
+  const ids = methods.map(m => m.id).sort().join(',');
   return crypto.createHash('sha256').update(ids).digest('hex').slice(0, 16);
 }
 
 /**
- * Called whenever a conviction curve pool is successfully created/recorded.
- * This is the moment the signal becomes "real" for the miner network.
+ * Called when a new signal is approved (1,000 POH fee verified).
+ * Records a transaction so miners can sync the new signal.
  */
-function publishSignalToMiners(methodId, poolRecord) {
+function publishSignalToMiners(methodId) {
   const method = getMethod(methodId);
   if (!method) {
     console.warn(`[miner-network] Cannot publish signal ${methodId} — method not found`);
@@ -56,40 +45,23 @@ function publishSignalToMiners(methodId, poolRecord) {
 
   const txs = loadJson(TXS_PATH, []);
 
-  // Idempotency: don't duplicate
   if (txs.some(tx => tx.methodId === methodId && tx.type === 'signal-published')) {
     return null;
   }
 
-  const pools = loadJson(POOLS_PATH, {});
-  const currentPublished = Object.keys(pools);
-
+  const methods = loadJson(METHODS_PATH, []);
   const tx = {
     type: 'signal-published',
     methodId,
-    method,                    // full method definition at time of publication
-    pool: {
-      poolAddress: poolRecord.poolAddress,
-      mintAddress: poolRecord.mintAddress,
-      configAddress: poolRecord.configAddress,
-      creatorWallet: poolRecord.creatorWallet,
-      txHash: poolRecord.txHash,
-      createdAt: poolRecord.createdAt || new Date().toISOString(),
-    },
+    method,
     publishedAt: Date.now(),
-    signalsHash: computeSignalsHash(
-      Object.keys(pools).map(id => getMethod(id)).filter(Boolean)
-    ),
+    signalsHash: computeSignalsHash(methods),
   };
 
   txs.push(tx);
   saveJson(TXS_PATH, txs);
 
-  console.log(`[miner-network] Published signal to miners: ${methodId} (pool: ${poolRecord.poolAddress})`);
-
-  // Optional: trigger IPFS re-publish of the full current signals list
-  // (you can call your existing publish-to-ipfs script here if desired)
-
+  console.log(`[miner-network] Published signal to miners: ${methodId}`);
   return tx;
 }
 
@@ -98,18 +70,14 @@ function getPublishedSignalsTransactions() {
 }
 
 /**
- * Returns only the methods that have a live conviction curve pool.
- * This is what miners should use as their canonical active signals set.
+ * Returns all approved methods as the canonical active signal set.
  */
-function getLiveSignalsWithCurves() {
-  const pools = loadJson(POOLS_PATH, {});
-  const methods = loadJson(METHODS_PATH, []);
-
-  return methods.filter(m => pools[m.id]);
+function getLiveSignals() {
+  return loadJson(METHODS_PATH, []);
 }
 
 module.exports = {
   publishSignalToMiners,
   getPublishedSignalsTransactions,
-  getLiveSignalsWithCurves,
+  getLiveSignals,
 };

@@ -5,13 +5,13 @@ const router = express.Router();
 
 const {
   getPublishedSignalsTransactions,
-  getLiveSignalsWithCurves,
+  getLiveSignals,
 } = require('../utils/miner-network');
 
 /**
  * GET /miner/signals/transactions
- * Returns all SignalsTransactions emitted when conviction curve pools were created.
- * Miners use this to discover newly listed signals that have live curves.
+ * Returns all published signal transactions.
+ * Miners use this to discover newly listed signals.
  */
 router.get('/signals/transactions', (req, res) => {
   try {
@@ -27,12 +27,11 @@ router.get('/signals/transactions', (req, res) => {
 
 /**
  * GET /miner/signals/live
- * Returns only the methods that currently have a live conviction curve pool.
- * This is the set miners should treat as canonical/active signals.
+ * Returns all approved methods as the canonical active signal set.
  */
 router.get('/signals/live', (req, res) => {
   try {
-    const live = getLiveSignalsWithCurves();
+    const live = getLiveSignals();
     res.json({
       count: live.length,
       signals: live,

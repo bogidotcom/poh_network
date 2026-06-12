@@ -476,18 +476,21 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
         const uk = sanctionsCheck.list === 'UK-FCDO' ? sanctionsCheck : { sanctioned: false, list: 'UK-FCDO' };
         const cex  = isInList('cex', inputs[0]);
         return res.json({
-          result:     fullCached.results,
-          count:      fullCached.results.length,
-          source:     'cache',
-          cachedAt:   fullCached.cachedAt,
-          ofac:       fullCached.ofac || null,
+          result:        fullCached.results,
+          count:         fullCached.results.length,
+          source:        'cache',
+          cachedAt:      fullCached.cachedAt,
+          ofac:          fullCached.ofac          || null,
           cex,
           eu,
           uk,
-          verdict:    fullCached.verdict,
-          confidence: fullCached.confidence,
-          reasoning:  fullCached.reasoning,
-          profile:    fullCached.profile   || null,
+          verdict:       fullCached.verdict,
+          confidence:    fullCached.confidence,
+          reasoning:     fullCached.reasoning,
+          profile:       fullCached.profile        || null,
+          vibeData:      fullCached.vibeData       || null,
+          farcasterData: fullCached.farcasterData  || null,
+          paragraphData: fullCached.paragraphData  || null,
           freeScansLeft: effectiveWallet ? getFreeScansLeft(effectiveWallet) : null,
         });
       }

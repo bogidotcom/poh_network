@@ -27,9 +27,30 @@ app.use('/checker', require('./routes/checker'));
 app.use('/abi', require('./routes/abi'));
 app.use('/profile', require('./routes/profile'));
 app.use('/ecosystem', require('./routes/ecosystem'));
-app.use('/curves', require('./routes/curves'));
 app.use('/brain', require('./routes/brain'));
 app.use('/miner', require('./routes/miner'));
+
+// Skills — proxy to local miner node API
+const MINER_NODE_URL = process.env.MINER_NODE_URL || 'http://localhost:3456';
+app.use('/api/skills', async (req, res) => {
+  try {
+    const axios = require('axios');
+    const url = `${MINER_NODE_URL}${req.originalUrl}`;
+    const opts = { timeout: 5000, headers: { 'content-type': 'application/json' } };
+    let r;
+    if (req.method === 'GET') {
+      r = await axios.get(url, opts);
+    } else if (req.method === 'POST') {
+      r = await axios.post(url, req.body, opts);
+    } else {
+      return res.status(405).json({ error: 'Method not allowed' });
+    }
+    res.status(r.status).json(r.data);
+  } catch (err) {
+    const status = err.response?.status || 502;
+    res.status(status).json({ error: err.message, skills: [] });
+  }
+});
 
 // Temporary internal endpoint for miners to submit results during transition
 const { ResultCollector } = require('./network/result-collector');

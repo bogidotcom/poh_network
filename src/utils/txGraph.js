@@ -404,4 +404,31 @@ async function analyzeXlm(address) {
   }
 }
 
-module.exports = { analyzeTransactionGraph, getCounterparties };
+/**
+ * Fetch 2nd-hop counterparties for a sample of hop-1 addresses.
+ * Uses the same cache as getCounterparties — if a hop-1 address was already
+ * scanned the result is free; otherwise falls back to a live fetch bounded by
+ * a 2-second timeout so callers never block for long.
+ *
+ * @param {Set<string>|string[]} hop1Addrs
+ * @returns {Promise<Map<string, Set<string>>>}  hop-1 address → its counterparties
+ */
+async function fetchHop2(hop1Addrs) {
+  const sample = [...hop1Addrs].slice(0, 5);
+  const results = await Promise.allSettled(
+    sample.map(cp =>
+      Promise.race([
+        getCounterparties(cp),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000)),
+      ])
+    )
+  );
+  const map = new Map();
+  for (let i = 0; i < sample.length; i++) {
+    const r = results[i];
+    if (r.status === 'fulfilled' && r.value?.size > 0) map.set(sample[i], r.value);
+  }
+  return map;
+}
+
+module.exports = { analyzeTransactionGraph, getCounterparties, fetchHop2 };

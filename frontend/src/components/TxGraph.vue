@@ -1,6 +1,12 @@
 <template>
   <div class="txgraph-wrap">
     <svg ref="svgRef" class="txgraph-svg" />
+    <!-- legend -->
+    <div class="txgraph-legend">
+      <span class="txgraph-legend-dot txgraph-legend-center" />center
+      <span class="txgraph-legend-dot txgraph-legend-hop1" />1-hop
+      <span class="txgraph-legend-dot txgraph-legend-hop2" />2-hop
+    </div>
     <!-- tooltip -->
     <div v-if="tooltip.visible" class="txgraph-tooltip" :style="{ left: tooltip.x + 'px', top: tooltip.y + 'px' }">
       <span class="txgraph-addr">{{ fmt(tooltip.id) }}</span>
@@ -59,14 +65,31 @@ function draw() {
   const nodes = props.graph.nodes.map(n => ({ ...n }))
   const edges = props.graph.edges.map(e => ({ ...e }))
 
-  simulation = d3.forceSimulation(nodes)
-    .force('link', d3.forceLink(edges).id(d => d.id).distance(90))
-    .force('charge', d3.forceManyBody().strength(-220))
-    .force('center', d3.forceCenter(W / 2, H / 2))
-    .force('collision', d3.forceCollide(28))
+  const hop2Edges = edges.filter(e => {
+    const src = nodes.find(n => n.id === (e.source?.id ?? e.source))
+    return src?.hop === 1
+  })
+  const hop1Edges = edges.filter(e => !hop2Edges.includes(e))
 
-  const link = g.append('g').selectAll('line')
-    .data(edges).join('line')
+  simulation = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(edges).id(d => d.id)
+      .distance(d => {
+        const src = nodes.find(n => n.id === (d.source?.id ?? d.source))
+        return src?.hop === 1 ? 70 : 110
+      }))
+    .force('charge', d3.forceManyBody().strength(d => d.hop === 2 ? -80 : -200))
+    .force('center', d3.forceCenter(W / 2, H / 2))
+    .force('collision', d3.forceCollide(d => d.hop === 2 ? 18 : 26))
+
+  // hop-2 edges (dimmer)
+  const linkHop2 = g.append('g').selectAll('line')
+    .data(hop2Edges).join('line')
+    .attr('class', 'txgraph-edge txgraph-edge-hop2')
+    .attr('marker-end', 'url(#arrow)')
+
+  // hop-1 edges (normal)
+  const linkHop1 = g.append('g').selectAll('line')
+    .data(hop1Edges).join('line')
     .attr('class', 'txgraph-edge')
     .attr('marker-end', 'url(#arrow)')
 
@@ -89,19 +112,20 @@ function draw() {
   svg.on('click', () => { tooltip.value.visible = false })
 
   nodeG.append('circle')
-    .attr('r', d => d.isCenter ? 16 : 9)
-    .attr('class', d => d.isCenter ? 'txgraph-center' : 'txgraph-peer')
+    .attr('r', d => d.hop === 0 ? 16 : d.hop === 2 ? 6 : 9)
+    .attr('class', d => d.hop === 0 ? 'txgraph-center' : d.hop === 2 ? 'txgraph-hop2' : 'txgraph-peer')
 
   nodeG.append('text')
-    .attr('dy', d => d.isCenter ? 28 : 20)
+    .attr('dy', d => d.hop === 0 ? 28 : d.hop === 2 ? 16 : 20)
     .attr('text-anchor', 'middle')
-    .attr('class', 'txgraph-label')
-    .text(d => fmt(d.id))
+    .attr('class', d => d.hop === 2 ? 'txgraph-label txgraph-label-dim' : 'txgraph-label')
+    .text(d => d.hop === 2 ? fmt(d.id).slice(0, 8) + '…' : fmt(d.id))
 
   simulation.on('tick', () => {
-    link
-      .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
-      .attr('x2', d => d.target.x).attr('y2', d => d.target.y)
+    linkHop1.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+            .attr('x2', d => d.target.x).attr('y2', d => d.target.y)
+    linkHop2.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+            .attr('x2', d => d.target.x).attr('y2', d => d.target.y)
     nodeG.attr('transform', d => `translate(${d.x},${d.y})`)
   })
 }
@@ -112,14 +136,41 @@ watch(() => props.graph, () => { if (simulation) simulation.stop(); draw() }, { 
 </script>
 
 <style scoped>
-.txgraph-wrap { position: relative; width: 100%; height: 340px; background: rgba(255,255,255,0.03); border-radius: 10px; overflow: hidden; }
+.txgraph-wrap { position: relative; width: 100%; height: 360px; background: rgba(255,255,255,0.03); border-radius: 10px; overflow: hidden; }
 .txgraph-svg  { width: 100%; height: 100%; }
 
-:deep(.txgraph-edge)   { stroke: #374151; stroke-width: 1.5; fill: none; }
-:deep(.txgraph-center) { fill: #6366f1; stroke: #818cf8; stroke-width: 2; }
-:deep(.txgraph-peer)   { fill: #1f2937; stroke: #4b5563; stroke-width: 1.5; cursor: pointer; transition: fill 0.15s; }
+:deep(.txgraph-edge)       { stroke: #374151; stroke-width: 1.5; fill: none; }
+:deep(.txgraph-edge-hop2)  { stroke: #1f2937; stroke-width: 1; stroke-dasharray: 3 3; fill: none; }
+:deep(.txgraph-center)     { fill: #6366f1; stroke: #818cf8; stroke-width: 2; }
+:deep(.txgraph-peer)       { fill: #1f2937; stroke: #4b5563; stroke-width: 1.5; cursor: pointer; transition: fill 0.15s; }
 :deep(.txgraph-peer:hover) { fill: #374151; stroke: #6366f1; }
-:deep(.txgraph-label)  { font-size: 9px; fill: #9ca3af; pointer-events: none; font-family: monospace; }
+:deep(.txgraph-hop2)       { fill: #111827; stroke: #374151; stroke-width: 1; cursor: pointer; transition: fill 0.15s; }
+:deep(.txgraph-hop2:hover) { fill: #1f2937; stroke: #4b5563; }
+:deep(.txgraph-label)      { font-size: 9px; fill: #9ca3af; pointer-events: none; font-family: monospace; }
+:deep(.txgraph-label-dim)  { font-size: 8px; fill: #4b5563; pointer-events: none; font-family: monospace; }
+
+.txgraph-legend {
+  position: absolute;
+  bottom: 8px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 10px;
+  color: #6b7280;
+  pointer-events: none;
+}
+.txgraph-legend-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 3px;
+  vertical-align: middle;
+}
+.txgraph-legend-center { background: #6366f1; box-shadow: 0 0 0 1.5px #818cf8; }
+.txgraph-legend-hop1   { background: #1f2937; box-shadow: 0 0 0 1.5px #4b5563; }
+.txgraph-legend-hop2   { background: #111827; box-shadow: 0 0 0 1px #374151; width: 6px; height: 6px; }
 
 .txgraph-tooltip {
   position: absolute;

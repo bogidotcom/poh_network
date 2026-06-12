@@ -2,20 +2,35 @@
 
 const axios = require('axios');
 
-const WARPCAST_API  = 'https://api.warpcast.com/v2';
+const FARCASTER_API = 'https://api.farcaster.xyz';
 const FARCASTER_HUB = 'https://hub.pinata.cloud/v1';
-const PARAGRAPH_API = 'https://paragraph.xyz/api';
+const PARAGRAPH_API = 'https://public.api.paragraph.com/api/v1';
 
 // ── Farcaster ─────────────────────────────────────────────────────────────────
 
-async function _warpcastUser(address) {
+async function _farcasterUserByAddress(address) {
   try {
-    const r = await axios.get(`${WARPCAST_API}/user-by-verification`, {
+    const r = await axios.get(`${FARCASTER_API}/v2/user-by-verification`, {
       params: { address: address.toLowerCase() },
       timeout: 8000,
     });
     return r.data?.result?.user || null;
   } catch { return null; }
+}
+
+async function _hubUserData(fid) {
+  try {
+    const r = await axios.get(`${FARCASTER_HUB}/userDataByFid`, {
+      params: { fid },
+      timeout: 8000,
+    });
+    const out = {};
+    for (const m of (r.data?.messages || [])) {
+      const b = m.data?.userDataBody;
+      if (b?.type && b?.value !== undefined) out[b.type] = b.value;
+    }
+    return out;
+  } catch { return {}; }
 }
 
 async function _hubCasts(fid, limit = 12) {
@@ -28,23 +43,15 @@ async function _hubCasts(fid, limit = 12) {
   } catch { return []; }
 }
 
-async function _warpcastRecentCasts(fid, limit = 12) {
+async function _hubFollowing(fid) {
   try {
-    const r = await axios.get(`${WARPCAST_API}/casts`, {
-      params: { fid, limit },
-      timeout: 10000,
-    });
-    return r.data?.result?.casts || [];
-  } catch { return []; }
-}
-
-async function _warpcastFollowing(fid) {
-  try {
-    const r = await axios.get(`${WARPCAST_API}/following`, {
-      params: { fid, limit: 8 },
+    const r = await axios.get(`${FARCASTER_HUB}/linksByFid`, {
+      params: { fid, link_type: 'follow', pageSize: 8 },
       timeout: 8000,
     });
-    return (r.data?.result?.users || []).map(u => u.username).filter(Boolean);
+    return (r.data?.messages || [])
+      .map(m => String(m.data?.linkBody?.targetFid))
+      .filter(f => f && f !== 'undefined');
   } catch { return []; }
 }
 
@@ -55,34 +62,31 @@ async function _warpcastFollowing(fid) {
 async function getFarcasterData(address) {
   if (!address || !/^0x[0-9a-fA-F]{40}$/.test(address)) return null;
 
-  const user = await _warpcastUser(address);
+  const user = await _farcasterUserByAddress(address);
   if (!user?.fid) return null;
 
   const fid = user.fid;
 
-  // Fetch casts + following in parallel
-  const [rawCasts, following] = await Promise.all([
-    _warpcastRecentCasts(fid).then(c => c.length ? c : _hubCasts(fid)),
-    _warpcastFollowing(fid),
+  const [rawCasts, following, userData] = await Promise.all([
+    _hubCasts(fid),
+    _hubFollowing(fid),
+    _hubUserData(fid),
   ]);
 
-  // Normalise casts from either API format
   const casts = rawCasts.slice(0, 12).map(c => {
-    const text     = c.text || c.data?.castAddBody?.text || '';
-    const likes    = c.reactions?.count   || c.data?.castAddBody?.embeds?.length || 0;
-    const replies  = c.replies?.count     || 0;
-    const recasts  = c.recasts?.count     || 0;
-    const ts       = c.timestamp          || c.data?.timestamp || null;
-    return { text, likes, replies, recasts, ts };
+    const body = c.data?.castAddBody;
+    const text = body?.text || c.text || '';
+    const ts   = c.data?.timestamp || c.timestamp || null;
+    return { text, likes: 0, replies: 0, recasts: 0, ts };
   }).filter(c => c.text.length > 2);
 
   return {
     fid,
-    username:       user.username         || '',
-    displayName:    user.displayName      || user.username || '',
-    bio:            user.profile?.bio?.text || '',
-    followerCount:  user.followerCount    || 0,
-    followingCount: user.followingCount   || 0,
+    username:       userData['USER_DATA_TYPE_USERNAME'] || user.username         || '',
+    displayName:    userData['USER_DATA_TYPE_DISPLAY']  || user.displayName      || user.username || '',
+    bio:            userData['USER_DATA_TYPE_BIO']      || user.profile?.bio?.text || '',
+    followerCount:  user.followerCount  || 0,
+    followingCount: user.followingCount || 0,
     casts,
     following,
   };
@@ -90,17 +94,19 @@ async function getFarcasterData(address) {
 
 // ── Paragraph ─────────────────────────────────────────────────────────────────
 
-async function _tryParagraphBlogs(params) {
+async function _paragraphSearch(q) {
   try {
-    const r = await axios.get(`${PARAGRAPH_API}/blogs`, { params, timeout: 8000 });
-    const list = Array.isArray(r.data) ? r.data : (r.data?.blogs || r.data?.data || []);
-    return list;
+    const r = await axios.get(`${PARAGRAPH_API}/discover/blogs/search`, {
+      params: { q },
+      timeout: 8000,
+    });
+    return Array.isArray(r.data) ? r.data : (r.data?.blogs || r.data?.data || []);
   } catch { return []; }
 }
 
-async function _paragraphPosts(blogId) {
+async function _paragraphPosts(slug) {
   try {
-    const r = await axios.get(`${PARAGRAPH_API}/blogs/${blogId}/posts`, {
+    const r = await axios.get(`${PARAGRAPH_API}/publications/${slug}/posts`, {
       params: { limit: 6 },
       timeout: 8000,
     });
@@ -121,20 +127,24 @@ async function getParagraphData(address) {
   if (!address) return null;
   const addr = address.toLowerCase();
 
-  // Try several lookup strategies
-  let blogs = await _tryParagraphBlogs({ address: addr });
-  if (!blogs.length) blogs = await _tryParagraphBlogs({ walletAddress: addr });
-  if (!blogs.length) return null;
+  const results = await _paragraphSearch(addr);
+  if (!results.length) return null;
 
-  const blog  = blogs[0];
-  const posts = blog.id ? await _paragraphPosts(blog.id) : [];
+  // Prefer exact wallet-address match, fall back to first result
+  const match = results.find(r => (r.user?.walletAddress || '').toLowerCase() === addr)
+    || results[0];
+  if (!match) return null;
+
+  const blog = match.blog || match;
+  const slug = blog.slug || blog.url;
+  const posts = slug ? await _paragraphPosts(slug) : [];
 
   return {
-    blogId:          blog.id              || null,
-    title:           blog.title           || blog.name        || '',
-    description:     blog.description     || blog.subtitle    || '',
-    subscriberCount: blog.subscriberCount || blog.subscriber_count || 0,
-    postCount:       blog.postCount       || blog.post_count  || posts.length,
+    blogId:          blog.blogId         || blog.id    || null,
+    title:           blog.name           || blog.title || '',
+    description:     blog.summary        || blog.description || '',
+    subscriberCount: match.activeSubscriberCount || blog.subscriberCount || 0,
+    postCount:       blog.postCount      || posts.length,
     posts,
   };
 }

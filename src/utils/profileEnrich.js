@@ -2,6 +2,7 @@
 
 const axios   = require('axios');
 const { ethers } = require('ethers');
+const { fetchHop2 } = require('./txGraph');
 
 const WEB3BIO_API = 'https://api.web3.bio';
 const ETHERSCAN_V2 = 'https://api.etherscan.io/v2/api';
@@ -238,18 +239,38 @@ async function fetchEnsName(address) {
 }
 
 // ── Tx graph nodes + edges for visualization ──────────────────────────────────
-// Returns top counterparties from the cache populated during scan.
+// Builds a 2-hop graph: center → hop-1 counterparties → hop-2 counterparties.
+// Each node carries a `hop` property: 0 = center, 1 = direct counterparty, 2 = second-hop.
 
-function buildGraphData(address, counterparties) {
-  const nodes = [{ id: address, label: address, isCenter: true }];
+function buildGraphData(address, counterparties, hop2Map) {
+  const nodes = [{ id: address, label: address, isCenter: true, hop: 0 }];
   const edges = [];
+  const hop1Set = new Set();
+
   let i = 0;
   for (const cp of counterparties) {
-    if (i >= 30) break; // cap at 30 nodes for perf
-    nodes.push({ id: cp, label: cp, isCenter: false });
+    if (i >= 30) break;
+    nodes.push({ id: cp, label: cp, isCenter: false, hop: 1 });
     edges.push({ source: address, target: cp });
+    hop1Set.add(cp);
     i++;
   }
+
+  // Hop-2: counterparties of counterparties
+  if (hop2Map?.size) {
+    const hop2Added = new Set();
+    outer: for (const [hop1Addr, hop2Addrs] of hop2Map) {
+      if (!hop1Set.has(hop1Addr)) continue;
+      for (const h2 of hop2Addrs) {
+        if (hop2Added.size >= 20) break outer;      // cap total hop-2 nodes
+        if (h2 === address || hop1Set.has(h2) || hop2Added.has(h2)) continue;
+        nodes.push({ id: h2, label: h2, isCenter: false, hop: 2 });
+        edges.push({ source: hop1Addr, target: h2 });
+        hop2Added.add(h2);
+      }
+    }
+  }
+
   return { nodes, edges };
 }
 
@@ -463,8 +484,12 @@ async function enrichProfile(address, counterparties) {
 
   const links = Object.values(linksMap);
 
-  // Graph data
-  const graph = counterparties ? buildGraphData(address, counterparties) : null;
+  // Graph data — 2-hop: fetch hop-2 counterparties in parallel with other enrichment
+  let hop2Map = null;
+  if (counterparties?.size > 0) {
+    hop2Map = await fetchHop2(counterparties).catch(() => null);
+  }
+  const graph = counterparties ? buildGraphData(address, counterparties, hop2Map) : null;
 
   return {
     address,

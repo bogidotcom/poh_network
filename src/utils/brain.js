@@ -35,20 +35,6 @@ const BRAIN_STATE_PATH = path.join(BRAIN_DATA_DIR, 'brain_state.md');
 const DATASET_PATH     = path.join(BRAIN_DATA_DIR, 'dataset.json');
 const WEIGHTS_PATH     = path.join(BRAIN_DATA_DIR, 'weights.json');
 const FEEDBACK_PATH    = path.join(BRAIN_DATA_DIR, 'feedback.json');
-const POOLS_PATH       = path.join(BRAIN_DATA_DIR, 'pools.json');
-
-// ── Pool graduation multiplier ────────────────────────────────────────────────
-// Returns 1.5 if the signal's bonding curve has graduated to DEX, else 1.0
-function getGraduationMult(methodId) {
-  try {
-    if (!fs.existsSync(POOLS_PATH)) return 1.0;
-    const pools = JSON.parse(fs.readFileSync(POOLS_PATH, 'utf-8'));
-    const record = Array.isArray(pools)
-      ? pools.find(p => p.methodId === methodId)
-      : pools[methodId];
-    return record?.migrated ? 1.5 : 1.0;
-  } catch { return 1.0; }
-}
 
 // ── Ollama request queue (serializes all calls — Ollama is single-instance) ───
 let _ollamaQueue = Promise.resolve();
@@ -388,10 +374,22 @@ async function analyzeHumanness(address, methodResults, methods) {
   const weights = getWeights();
   const usingQvac = QVAC_ENABLED && !_qvacSdkCircuitOpenAt;
 
+  // Sanitize external text before inserting into LLM prompt (prompt injection guard)
+  function _sanitizeForPrompt(str) {
+    if (!str || typeof str !== 'string') return 'unnamed';
+    return str
+      .slice(0, 80)
+      .replace(/[<>]/g, '')
+      .replace(/\bignore\b.{0,30}\binstruct/gi, '[filtered]')
+      .replace(/\bsystem\s*prompt\b/gi, '[filtered]')
+      .replace(/\b(forget|disregard|override)\b.{0,30}\b(above|previous|prior|rules)\b/gi, '[filtered]')
+      .trim() || 'unnamed';
+  }
+
   // Qvac 600M has ~2k token context — keep prompt tiny
   // Ollama: all passed + top-10 failed; Qvac: top-4 passed + top-4 failed
   // Sort by effective weight (base weight × graduation multiplier)
-  const effectiveWeight = r => (weights[r.methodId] ?? 1) * getGraduationMult(r.methodId);
+  const effectiveWeight = r => weights[r.methodId] ?? 1;
 
   const passed = methodResults
     .filter(r => r.result === true)
@@ -404,25 +402,19 @@ async function analyzeHumanness(address, methodResults, methods) {
 
   // Build signals with negative flag awareness (Task 2)
   const signals = [...passed, ...failed].map(r => {
-    // Find the method definition to know if this is a "negative" (bad) signal
     const m = methods.find(x => x.id === r.methodId);
     const isNegative = !!(m && m.negative);
     return {
-      name: r.description,
+      name: _sanitizeForPrompt(r.description),
       pass: r.result,
       negative: isNegative,
-      w: +((weights[r.methodId] ?? 1.0) * getGraduationMult(r.methodId)).toFixed(2),
+      w: +((weights[r.methodId] ?? 1.0)).toFixed(2),
     };
   });
 
   const signalsStr = signals
     .map(s => {
-      let label;
-      if (s.negative) {
-        label = s.pass ? 'BLACKLIST' : 'PASS';   // "pass" on negative method = the bad thing happened
-      } else {
-        label = s.pass ? 'PASS' : 'FAIL';
-      }
+      const label = s.negative ? (s.pass ? 'BLACKLIST' : 'PASS') : (s.pass ? 'PASS' : 'FAIL');
       return `[${label}] ${s.name} (w:${s.w})`;
     })
     .join('\n');
@@ -450,10 +442,10 @@ Rules:
 
 Address: ${address}
 
-Signals (${passed.length} passed, ${failed.length} failed shown):
+<signals>
 ${signalsStr}
+</signals>
 ${correctionBlock}
-
 Return exactly this JSON (no extra text):
 {"verdict":"HUMAN|AI|UNCERTAIN","confidence":<float 0.0-1.0>,"reasoning":"<2-4 sentences referencing specific signals and weights>"}`;
 
