@@ -879,4 +879,47 @@ Return ONLY valid JSON, no extra text:
   };
 }
 
-module.exports = { analyzeHumanness, vibeCheck, onNewMethod, onVote, onVerdictFeedback, consolidate, getWeights, validateDescription, validateFeedback };
+// ── Skill routing helpers ─────────────────────────────────────────────────────
+
+function loadSkillContexts(skills) {
+  return (skills || [])
+    .filter(s => s.context)
+    .map(s => ({ skillId: s.id, name: s.description || s.id, context: s.context }));
+}
+
+async function routeMessage(userMessage, skillContexts) {
+  if (!skillContexts?.length) return { skillId: null, reason: 'No skills available' };
+
+  const skillBlock = skillContexts.map(s => `[${s.skillId}] ${s.name}`).join('\n');
+
+  const prompt = `You are a routing agent. Given a user message, decide which skill to invoke.
+
+SKILLS:
+${skillBlock}
+
+USER MESSAGE: "${userMessage}"
+
+If a skill should be invoked, respond with JSON:
+{"skillId":"<id>","input":{"address":"<extracted wallet address if present, else null>"},"reason":"<one sentence>"}
+
+If no skill applies (general conversation), respond with:
+{"skillId":null,"reason":"<why not>"}
+
+Output ONLY valid JSON.`;
+
+  const result = await evaluatorChatJSON(prompt, ['skillId'], { maxTokens: 120, timeLimit: 15000 });
+  return result || { skillId: null, reason: 'Routing failed' };
+}
+
+async function interpretSkillResult({ skillId, result, context, userMessage }) {
+  const prompt = `Skill "${skillId}" returned data. Explain it to the user in 2-3 sentences.
+User asked: "${userMessage}"
+Skill context: ${(context || '').slice(0, 600)}
+Result: ${JSON.stringify(result).slice(0, 800)}
+Be direct. Name specific values. End with a one-sentence signal assessment.`;
+
+  const reply = await learnerChat(prompt, { maxTokens: 150, timeLimit: 20000 });
+  return reply || 'No interpretation available.';
+}
+
+module.exports = { analyzeHumanness, vibeCheck, onNewMethod, onVote, onVerdictFeedback, consolidate, getWeights, validateDescription, validateFeedback, loadSkillContexts, routeMessage, interpretSkillResult };
