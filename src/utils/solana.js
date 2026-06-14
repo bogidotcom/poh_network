@@ -47,7 +47,7 @@ async function verifyTxSuccess(txHash) {
 }
 
 /**
- * Verify a POH SPL token transfer to FEE_RECIPIENT of at least expectedAmount (raw, 6-decimal units).
+ * Verify a POH SPL token transfer to FEE_RECIPIENT of at least expectedAmount (raw, 9-decimal units: 1 POH = 1e9).
  */
 async function verifyPohTransfer(txHash, expectedAmountRaw, fromWallet) {
   try {
@@ -290,7 +290,7 @@ async function getAllStakers() {
 /**
  * Sends POH tokens from the backend treasury wallet to a recipient.
  * Requires SOLANA_PRIV_KEY (base58) and POH_TOKEN_MINT to be set.
- * amountRaw is in 6-decimal units (1 POH = 1_000_000).
+ * amountRaw is in 9-decimal units (1 POH = 1_000_000_000).
  */
 async function sendPohTokens(toAddress, amountRaw) {
   const privKeyB58 = process.env.SOLANA_PRIV_KEY;

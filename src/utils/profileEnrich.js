@@ -2,10 +2,16 @@
 
 const axios   = require('axios');
 const { ethers } = require('ethers');
-const { fetchHop2 } = require('./txGraph');
+const { fetchHop2, getCounterparties } = require('./txGraph');
 
-const WEB3BIO_API = 'https://api.web3.bio';
-const ETHERSCAN_V2 = 'https://api.etherscan.io/v2/api';
+const WEB3BIO_API   = 'https://api.web3.bio';
+const ETHERSCAN_V2  = 'https://api.etherscan.io/v2/api';
+const FARCASTER_API = 'https://api.farcaster.xyz';
+const WARPCAST_API  = 'https://api.warpcast.com/v2';
+const HUB_API       = 'https://hub.pinata.cloud/v1';
+const PARA_API      = 'https://api.paragraph.com';
+const ZORA_API      = 'https://api-sdk.zora.engineering';
+const ZORA_KEY      = 'zora_api_6770e5a970bb4febd95deee8cda143e469a25f4b35d61cb0355646e9af83d3c1';
 
 // ── Web3.bio — social profiles + avatar ──────────────────────────────────────
 
@@ -23,7 +29,7 @@ async function fetchTxStats(address) {
   const apikey = process.env.ETHERSCAN_API_KEY;
   if (!apikey) return null;
   try {
-    const [first, last, count] = await Promise.all([
+    const [firstRes, lastRes, countRes] = await Promise.all([
       axios.get(ETHERSCAN_V2, {
         params: { chainid: 1, module: 'account', action: 'txlist',
                   address, page: 1, offset: 1, sort: 'asc', apikey },
@@ -34,21 +40,18 @@ async function fetchTxStats(address) {
                   address, page: 1, offset: 1, sort: 'desc', apikey },
         timeout: 8000,
       }),
+      // Use txlistinternal count=1 + Etherscan txcount RPC to get total without fetching all rows
       axios.get(ETHERSCAN_V2, {
-        params: { chainid: 1, module: 'account', action: 'txlist',
-                  address, page: 1, offset: 1, sort: 'asc', apikey },
+        params: { chainid: 1, module: 'proxy', action: 'eth_getTransactionCount',
+                  address, tag: 'latest', apikey },
         timeout: 8000,
       }),
     ]);
-    const firstTx = first.data?.result?.[0];
-    const lastTx  = last.data?.result?.[0];
-    // total from Etherscan normal tx endpoint (result count is not total, use different endpoint)
-    const txlistRes = await axios.get(ETHERSCAN_V2, {
-      params: { chainid: 1, module: 'account', action: 'txlist',
-                address, page: 1, offset: 10000, sort: 'asc', apikey },
-      timeout: 12000,
-    });
-    const total = Array.isArray(txlistRes.data?.result) ? txlistRes.data.result.length : null;
+    const firstTx = firstRes.data?.result?.[0];
+    const lastTx  = lastRes.data?.result?.[0];
+    // eth_getTransactionCount gives outgoing nonce (sent txs), good enough for display
+    const hexCount = countRes.data?.result;
+    const total = hexCount ? parseInt(hexCount, 16) : null;
     return {
       firstTx: firstTx ? { hash: firstTx.hash, ts: parseInt(firstTx.timeStamp, 10) * 1000 } : null,
       lastTx:  lastTx  ? { hash: lastTx.hash,  ts: parseInt(lastTx.timeStamp,  10) * 1000 } : null,
@@ -302,11 +305,11 @@ async function fetchTronProfile(address) {
     const res = await axios.get(`https://api.trongrid.io/v1/accounts/${encodeURIComponent(address)}`, { timeout: 7000, validateStatus: () => true });
     const acc = res.data?.data?.[0] || {};
     const trxSun = acc.balance || 0;
-    const trx = trxSun / 1_000_000;
+    const trx = trxSun / 1_000_000_000;
     const trc20 = acc.trc20 || [];
     const usdtKey = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
     const usdtEntry = trc20.find(t => t && t[usdtKey] != null);
-    const usdt = usdtEntry ? (parseFloat(usdtEntry[usdtKey]) / 1_000_000) : 0;
+    const usdt = usdtEntry ? (parseFloat(usdtEntry[usdtKey]) / 1_000_000_000) : 0;
     const hasVotes = !!(acc.votes && acc.votes.length);
     return {
       trxBalance: trx,
@@ -364,6 +367,118 @@ async function fetchXlmProfile(address) {
   } catch { return null; }
 }
 
+// ── Farcaster social data ─────────────────────────────────────────────────────
+
+async function fetchFarcasterData(address) {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) return null;
+  try {
+    const userRes = await axios.get(`${FARCASTER_API}/v2/user-by-verification`,
+      { params: { address }, timeout: 6000 });
+    const user = userRes.data?.result?.user;
+    if (!user?.fid) return null;
+    const fid = user.fid;
+
+    const [castsRes, hubRes] = await Promise.allSettled([
+      axios.get(`${WARPCAST_API}/casts`, { params: { fid, limit: 25 }, timeout: 6000 }),
+      axios.get(`${HUB_API}/userDataByFid`, { params: { fid }, timeout: 5000 }),
+    ]);
+
+    const ud = {};
+    for (const m of (hubRes.value?.data?.messages || [])) {
+      const b = m.data?.userDataBody;
+      if (b?.type) ud[b.type] = b.value;
+    }
+
+    const rawCasts = castsRes.value?.data?.result?.casts || [];
+    const casts = rawCasts.map(c => ({
+      text:    c.text || '',
+      ts:      c.timestamp ? new Date(c.timestamp).getTime() : null,
+      channel: (c.parentUrl || c.rootParentUrl || '').match(/\/channel\/([^/?#]+)/)?.[1] || null,
+      likes:   c.reactions?.likes || c.reactions?.count || 0,
+      replies: c.replies?.count || 0,
+    })).filter(c => c.text.length > 1).slice(0, 10);
+
+    return {
+      fid,
+      username:       ud['USER_DATA_TYPE_USERNAME'] || user.username    || '',
+      displayName:    ud['USER_DATA_TYPE_DISPLAY']  || user.displayName || user.username || '',
+      bio:            ud['USER_DATA_TYPE_BIO']       || user.profile?.bio?.text || '',
+      followerCount:  user.followerCount  || 0,
+      followingCount: user.followingCount || 0,
+      casts,
+    };
+  } catch { return null; }
+}
+
+// ── Paragraph blog data ───────────────────────────────────────────────────────
+
+function _parseRssItems(xml) {
+  const items = [];
+  for (const b of (String(xml).matchAll(/<item>([\s\S]*?)<\/item>/g) || [])) {
+    const raw = b[1];
+    const title     = raw.match(/<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>/)?.[1]
+                   || raw.match(/<title>([\s\S]*?)<\/title>/)?.[1] || '';
+    const link      = raw.match(/<link>(https?:\/\/[^\s<]+)<\/link>/)?.[1] || null;
+    const pubDate   = raw.match(/<pubDate>([\s\S]*?)<\/pubDate>/)?.[1] || null;
+    const publishedAt = pubDate ? Math.floor(new Date(pubDate).getTime() / 1000) : null;
+    if (title.trim()) items.push({ title: title.trim(), url: link, publishedAt });
+  }
+  return items;
+}
+
+async function fetchParagraphData(username) {
+  if (!username) return null;
+  try {
+    const [authorRes, rssRes] = await Promise.allSettled([
+      axios.get(`${PARA_API}/blogs/@${username}`, { timeout: 5000 }),
+      axios.get(`${PARA_API}/blogs/rss/@${username}`, { timeout: 5000, responseType: 'text' }),
+    ]);
+    const author = authorRes.value?.data || null;
+    const posts  = _parseRssItems(rssRes.value?.data || '').slice(0, 10);
+    if (!author && !posts.length) return null;
+    return {
+      author: author ? {
+        handle:      (author.url || username).replace(/^@/, ''),
+        displayName: author.name    || null,
+        bio:         author.summary || null,
+      } : { handle: username },
+      posts,
+    };
+  } catch { return null; }
+}
+
+// ── Zora creator data ─────────────────────────────────────────────────────────
+
+async function fetchZoraData(address) {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) return null;
+  try {
+    const hdrs = { 'X-API-Key': ZORA_KEY, 'Accept': 'application/json' };
+    const [profileRes, coinsRes] = await Promise.allSettled([
+      axios.get(`${ZORA_API}/profile`,      { params: { identifier: address }, headers: hdrs, timeout: 8000 }),
+      axios.get(`${ZORA_API}/profileCoins`, { params: { identifier: address, count: 20 }, headers: hdrs, timeout: 8000 }),
+    ]);
+    const zProfile = profileRes.value?.data?.profile || null;
+    const edges    = coinsRes.value?.data?.profile?.createdCoins?.edges || [];
+    const coins    = edges.map(e => e.node).filter(Boolean).map(c => ({
+      name:          c.name          || '',
+      symbol:        c.symbol        || '',
+      marketCap:     c.marketCap     || '0',
+      uniqueHolders: c.uniqueHolders || 0,
+      createdAt:     c.createdAt     || null,
+    }));
+    if (!zProfile && !coins.length) return null;
+    return {
+      profile: zProfile ? {
+        handle:      zProfile.handle      || null,
+        displayName: zProfile.displayName || null,
+        bio:         zProfile.bio         || null,
+      } : null,
+      createdCoins: coins,
+      totalCreated: coins.length,
+    };
+  } catch { return null; }
+}
+
 // ── Main enrichment ───────────────────────────────────────────────────────────
 
 async function enrichProfile(address, counterparties) {
@@ -375,30 +490,40 @@ async function enrichProfile(address, counterparties) {
   const isXlm     = /^G[A-Z2-7]{55}$/.test(address);
   const isSolana  = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address) && !isTron && !isBitcoin;
 
-  const tasks = {
-    web3bio:   fetchWeb3Bio(address),
-    txStats:   isEvm ? fetchTxStats(address)         : Promise.resolve(null),
-    gitcoin:   isEvm ? fetchGitcoinScore(address)    : Promise.resolve(null),
-    ens:       isEvm ? fetchEnsName(address)          : Promise.resolve(null),
-    galxe:     isEvm ? fetchGalxeProfile(address)    : Promise.resolve(null),
-    brightid:  isEvm ? fetchBrightId(address)        : Promise.resolve(null),
-    bab:       isEvm ? fetchBabToken(address)        : Promise.resolve(null),
-    nomis:     isEvm ? fetchNomisScore(address)      : Promise.resolve(null),
-    humanity:  isEvm ? fetchHumanityProtocol(address): Promise.resolve(null),
-    humanTech: isEvm ? fetchHumanTech(address)       : Promise.resolve(null),
-    safeWallets: isEvm ? fetchSafeWallets(address)   : Promise.resolve(null),
-    link3:     isEvm ? fetchLink3Profile(address)    : Promise.resolve(null),
-    bitcoin:   isBitcoin ? fetchBitcoinProfile(address) : Promise.resolve(null),
-    tron:      isTron    ? fetchTronProfile(address)    : Promise.resolve(null),
-    ton:       isTon     ? fetchTonProfile(address)     : Promise.resolve(null),
-    xlm:       isXlm     ? fetchXlmProfile(address)     : Promise.resolve(null),
-  };
+  // Stage 1: web3bio + ENS — fast lookups needed to derive Farcaster handle for Paragraph
+  const [web3bio, ens] = await Promise.all([
+    fetchWeb3Bio(address).catch(() => null),
+    isEvm ? fetchEnsName(address).catch(() => null) : Promise.resolve(null),
+  ]);
 
-  const [web3bio, txStats, gitcoin, ens, galxe,
+  // Extract a handle for Paragraph lookup (needs username, not address)
+  const socialHandle = web3bio?.find(p => p.platform === 'farcaster')?.identity
+    || ens?.name?.replace(/\.eth$/i, '')
+    || null;
+
+  // Stage 2: all remaining lookups in parallel (social calls included)
+  const [txStats, gitcoin, galxe,
          brightid, bab, nomis, humanity, humanTech, safeWallets, link3,
-         bitcoin, tron, ton, xlm] = await Promise.all(
-    Object.values(tasks).map(p => p.catch(() => null))
-  );
+         bitcoin, tron, ton, xlm,
+         farcasterData, paragraphData, zoraData] = await Promise.all([
+    isEvm ? fetchTxStats(address)          : null,
+    isEvm ? fetchGitcoinScore(address)     : null,
+    isEvm ? fetchGalxeProfile(address)     : null,
+    isEvm ? fetchBrightId(address)         : null,
+    isEvm ? fetchBabToken(address)         : null,
+    isEvm ? fetchNomisScore(address)       : null,
+    isEvm ? fetchHumanityProtocol(address) : null,
+    isEvm ? fetchHumanTech(address)        : null,
+    isEvm ? fetchSafeWallets(address)      : null,
+    isEvm ? fetchLink3Profile(address)     : null,
+    isBitcoin ? fetchBitcoinProfile(address) : null,
+    isTron    ? fetchTronProfile(address)    : null,
+    isTon     ? fetchTonProfile(address)     : null,
+    isXlm     ? fetchXlmProfile(address)     : null,
+    isEvm ? fetchFarcasterData(address)          : null,
+    socialHandle ? fetchParagraphData(socialHandle) : null,
+    isEvm ? fetchZoraData(address)               : null,
+  ].map(p => (p instanceof Promise ? p : Promise.resolve(p)).catch(() => null)));
 
   // Merge: ens overrides web3bio ENS entry if richer
   const profiles = web3bio || [];
@@ -484,12 +609,22 @@ async function enrichProfile(address, counterparties) {
 
   const links = Object.values(linksMap);
 
-  // Graph data — 2-hop: fetch hop-2 counterparties in parallel with other enrichment
-  let hop2Map = null;
-  if (counterparties?.size > 0) {
-    hop2Map = await fetchHop2(counterparties).catch(() => null);
+  // Graph data — 2-hop: use passed counterparties or fetch directly if empty/missing
+  let cpSet = (counterparties instanceof Set && counterparties.size > 0)
+    ? counterparties
+    : Array.isArray(counterparties) && counterparties.length > 0
+      ? new Set(counterparties)
+      : null;
+  if (!cpSet && isEvm) {
+    // Fallback: fetch counterparties directly (cache hit if scan already ran them)
+    cpSet = await getCounterparties(address).catch(() => null);
+    if (!cpSet?.size) cpSet = null;
   }
-  const graph = counterparties ? buildGraphData(address, counterparties, hop2Map) : null;
+  let hop2Map = null;
+  if (cpSet?.size > 0) {
+    hop2Map = await fetchHop2(cpSet).catch(() => null);
+  }
+  const graph = cpSet ? buildGraphData(address, cpSet, hop2Map) : null;
 
   return {
     address,
@@ -510,11 +645,13 @@ async function enrichProfile(address, counterparties) {
     },
     link3Profile:      link3       || null,  // { handle, subscribers, url } or null
     associatedWallets: safeWallets || null,  // Safe multisig addresses or null
-    // New chain-specific enrichment (Task 1)
     bitcoin: bitcoin || null,
     tron:    tron    || null,
     ton:     ton     || null,
     xlm:     xlm     || null,
+    farcasterData: farcasterData || null,
+    paragraphData: paragraphData || null,
+    zoraData:      zoraData      || null,
   };
 }
 
