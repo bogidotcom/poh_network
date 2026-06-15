@@ -31,10 +31,10 @@ const emit = defineEmits(['navigate'])
           3. You earn POH and rest
         </p>
         <div class="lp-hero-actions">
-          <button class="lp-cta-primary" @click="emit('navigate', 'scanner')">
+          <button class="lp-cta-secondary" @click="emit('navigate', 'scanner')">
             Open Scanner →
           </button>
-          <a class="lp-cta-secondary" href="https://miner.proofofhuman.ge" target="_blank" rel="noopener">
+          <a class="lp-cta-primary" href="https://miner.proofofhuman.ge" target="_blank" rel="noopener">
             Run a Miner ↗
           </a>
         </div>
@@ -141,7 +141,7 @@ const emit = defineEmits(['navigate'])
 }
 
 .lp-logo-text {
-  font-size: 1.1rem;
+  font-size: 1.5rem;
   font-weight: 600;
   letter-spacing: 0.15em;
   color: #fff;
@@ -160,7 +160,7 @@ const emit = defineEmits(['navigate'])
   padding: 0.45rem 1rem;
   border-radius: 6px;
   font-family: inherit;
-  font-size: 0.95rem;
+  font-size: 1.5rem;
   cursor: pointer;
   text-decoration: none;
   transition: color 0.15s, border-color 0.15s;
@@ -184,7 +184,7 @@ const emit = defineEmits(['navigate'])
 }
 
 .lp-ext {
-  font-size: 0.8em;
+  font-size: 1.5rem;
   opacity: 0.8;
 }
 
@@ -211,7 +211,7 @@ const emit = defineEmits(['navigate'])
   display: inline-block;
   border: 1px solid #1e1e1e;
   color: #22c55e;
-  font-size: 0.75rem;
+  font-size: 1.25rem;
   letter-spacing: 0.15em;
   text-transform: uppercase;
   padding: 0.35rem 0.85rem;
@@ -229,7 +229,7 @@ const emit = defineEmits(['navigate'])
 }
 
 .lp-sub {
-  font-size: 1.05rem;
+  font-size: 1.25rem;
   color: #666;
   line-height: 1.7;
   max-width: 520px;
@@ -251,11 +251,12 @@ const emit = defineEmits(['navigate'])
   padding: 0.8rem 1.8rem;
   border-radius: 6px;
   font-family: inherit;
-  font-size: 1rem;
+  font-size: 1.25rem;
   font-weight: 700;
   cursor: pointer;
   transition: opacity 0.15s;
   letter-spacing: 0.03em;
+  text-decoration: none;
 }
 
 .lp-cta-primary:hover {
@@ -269,7 +270,7 @@ const emit = defineEmits(['navigate'])
   padding: 0.8rem 1.8rem;
   border-radius: 6px;
   font-family: inherit;
-  font-size: 1rem;
+  font-size: 1.25rem;
   cursor: pointer;
   text-decoration: none;
   transition: color 0.15s, border-color 0.15s;
@@ -319,14 +320,14 @@ const emit = defineEmits(['navigate'])
 }
 
 .lp-feature-title {
-  font-size: 1.1rem;
+  font-size: 1.5rem;
   font-weight: 600;
   color: #fff;
   letter-spacing: 0.03em;
 }
 
 .lp-feature-desc {
-  font-size: 0.9rem;
+  font-size: 1.25rem;
   color: #555;
   line-height: 1.65;
 }
@@ -357,7 +358,7 @@ const emit = defineEmits(['navigate'])
 }
 
 .lp-stat-value {
-  font-size: 0.95rem;
+  font-size: 1.25rem;
   color: #aaa;
 }
 

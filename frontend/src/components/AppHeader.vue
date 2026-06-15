@@ -30,11 +30,11 @@ function go(section, extra) {
         <PlusSquare :size="14" class="icon" /> Train
       </button>
       <button :class="['nav-btn', { active: current === 'votes'    }]" @click="go('votes', 'load')">
-        <Vote :size="14" class="icon" /> Vote
+        <Vote :size="14" class="icon" /> Feedback
       </button>
-      <button :class="['nav-btn', { active: current === 'staking'  }]" @click="go('staking')">
+      <!-- <button :class="['nav-btn', { active: current === 'staking'  }]" @click="go('staking')">
         <SquareArrowDown :size="14" class="icon" /> Stake
-      </button>
+      </button> -->
       <button :class="['nav-btn', { active: current === 'profile'  }]" @click="go('profile', 'load')">
         <PersonStanding :size="14" class="icon" /> Profile
       </button>
@@ -71,7 +71,7 @@ function go(section, extra) {
       <button :class="['mobile-nav-btn', { active: current === 'listing'  }]" @click="go('listing')">Train</button>
       <button :class="['mobile-nav-btn', { active: current === 'votes'    }]" @click="go('votes', 'load')">Feedback</button>
       <button :class="['mobile-nav-btn', { active: current === 'api'      }]" @click="go('api')">API</button>
-      <button :class="['mobile-nav-btn', { active: current === 'staking'  }]" @click="go('staking')">Stake</button>
+      <!-- <button :class="['mobile-nav-btn', { active: current === 'staking'  }]" @click="go('staking')">Stake</button> -->
       <button :class="['mobile-nav-btn', { active: current === 'profile'  }]" @click="go('profile', 'load')">Profile</button>
       <div class="mobile-menu-divider"></div>
       <button v-if="!connected" class="mobile-nav-btn mobile-connect" @click="showWalletModal = true; mobileOpen = false">

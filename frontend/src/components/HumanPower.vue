@@ -845,14 +845,14 @@ onUnmounted(() => {
           <Search class="icon" :size="14" /> Scan
         </button>
         <button :class="['nav-btn', { active: currentSection === 'votes' }]" @click="showSection('votes'); loadVotingFiltered()">
-          <Vote class="icon" :size="14" /> Vote
+          <Vote class="icon" :size="14" /> Feedback
         </button>
         <button :class="['nav-btn', { active: currentSection === 'listing' }]" @click="showSection('listing')">
           <PlusSquare class="icon" :size="14" /> Add signal
         </button>
-        <button :class="['nav-btn', { active: currentSection === 'staking' }]" @click="showSection('staking')">
+        <!-- <button :class="['nav-btn', { active: currentSection === 'staking' }]" @click="showSection('staking')">
           <Coins class="icon" :size="14" /> Staking
-        </button>
+        </button> -->
         <button :class="['nav-btn', { active: currentSection === 'about' }]" @click="showSection('about')">
           <Info class="icon" :size="14" /> About
         </button>
@@ -889,9 +889,9 @@ onUnmounted(() => {
       <div class="mobile-menu-inner">
         <button class="mobile-nav-btn" @click="emit('navigate', 'landing'); mobileMenuOpen = false">← Back</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'checker' }]" @click="showSection('checker')">Scan</button>
-        <button :class="['mobile-nav-btn', { active: currentSection === 'votes' }]" @click="showSection('votes'); loadVotingFiltered()">Vote</button>
+        <button :class="['mobile-nav-btn', { active: currentSection === 'votes' }]" @click="showSection('votes'); loadVotingFiltered()">Feedback</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'listing' }]" @click="showSection('listing')">Add signal</button>
-        <button :class="['mobile-nav-btn', { active: currentSection === 'staking' }]" @click="showSection('staking')">Staking</button>
+        <!-- <button :class="['mobile-nav-btn', { active: currentSection === 'staking' }]" @click="showSection('staking')">Staking</button> -->
         <button :class="['mobile-nav-btn', { active: currentSection === 'about' }]" @click="showSection('about')">About</button>
         <div class="mobile-menu-divider"></div>
         <button v-if="!connected" @click="showWalletModal = true; mobileMenuOpen = false" class="mobile-nav-btn mobile-connect">
@@ -1121,7 +1121,6 @@ onUnmounted(() => {
                 <div class="roadmap-date" style="color: #fff">May-Jun 2026</div>
                 <div class="roadmap-desc" style="color: #fff">Digital Identity Search</div>
                 <div class="roadmap-desc" style="color: #fff">SDK, Widget, Dev tools</div>
-                <div class="roadmap-desc" style="color: #fff">Skills layer launch</div>
               </div>
             </div>
             <div class="roadmap-item">
@@ -1129,7 +1128,7 @@ onUnmounted(() => {
               <div class="roadmap-content">
                 <div class="roadmap-date" style="color: #fff">Jun-Jul 2026</div>
                 <div class="roadmap-desc" style="color: #fff">Bitcoin, Tron, TON, XLM integration</div>
-                <div class="roadmap-desc" style="color: #fff">POH Miner testnet launch</div>
+                <div class="roadmap-desc" style="color: #fff">Using POH Miner Compute Network for identity job processing</div>
               </div>
             </div>
 
@@ -2441,7 +2440,7 @@ const results = await pollJob(jobId)</pre>
   background: none;
   border: none;
   color: #666;
-  font-size: 0.95rem;
+  font-size: 1.25rem;
   cursor: pointer;
   padding: 0;
   transition: color 0.15s;
@@ -3953,7 +3952,7 @@ a.feat-cta { text-decoration: none; display: inline-block; }
   border: 1px solid #1e1e1e;
   border-radius: 10px;
   color: #ccc;
-  font-size: 0.95rem;
+  font-size: 1.25rem;
   font-weight: 500;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;

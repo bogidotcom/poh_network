@@ -3,7 +3,7 @@
     <div class="scan-hero">
       <div class="scan-tag">YELLOW PAPER</div>
       <h2 class="scan-title">Proof of Human</h2>
-      <p class="scan-sub">A decentralized, AI-augmented protocol for on-chain human identity verification. Mainnet · Solana · 2026</p>
+      <p class="scan-sub">A decentralized, AI-augmented protocol for on-chain human identity verification.</p>
     </div>
 
     <!-- Abstract -->
@@ -34,37 +34,16 @@
             <tr><td><code>evm</code></td><td>Call an EVM view function</td><td>chainId, address, method, abiTypes, returnTypes, expression</td></tr>
             <tr><td><code>solana</code></td><td>Read a Solana account or program state</td><td>address, method, expression</td></tr>
             <tr><td><code>rest</code></td><td>HTTP GET endpoint returning structured data</td><td>address (URL), headers, body, expression</td></tr>
+            <tr><td><code>ton</code></td><td>Use Ton smart contracts and programs</td></tr>
+            <tr><td><code>tron</code></td><td>Use Tron smart contracts and programs</td></tr>
           </tbody>
         </table>
       </div>
       <p class="yp-p"><strong>Result evaluation:</strong> each signal produces a numeric or boolean value normalized by an optional <code>expression</code> (JavaScript) into a score ∈ ℝ.</p>
       <p class="yp-p"><strong>Storage:</strong> signals are persisted in <code>data/methods.json</code> on the backend node. A future version will migrate to on-chain account storage.</p>
 
-      <h4 class="yp-h3">2.2 POH Token (SPL)</h4>
-      <div class="yp-table-wrap">
-        <table class="yp-table">
-          <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
-          <tbody>
-            <tr><td>Standard</td><td>Solana SPL Token</td></tr>
-            <tr><td>Decimals</td><td>9</td></tr>
-            <tr><td>Signal listing fee</td><td>1,000 POH</td></tr>
-            <tr><td>Fee split</td><td>500 POH → protocol vault; 500 POH → staker fee vault (SFEE_PDA)</td></tr>
-            <tr><td>Staking</td><td>Non-custodial; stake weight used for vote amplification</td></tr>
-          </tbody>
-        </table>
-      </div>
 
-      <h4 class="yp-h3">2.3 Staking Contract</h4>
-      <p class="yp-p">On-chain Anchor program — <span class="yp-badge yp-badge--soon">contract deployment in progress</span></p>
-      <p class="yp-p">Planned entrypoints:</p>
-      <ul class="yp-list">
-        <li><code>stakeTokens(amount)</code> — locks POH in staker PDA, mints stake receipt</li>
-        <li><code>unstakeTokens(amount)</code> — returns POH after cooldown</li>
-        <li><code>registerMethod(methodHash)</code> — enforces 1,000 POH listing fee, routes 500 POH to SFEE vault</li>
-        <li><code>claimStakerRewards()</code> — distributes accumulated listing fees pro-rata to stakers</li>
-      </ul>
-
-      <h4 class="yp-h3">2.4 Scan API & Pricing</h4>
+      <h4 class="yp-h3">2.2 Scan API & Pricing</h4>
       <p class="yp-p">Any wallet or API key can submit addresses for analysis. Wallets receive <strong>100 free scans</strong> on first use. Beyond the free tier, scans are prepaid in USDC or USDT:</p>
       <div class="yp-table-wrap">
         <table class="yp-table">
@@ -109,21 +88,14 @@
       </div>
       <p class="yp-p">Votes are boolean (<code>true</code> / <code>false</code>). Voters also provide a written feedback comment that feeds directly into AI brain training.</p>
 
-      <h4 class="yp-h3">4.2 Stake-Weighted Impact</h4>
-      <p class="yp-p">Stakers with more locked POH have proportionally higher influence:</p>
-      <div class="yp-code">
-        <pre>{`stakeWeight = walletStakedPOH / totalStakedPOH   ∈ [0, 1]
-impact      = 1 + stakeWeight × 9                ∈ [1, 10]`}</pre>
-      </div>
-
-      <h4 class="yp-h3">4.3 Score Update</h4>
+      <h4 class="yp-h3">4.2 Score Update</h4>
       <div class="yp-code">
         <pre>{`// description/method votes:
 method.score += vote === true ? impact : −impact
 method.voteCount += 1`}</pre>
       </div>
 
-      <h4 class="yp-h3">4.4 Anti-Replay</h4>
+      <h4 class="yp-h3">4.3 Anti-Replay</h4>
       <p class="yp-p">Votes are authorized by a wallet signature over a structured message:</p>
       <div class="yp-code">
         <pre>poh-vote-v1:{`{methodId}:{vote}:{type}:{walletAddress}:{timestamp_ms}`}</pre>
@@ -138,7 +110,7 @@ method.voteCount += 1`}</pre>
       <h4 class="yp-h3">5.1 Weight Propagation</h4>
       <p class="yp-p">Each signal carries a <code>score</code> from the voting system. The Brain module maintains a separate <code>weights.json</code> that maps <code>methodId → weight</code>. Weights begin at a prior set by the AI and are updated on each vote:</p>
       <div class="yp-code">
-        <pre>newWeight = oldWeight × (1 + stakeWeight × 0.1 × (vote ? 1 : −1))</pre>
+        <pre>newWeight = oldWeight × (1 + 0.1 × (vote ? 1 : −1))</pre>
       </div>
       <p class="yp-p">Weights are bounded to <code>[0.01, 10.0]</code> to prevent collapse or runaway amplification.</p>
 
@@ -208,74 +180,9 @@ method.voteCount += 1`}</pre>
       </ul>
     </section>
 
-    <!-- 7. API -->
+    <!-- 7. Data Model -->
     <section class="yp-section">
-      <h3 class="yp-h2">7. API Reference</h3>
-      <p class="yp-p">All routes are prefixed with their resource path. The backend runs Express on the configured port.</p>
-
-      <h4 class="yp-h3">Methods / Signals</h4>
-      <div class="yp-table-wrap">
-        <table class="yp-table">
-          <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
-          <tbody>
-            <tr><td><span class="http-get">GET</span></td><td><code>/methods/verifyer</code></td><td>List all signals, stake-weighted shuffle, annotated with myVoted</td></tr>
-            <tr><td><span class="http-post">POST</span></td><td><code>/methods/verifyer/vote</code></td><td>Cast signed vote + feedback</td></tr>
-            <tr><td><span class="http-post">POST</span></td><td><code>/methods/verifyer/validate-feedback</code></td><td>Pre-vote LLM feedback quality check</td></tr>
-            <tr><td><span class="http-post">POST</span></td><td><code>/methods/listing</code></td><td>Register new signal (requires confirmed POH payment tx)</td></tr>
-            <tr><td><span class="http-post">POST</span></td><td><code>/methods/listing/validate-description</code></td><td>Pre-submit LLM description quality check</td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      <h4 class="yp-h3">Checker</h4>
-      <div class="yp-table-wrap">
-        <table class="yp-table">
-          <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
-          <tbody>
-            <tr><td><span class="http-post">POST</span></td><td><code>/checker</code></td><td>Run full AI verdict on an address (or batch CSV)</td></tr>
-            <tr><td><span class="http-get">GET</span></td><td><code>/checker/job/:jobId</code></td><td>Poll async job status</td></tr>
-            <tr><td><span class="http-post">POST</span></td><td><code>/checker/feedback</code></td><td>Submit verdict correction for brain training</td></tr>
-            <tr><td><span class="http-get">GET</span></td><td><code>/checker/pricing</code></td><td>Current scan pricing (rate, free tier)</td></tr>
-            <tr><td><span class="http-post">POST</span></td><td><code>/checker/preview</code></td><td>Dry-run signal execution without verdict</td></tr>
-            <tr><td><span class="http-get">GET</span></td><td><code>/checker/brain/:key</code></td><td>Read brain state (weights, narrative)</td></tr>
-            <tr><td><span class="http-get">GET</span></td><td><code>/checker/profile/:address</code></td><td>Enriched identity profile</td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      <h4 class="yp-h3">Profile</h4>
-      <div class="yp-table-wrap">
-        <table class="yp-table">
-          <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
-          <tbody>
-            <tr><td><span class="http-post">POST</span></td><td><code>/profile/signup</code></td><td>Create profile (requires ed25519 wallet signature)</td></tr>
-            <tr><td><span class="http-get">GET</span></td><td><code>/profile/:address</code></td><td>Fetch profile, submitted signals, earned rewards</td></tr>
-            <tr><td><span class="http-get">GET</span></td><td><code>/profile/:address/votes</code></td><td>Voting history for wallet</td></tr>
-            <tr><td><span class="http-post">POST</span></td><td><code>/profile/deposit</code></td><td>Credit scan balance after USDC/USDT on-chain transfer</td></tr>
-            <tr><td><span class="http-post">POST</span></td><td><code>/profile/apikey/rotate</code></td><td>Rotate API key</td></tr>
-            <tr><td><span class="http-get">GET</span></td><td><code>/profile</code></td><td>Top earners leaderboard</td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      <h4 class="yp-h3">Skills (Miner Node)</h4>
-      <div class="yp-table-wrap">
-        <table class="yp-table">
-          <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
-          <tbody>
-            <tr><td><span class="http-get">GET</span></td><td><code>/api/skills</code></td><td>List all skills with status + total POH staked</td></tr>
-            <tr><td><span class="http-post">POST</span></td><td><code>/api/skills/propose</code></td><td>Submit a new skill (manifest + sandboxed JS code)</td></tr>
-            <tr><td><span class="http-get">GET</span></td><td><code>/api/skills/:id/stakes</code></td><td>Staker list + total for a skill</td></tr>
-            <tr><td><span class="http-post">POST</span></td><td><code>/api/skills/:id/stake</code></td><td>Stake POH toward a skill</td></tr>
-            <tr><td><span class="http-post">POST</span></td><td><code>/api/skills/:id/unstake</code></td><td>Unstake POH</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <!-- 8. Data Model -->
-    <section class="yp-section">
-      <h3 class="yp-h2">8. Data Model</h3>
+      <h3 class="yp-h2">7. Data Model</h3>
       <h4 class="yp-h3">Signal (methods.json entry)</h4>
       <div class="yp-code">
         <pre>{`{
@@ -321,9 +228,9 @@ method.voteCount += 1`}</pre>
       </div>
     </section>
 
-    <!-- 9. Security -->
+    <!-- 8. Security -->
     <section class="yp-section">
-      <h3 class="yp-h2">9. Security Considerations</h3>
+      <h3 class="yp-h2">8. Security Considerations</h3>
       <div class="yp-cards">
         <div class="yp-card">
           <div class="yp-card-title">Vote Signature Verification</div>
@@ -352,9 +259,9 @@ method.voteCount += 1`}</pre>
       </div>
     </section>
 
-    <!-- 10. Economics -->
+    <!-- 9. Economics -->
     <section class="yp-section">
-      <h3 class="yp-h2">10. Economic Model</h3>
+      <h3 class="yp-h2">9. Economic Model</h3>
       <div class="yp-table-wrap">
         <table class="yp-table">
           <thead><tr><th>Flow</th><th>Amount</th><th>Recipient</th></tr></thead>
@@ -370,33 +277,16 @@ method.voteCount += 1`}</pre>
       </div>
     </section>
 
-    <!-- 11. Roadmap -->
+    <!-- 10. Miner Network -->
     <section class="yp-section">
-      <h3 class="yp-h2">11. Roadmap</h3>
-      <div class="yp-table-wrap">
-        <table class="yp-table">
-          <thead><tr><th>Phase</th><th>Feature</th></tr></thead>
-          <tbody>
-            <tr><td><span class="yp-badge yp-badge--active">Mainnet (current)</span></td><td>Signal registry, voting, AI brain, scan API, profile &amp; billing, PoH Miner Network, Skills layer, mobile wallet</td></tr>
-            <tr><td>Next</td><td>On-chain staking contract deployment, stake-weighted voting live, BFT finality layer</td></tr>
-            <tr><td>Beta</td><td>On-chain signal storage, DAO governance of brain weights</td></tr>
-            <tr><td>V1</td><td>Cross-chain signals, ZK-proof integration for private signals</td></tr>
-            <tr><td>V2</td><td>Skill marketplace with on-chain settlement, signal composability (AND/OR logic)</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <!-- 12. Miner Network -->
-    <section class="yp-section">
-      <h3 class="yp-h2">12. PoH Miner Network</h3>
+      <h3 class="yp-h2">10. PoH Miner Network</h3>
       <p class="yp-p">
         The PoH Miner Network is a purpose-built Proof-of-Work blockchain where miners earn POH by performing real, useful
         work — executing the full identity verification pipeline (signal evaluation + AI brain inference) on user-submitted
         wallet addresses. Energy is converted into high-integrity compute, not discarded on pure hash puzzles.
       </p>
 
-      <h4 class="yp-h3">12.1 Architecture</h4>
+      <h4 class="yp-h3">10.1 Architecture</h4>
       <div class="yp-code">
         <pre>{`┌──────────────────────────────────────────────────────────────────┐
 │                   App Layer  (proofofhuman.ge)                   │
@@ -420,7 +310,7 @@ method.voteCount += 1`}</pre>
 └──────────────────────────────────────────────────────────────────┘`}</pre>
       </div>
 
-      <h4 class="yp-h3">12.2 Block Structure</h4>
+      <h4 class="yp-h3">10.2 Block Structure</h4>
       <p class="yp-p">Each block is a self-contained record of verified identity work:</p>
       <div class="yp-table-wrap">
         <table class="yp-table">
@@ -440,7 +330,7 @@ method.voteCount += 1`}</pre>
         </table>
       </div>
 
-      <h4 class="yp-h3">12.3 P2P Sync Summary</h4>
+      <h4 class="yp-h3">10.3 P2P Sync Summary</h4>
       <div class="yp-table-wrap">
         <table class="yp-table">
           <thead><tr><th>Data</th><th>Transport</th></tr></thead>
@@ -458,7 +348,7 @@ method.voteCount += 1`}</pre>
         </table>
       </div>
 
-      <h4 class="yp-h3">12.4 Running a Miner</h4>
+      <h4 class="yp-h3">10.4 Running a Miner</h4>
       <div class="yp-table-wrap">
         <table class="yp-table">
           <thead><tr><th>Method</th><th>How</th><th>Best for</th></tr></thead>
@@ -617,7 +507,7 @@ method.voteCount += 1`}</pre>
   margin: 0;
   padding: 1rem 1.25rem;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.8125rem;
+  font-size: 0.8115rem;
   line-height: 1.65;
   color: #9a9a9a;
   white-space: pre;
