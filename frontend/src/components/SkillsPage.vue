@@ -27,48 +27,6 @@ const stakeError = ref('')
 const stakeSuccess = ref('')
 const staking = ref(false)
 
-// ── Create skill modal ────────────────────────────────────────────────────────
-const showCreate = ref(false)
-const createForm = ref({ id: '', version: '1.0.0', description: '', code: '', isPrivate: false })
-const createError = ref('')
-const createLoading = ref(false)
-
-function openCreate() {
-  createForm.value = { id: '', version: '1.0.0', description: '', code: '', isPrivate: false }
-  createError.value = ''
-  showCreate.value = true
-}
-
-function closeCreate() {
-  showCreate.value = false
-}
-
-async function doCreate() {
-  createError.value = ''
-  const { id, version, description, code, isPrivate } = createForm.value
-  if (!id.trim()) { createError.value = 'Skill ID is required'; return }
-  if (!code.trim()) { createError.value = 'Skill code is required'; return }
-  createLoading.value = true
-  try {
-    const res = await fetch(`${minerBase}/api/skills/propose`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        manifest: { id: id.trim(), version, description },
-        code: code.trim(),
-        private: isPrivate,
-      }),
-    })
-    const data = await res.json()
-    if (!data.ok) throw new Error(data.error || 'Failed to propose skill')
-    closeCreate()
-    await loadSkills()
-  } catch (e) {
-    createError.value = e.message
-  } finally {
-    createLoading.value = false
-  }
-}
 
 async function doPublish(skillId) {
   try {
@@ -195,7 +153,6 @@ onMounted(loadSkills)
       </div>
       <nav class="lp-nav-links">
         <button class="lp-nav-btn" @click="emit('navigate', 'landing')">← Back</button>
-        <button class="lp-nav-btn lp-nav-btn--submit" @click="openCreate()">Submit Skill</button>
       </nav>
     </header>
 
@@ -269,7 +226,7 @@ onMounted(loadSkills)
         <section class="sp-section">
           <h3 class="sp-section-title">Staking</h3>
           <div v-if="!apiReachable" class="sp-no-miner">
-            Connect to a miner node to stake POH
+            Download <a style="color: #22c55e;" href="https://miner.proofofhuman.ge" target="_blank">POH Miner</a> and stake on skills
           </div>
           <div v-else class="sp-stake-ui">
             <div class="sp-my-stake">
@@ -354,58 +311,6 @@ onMounted(loadSkills)
       </div>
     </div>
 
-    <!-- Create Skill Modal -->
-    <div v-if="showCreate" class="sp-modal-overlay" @click.self="closeCreate()">
-      <div class="sp-modal">
-        <div class="sp-modal-header">
-          <h2 class="sp-modal-title">Submit Skill</h2>
-          <button class="sp-modal-close" @click="closeCreate()">×</button>
-        </div>
-
-        <div class="sp-modal-body">
-          <div class="sp-field">
-            <label class="sp-field-label">Skill ID</label>
-            <input v-model="createForm.id" class="sp-field-input" placeholder="e.g. my_skill" />
-          </div>
-
-          <div class="sp-field">
-            <label class="sp-field-label">Version</label>
-            <input v-model="createForm.version" class="sp-field-input" placeholder="1.0.0" />
-          </div>
-
-          <div class="sp-field">
-            <label class="sp-field-label">Description</label>
-            <input v-model="createForm.description" class="sp-field-input" placeholder="What does this skill do?" />
-          </div>
-
-          <div class="sp-field">
-            <label class="sp-field-label">Code (JS — must export <code>async function run(input, config)</code>)</label>
-            <textarea v-model="createForm.code" class="sp-field-textarea" rows="8"
-              placeholder="module.exports.run = async function(input, config) {&#10;  return { result: 'hello' };&#10;};" />
-          </div>
-
-          <div class="sp-field sp-field--toggle">
-            <label class="sp-toggle-label">
-              <input type="checkbox" v-model="createForm.isPrivate" class="sp-toggle-input" />
-              <span class="sp-toggle-track"><span class="sp-toggle-thumb"></span></span>
-              <span class="sp-toggle-text">
-                <strong>Private</strong> — store locally only, not broadcast to the network.
-                You can publish it later.
-              </span>
-            </label>
-          </div>
-
-          <div v-if="createError" class="sp-stake-error">{{ createError }}</div>
-        </div>
-
-        <div class="sp-modal-footer">
-          <button class="sp-btn sp-btn--stake" :disabled="createLoading" @click="doCreate()">
-            {{ createForm.isPrivate ? 'Save Privately' : 'Propose on Network' }}
-          </button>
-          <button class="sp-btn sp-btn--unstake" @click="closeCreate()">Cancel</button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -459,7 +364,7 @@ onMounted(loadSkills)
   padding: 0.45rem 1rem;
   border-radius: 6px;
   font-family: inherit;
-  font-size: 0.95rem;
+  font-size: 1.25rem;
   cursor: pointer;
   text-decoration: none;
   transition: color 0.15s, border-color 0.15s;
@@ -473,14 +378,6 @@ onMounted(loadSkills)
   border-color: #333;
 }
 
-.lp-nav-btn--submit {
-  color: #22c55e;
-  border-color: #1a3a27;
-}
-
-.lp-nav-btn--submit:hover {
-  border-color: #22c55e;
-}
 
 /* ── Spinner ─────────────────────────────────────────────────────────────────── */
 .sp-spinner-wrap {
@@ -535,7 +432,7 @@ onMounted(loadSkills)
 
 .sp-page-sub {
   color: #555;
-  font-size: 0.95rem;
+  font-size: 1.25rem;
   line-height: 1.65;
   margin: 0 0 0.75rem;
 }
@@ -588,7 +485,7 @@ onMounted(loadSkills)
 
 .sp-card-desc {
   color: #555;
-  font-size: 0.87rem;
+  font-size: 1.25rem;
   line-height: 1.6;
   margin: 0;
   flex: 1;
@@ -742,7 +639,7 @@ onMounted(loadSkills)
   text-align: center;
   color: #333;
   padding: 4rem 2rem;
-  font-size: 0.95rem;
+  font-size: 1.25rem;
 }
 
 /* ── Detail view ─────────────────────────────────────────────────────────────── */
@@ -937,7 +834,7 @@ onMounted(loadSkills)
 
 .sp-private-note {
   color: #666;
-  font-size: 0.87rem;
+  font-size: 1.25rem;
   line-height: 1.6;
   margin: 0;
 }
@@ -947,162 +844,6 @@ onMounted(loadSkills)
   opacity: 0.75;
 }
 
-/* ── Create Skill Modal ───────────────────────────────────────────────────────── */
-.sp-modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.85);
-  z-index: 200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
-}
-
-.sp-modal {
-  background: #0a0a0a;
-  border: 1px solid #1e1e1e;
-  border-radius: 8px;
-  width: 100%;
-  max-width: 560px;
-  max-height: 90vh;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-}
-
-.sp-modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1.25rem 1.5rem;
-  border-bottom: 1px solid #1e1e1e;
-}
-
-.sp-modal-title {
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: #fff;
-  margin: 0;
-  letter-spacing: 0.04em;
-}
-
-.sp-modal-close {
-  background: transparent;
-  border: none;
-  color: #555;
-  font-size: 1.4rem;
-  cursor: pointer;
-  padding: 0 0.25rem;
-  line-height: 1;
-}
-
-.sp-modal-close:hover { color: #fff; }
-
-.sp-modal-body {
-  padding: 1.25rem 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.sp-modal-footer {
-  padding: 1rem 1.5rem;
-  border-top: 1px solid #1e1e1e;
-  display: flex;
-  gap: 0.75rem;
-}
-
-.sp-field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-
-.sp-field-label {
-  font-size: 0.75rem;
-  color: #555;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.sp-field-label code {
-  font-family: monospace;
-  color: #888;
-  text-transform: none;
-  letter-spacing: 0;
-}
-
-.sp-field-input,
-.sp-field-textarea {
-  background: #060606;
-  border: 1px solid #1e1e1e;
-  color: #fff;
-  padding: 0.5rem 0.75rem;
-  border-radius: 5px;
-  font-family: monospace;
-  font-size: 0.85rem;
-  transition: border-color 0.15s;
-  resize: vertical;
-}
-
-.sp-field-input:focus,
-.sp-field-textarea:focus {
-  outline: none;
-  border-color: #333;
-}
-
-/* ── Toggle ──────────────────────────────────────────────────────────────────── */
-.sp-field--toggle { flex-direction: row; align-items: flex-start; }
-
-.sp-toggle-label {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  cursor: pointer;
-}
-
-.sp-toggle-input { display: none; }
-
-.sp-toggle-track {
-  flex-shrink: 0;
-  width: 36px;
-  height: 20px;
-  background: #1e1e1e;
-  border-radius: 10px;
-  position: relative;
-  transition: background 0.2s;
-  margin-top: 2px;
-}
-
-.sp-toggle-input:checked + .sp-toggle-track {
-  background: #3a2a0a;
-  border: 1px solid #d97706;
-}
-
-.sp-toggle-thumb {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  background: #555;
-  border-radius: 50%;
-  transition: transform 0.2s, background 0.2s;
-}
-
-.sp-toggle-input:checked + .sp-toggle-track .sp-toggle-thumb {
-  transform: translateX(16px);
-  background: #d97706;
-}
-
-.sp-toggle-text {
-  font-size: 0.85rem;
-  color: #666;
-  line-height: 1.5;
-}
-
-.sp-toggle-text strong { color: #d97706; }
 
 /* ── Responsive ──────────────────────────────────────────────────────────────── */
 @media (max-width: 600px) {
@@ -1110,7 +851,5 @@ onMounted(loadSkills)
   .sp-detail-wrap { padding: 1.5rem 1rem; }
   .lp-nav { padding: 0.8rem 1rem; }
   .sp-stake-input { width: 100%; }
-  .sp-modal-body { padding: 1rem; }
-  .sp-modal-footer { padding: 0.75rem 1rem; }
 }
 </style>

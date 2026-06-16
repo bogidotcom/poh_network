@@ -331,6 +331,64 @@
       <TxGraph :graph="profile.graph" @scan="addr => $emit('scan', addr)" />
     </div>
 
+    <!-- Articles (Paragraph) -->
+    <div v-if="profile.paragraphData?.posts?.length" class="profile-section">
+      <div class="profile-section-title">
+        Articles
+        <span class="graph-hint" v-if="profile.paragraphData.author?.displayName || profile.paragraphData.author?.handle">
+          {{ profile.paragraphData.author.displayName || profile.paragraphData.author.handle }}
+        </span>
+      </div>
+      <div class="social-posts-list">
+        <a v-for="(p, i) in profile.paragraphData.posts.slice(0, 6)" :key="i"
+           :href="p.url || '#'" target="_blank" rel="noopener" class="social-post-row">
+          <span class="social-post-title">{{ p.title }}</span>
+          <span v-if="p.publishedAt" class="social-post-date">{{ fmtDate(p.publishedAt * 1000) }}</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Social Activity (Farcaster) -->
+    <div v-if="profile.farcasterData?.casts?.length" class="profile-section">
+      <div class="profile-section-title">
+        Social Activity
+        <span class="graph-hint">@{{ profile.farcasterData.username }} on Farcaster</span>
+        <span class="graph-hint" v-if="profile.farcasterData.followerCount">
+          {{ profile.farcasterData.followerCount.toLocaleString() }} followers
+        </span>
+      </div>
+      <div v-if="profile.farcasterData.bio" class="social-bio">"{{ profile.farcasterData.bio }}"</div>
+      <div class="social-casts-list">
+        <div v-for="(c, i) in profile.farcasterData.casts.slice(0, 4)" :key="i" class="social-cast-row">
+          <span class="social-cast-text">{{ c.text.slice(0, 200) }}{{ c.text.length > 200 ? '…' : '' }}</span>
+          <span v-if="c.likes || c.replies" class="social-cast-meta">
+            {{ c.likes ? `♥${c.likes}` : '' }}{{ c.replies ? ` ${c.replies}r` : '' }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Zora -->
+    <div v-if="profile.zoraData?.createdCoins?.length" class="profile-section">
+      <div class="profile-section-title">
+        Zora
+        <span class="graph-hint" v-if="profile.zoraData.profile?.handle || profile.zoraData.profile?.displayName">
+          {{ profile.zoraData.profile.displayName || profile.zoraData.profile.handle }}
+        </span>
+        <span class="graph-hint">{{ profile.zoraData.totalCreated }} coin{{ profile.zoraData.totalCreated !== 1 ? 's' : '' }} created</span>
+      </div>
+      <div class="zora-coins-list">
+        <div v-for="(c, i) in profile.zoraData.createdCoins.slice(0, 5)" :key="i" class="zora-coin-row">
+          <span class="zora-coin-name">{{ c.name }}</span>
+          <span v-if="c.symbol" class="zora-coin-symbol">{{ c.symbol }}</span>
+          <span v-if="parseFloat(c.marketCap) > 0" class="zora-coin-mc">
+            ${{ parseFloat(c.marketCap) > 1000 ? (parseFloat(c.marketCap) / 1000).toFixed(1) + 'k' : parseFloat(c.marketCap).toFixed(0) }}
+          </span>
+          <span v-if="c.uniqueHolders" class="zora-coin-holders">{{ c.uniqueHolders }} holders</span>
+        </div>
+      </div>
+    </div>
+
     <!-- Evidence market-map + accordions -->
     <div v-if="signals?.length" class="profile-section">
       <!-- Security Flags (e.g. Tether blacklist) -->
@@ -659,6 +717,31 @@ function platformIcon(p) {
 .ev-row-fail { background: rgba(239,68,68,0.04); }
 .ev-desc { font-size: 12px; color: #9ca3af; }
 .ev-empty { font-size: 12px; color: #4b5563; padding: 6px 10px; }
+
+/* ── Articles (Paragraph) ── */
+.social-posts-list { display: flex; flex-direction: column; gap: 0; }
+.social-post-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 5px 0; border-bottom: 1px solid #111; text-decoration: none; }
+.social-post-row:last-child { border-bottom: none; }
+.social-post-title { font-size: 12px; color: #d1d5db; flex: 1; line-height: 1.4; }
+.social-post-row:hover .social-post-title { color: #818cf8; }
+.social-post-date { font-size: 10px; color: #374151; flex-shrink: 0; }
+
+/* ── Social Activity (Farcaster) ── */
+.social-bio { font-size: 11px; color: #6b7280; font-style: italic; margin-bottom: 6px; line-height: 1.5; }
+.social-casts-list { display: flex; flex-direction: column; gap: 0; }
+.social-cast-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 5px 0; border-bottom: 1px solid #111; font-size: 12px; }
+.social-cast-row:last-child { border-bottom: none; }
+.social-cast-text { flex: 1; color: #6b7280; line-height: 1.45; }
+.social-cast-meta { flex-shrink: 0; font-family: monospace; font-size: 10px; color: #374151; }
+
+/* ── Zora ── */
+.zora-coins-list { display: flex; flex-direction: column; gap: 0; }
+.zora-coin-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid #111; font-size: 12px; }
+.zora-coin-row:last-child { border-bottom: none; }
+.zora-coin-name { color: #d1d5db; flex: 1; }
+.zora-coin-symbol { color: #4b5563; font-family: monospace; font-size: 11px; }
+.zora-coin-mc { color: #22c55e; font-family: monospace; font-size: 10px; }
+.zora-coin-holders { color: #374151; font-size: 10px; }
 
 /* ── Social Characteristic ──────────────────────────────────────────────────── */
 .social-char-section { margin-top: 16px; padding-top: 14px; border-top: 1px solid #111; }

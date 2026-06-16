@@ -115,7 +115,7 @@ export function useProfile({ walletAddress, connected, adapterSignMessage, POH_M
       }
 
       tx.add(
-        createTransferInstruction(fromAta, toAta, walletPubkey, BigInt(Math.floor(amount * 1_000_000)))
+        createTransferInstruction(fromAta, toAta, walletPubkey, BigInt(Math.floor(amount * 1_000_000_000)))
       )
       const txHash = await signAndSendTransaction(tx)
       const res = await axios.post('/profile/deposit', { address: walletAddress.value, txHash, amount })
