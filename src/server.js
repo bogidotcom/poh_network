@@ -29,6 +29,7 @@ app.use('/profile', require('./routes/profile'));
 app.use('/ecosystem', require('./routes/ecosystem'));
 app.use('/brain', require('./routes/brain'));
 app.use('/miner', require('./routes/miner'));
+app.use('/chat',  require('./routes/chat'));
 
 // Skills — proxy to local miner node API
 const MINER_NODE_URL = process.env.MINER_NODE_URL || 'http://localhost:3456';
