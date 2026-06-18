@@ -12,7 +12,7 @@
 const axios  = require('axios');
 const crypto = require('crypto');
 
-const BOOTNODES = (process.env.BOOTNODES || 'https://bootnode.proofofhuman.ge')
+const BOOTNODES = (process.env.BOOTNODES || 'https://miner.proofofhuman.ge')
   .split(',').map(s => s.trim()).filter(Boolean);
 
 const SOURCE = 'proofofhuman.ge';
