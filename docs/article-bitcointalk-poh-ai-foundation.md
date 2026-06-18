@@ -125,8 +125,8 @@ The AI belongs to the network. The network belongs to whoever runs a node.
 [center][size=16pt][b]Get Involved[/b][/size][/center]
 
 [b]Run a node:[/b] [url=https://proofofhuman.ge]https://proofofhuman.ge[/url]
-[b]Try the scanner:[/b] [url=https://poh.assetux.com]https://poh.assetux.com[/url]
-[b]Contact:[/b] [url=mailto:support@assetux.com]support@assetux.com[/url]
+[b]X:[/b] [url=https://x.com/poh_network]@poh_network[/url]
+[b]Chat:[/b] [url=https://t.me/poh_network_group]@poh_network_group[/url]
 
 [center][size=11pt][color=#888888]════════════════════════════════════════════════════[/color][/size][/center]
 

@@ -102,7 +102,7 @@ router.post('/deposit', async (req, res, next) => {
     if (!address || !txHash || !amount) {
       return res.status(400).json({ error: 'address, txHash and amount are required' });
     }
-    const amountRaw = Math.floor(parseFloat(amount) * 1_000_000);
+    const amountRaw = Math.floor(parseFloat(amount) * 1_000_000_000);
     if (amountRaw <= 0) return res.status(400).json({ error: 'Invalid amount' });
 
     const isValid = await verifyStablecoinTransfer(txHash, amountRaw, address);
@@ -122,7 +122,7 @@ router.post('/subscribe', async (req, res, next) => {
       return res.status(400).json({ error: 'address, txHash and plan=startup are required' });
     }
 
-    const amountRaw = 1000 * 1_000_000;
+    const amountRaw = 1000 * 1_000_000_000;
     if (isTxUsed(txHash)) {
       return res.status(409).json({ error: 'Payment transaction already used' });
     }
@@ -179,7 +179,7 @@ function sanitize(p) {
 }
 
 // ── POST /profile/faucet — devnet only, send 10 000 POH to caller ─────────────
-const FAUCET_AMOUNT = 10_000 * 1_000_000; // 10 000 POH in 6-decimal units
+const FAUCET_AMOUNT = 10_000 * 1_000_000_000; // 10 000 POH (9 decimals: 1 POH = 1e9)
 const faucetCooldowns = new Map();         // address → last claim timestamp (in-memory)
 const FAUCET_COOLDOWN_MS = 60 * 1000; // 24 hour between claims
 
