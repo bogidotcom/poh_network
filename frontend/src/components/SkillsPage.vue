@@ -12,7 +12,6 @@ const DEMO_SKILLS = [
     description: 'Proof-of-Human identity verification using on-chain signals and AI brain',
     status: 'active',
     totalStaked: 50000,
-    myStake: 0,
     private: false,
   }
 ]
@@ -20,30 +19,7 @@ const DEMO_SKILLS = [
 // ── State ─────────────────────────────────────────────────────────────────────
 const skills = ref([])
 const loading = ref(true)
-const apiReachable = ref(false)
 const selectedSkill = ref(null)
-const stakeAmount = ref('')
-const stakeError = ref('')
-const stakeSuccess = ref('')
-const staking = ref(false)
-
-
-async function doPublish(skillId) {
-  try {
-    const res = await fetch(`${minerBase}/api/skills/${encodeURIComponent(skillId)}/publish`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-    })
-    const data = await res.json()
-    if (!data.ok) throw new Error(data.error || 'Publish failed')
-    await loadSkills()
-    if (selectedSkill.value?.id === skillId) {
-      selectedSkill.value = { ...selectedSkill.value, private: false }
-    }
-  } catch (e) {
-    alert(`Publish failed: ${e.message}`)
-  }
-}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const minerBase = window._pohMinerBase || 'https://miner.proofofhuman.ge'
@@ -57,89 +33,23 @@ function convictionPct(totalStaked) {
   return Math.min(100, ((totalStaked || 0) / 10000) * 100)
 }
 
-// ── Load skills from miner API (or fall back to demo) ────────────────────────
+// ── Load skills from miner network (fall back to demo) ────────────────────────
 async function loadSkills() {
   loading.value = true
   try {
     const res = await fetch(`${minerBase}/api/skills`, { signal: AbortSignal.timeout(4000) })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = await res.json()
-    skills.value = data.skills || []
-    apiReachable.value = true
+    skills.value = (data.skills || []).filter(s => !s.private)
   } catch {
     skills.value = DEMO_SKILLS
-    apiReachable.value = false
   } finally {
     loading.value = false
   }
 }
 
-// ── Staking actions ───────────────────────────────────────────────────────────
-async function doStake() {
-  if (!apiReachable.value) return
-  const amount = Number(stakeAmount.value)
-  if (!amount || amount <= 0) { stakeError.value = 'Enter a valid amount'; return }
-  stakeError.value = ''
-  stakeSuccess.value = ''
-  staking.value = true
-  try {
-    const res = await fetch(`${minerBase}/api/skills/${selectedSkill.value.id}/stake`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount, stakerAddress: 'anon' }),
-    })
-    const data = await res.json()
-    if (!data.ok) throw new Error(data.error || 'Stake failed')
-    selectedSkill.value = { ...selectedSkill.value, totalStaked: data.total, myStake: data.myStake }
-    // Update skills list
-    const idx = skills.value.findIndex(s => s.id === selectedSkill.value.id)
-    if (idx !== -1) skills.value[idx] = { ...skills.value[idx], totalStaked: data.total, myStake: data.myStake }
-    stakeSuccess.value = `Staked ${amount} POH`
-    stakeAmount.value = ''
-  } catch (e) {
-    stakeError.value = e.message
-  } finally {
-    staking.value = false
-  }
-}
-
-async function doUnstake() {
-  if (!apiReachable.value) return
-  const amount = Number(stakeAmount.value)
-  if (!amount || amount <= 0) { stakeError.value = 'Enter a valid amount'; return }
-  stakeError.value = ''
-  stakeSuccess.value = ''
-  staking.value = true
-  try {
-    const res = await fetch(`${minerBase}/api/skills/${selectedSkill.value.id}/unstake`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount, stakerAddress: 'anon' }),
-    })
-    const data = await res.json()
-    if (!data.ok) throw new Error(data.error || 'Unstake failed')
-    selectedSkill.value = { ...selectedSkill.value, totalStaked: data.total, myStake: data.myStake }
-    const idx = skills.value.findIndex(s => s.id === selectedSkill.value.id)
-    if (idx !== -1) skills.value[idx] = { ...skills.value[idx], totalStaked: data.total, myStake: data.myStake }
-    stakeSuccess.value = `Unstaked ${amount} POH`
-    stakeAmount.value = ''
-  } catch (e) {
-    stakeError.value = e.message
-  } finally {
-    staking.value = false
-  }
-}
-
-function openDetail(skill) {
-  selectedSkill.value = skill
-  stakeAmount.value = ''
-  stakeError.value = ''
-  stakeSuccess.value = ''
-}
-
-function closeDetail() {
-  selectedSkill.value = null
-}
+function openDetail(skill) { selectedSkill.value = skill }
+function closeDetail()     { selectedSkill.value = null }
 
 onMounted(loadSkills)
 </script>
@@ -172,20 +82,7 @@ onMounted(loadSkills)
           <span class="sp-badge" :class="selectedSkill.status === 'active' ? 'sp-badge--active' : 'sp-badge--proposed'">
             {{ selectedSkill.status === 'active' ? 'Active' : 'Proposed' }}
           </span>
-          <span v-if="selectedSkill.private" class="sp-badge sp-badge--private">Private</span>
         </div>
-
-        <!-- Publish section (only for private skills) -->
-        <section v-if="selectedSkill.private" class="sp-section sp-section--private">
-          <h3 class="sp-section-title">Private Skill</h3>
-          <p class="sp-private-note">
-            This skill is stored on your local node only. Other nodes cannot see or use it.
-            When you publish, it is broadcast to the network and queued for the next block.
-          </p>
-          <button class="sp-btn sp-btn--publish" @click="doPublish(selectedSkill.id)">
-            Publish to Network
-          </button>
-        </section>
 
         <!-- Manifest -->
         <section class="sp-section">
@@ -205,7 +102,7 @@ onMounted(loadSkills)
           </table>
         </section>
 
-        <!-- Staking conviction -->
+        <!-- Staking conviction (read-only) -->
         <section class="sp-section">
           <h3 class="sp-section-title">Staking Conviction</h3>
           <div class="sp-conv-bar-wrap">
@@ -220,32 +117,9 @@ onMounted(loadSkills)
           <div v-else class="sp-conv-progress">
             {{ convictionPct(selectedSkill.totalStaked).toFixed(1) }}% toward graduation
           </div>
-        </section>
-
-        <!-- Staking section -->
-        <section class="sp-section">
-          <h3 class="sp-section-title">Staking</h3>
-          <div v-if="!apiReachable" class="sp-no-miner">
-            Download <a style="color: #22c55e;" href="https://miner.proofofhuman.ge" target="_blank">POH Miner</a> and stake on skills
-          </div>
-          <div v-else class="sp-stake-ui">
-            <div class="sp-my-stake">
-              My stake: <strong>{{ (selectedSkill.myStake || 0).toLocaleString() }} POH</strong>
-            </div>
-            <div class="sp-stake-row">
-              <input
-                v-model="stakeAmount"
-                type="number"
-                min="1"
-                placeholder="Amount (POH)"
-                class="sp-stake-input"
-              />
-              <button class="sp-btn sp-btn--stake" :disabled="staking" @click="doStake()">Stake</button>
-              <button class="sp-btn sp-btn--unstake" :disabled="staking" @click="doUnstake()">Unstake</button>
-            </div>
-            <div v-if="stakeError" class="sp-stake-error">{{ stakeError }}</div>
-            <div v-if="stakeSuccess" class="sp-stake-ok">{{ stakeSuccess }}</div>
-          </div>
+          <p class="sp-stake-hint">
+            Stake POH on skills from your <a href="https://miner.proofofhuman.ge" target="_blank" class="sp-link">miner node</a>.
+          </p>
         </section>
 
         <!-- Run this skill -->
@@ -273,35 +147,21 @@ onMounted(loadSkills)
           v-for="skill in skills"
           :key="skill.id"
           class="sp-card"
+          @click="openDetail(skill)"
         >
           <div class="sp-card-top">
             <span class="sp-card-id">{{ skill.id }}</span>
-            <div class="sp-card-badges">
-              <span class="sp-badge sp-badge--private" v-if="skill.private">Private</span>
-              <span class="sp-badge" :class="skill.status === 'active' ? 'sp-badge--active' : 'sp-badge--proposed'">
-                {{ skill.status === 'active' ? 'Active' : 'Proposed' }}
-              </span>
-            </div>
+            <span class="sp-badge" :class="skill.status === 'active' ? 'sp-badge--active' : 'sp-badge--proposed'">
+              {{ skill.status === 'active' ? 'Active' : 'Proposed' }}
+            </span>
           </div>
           <p class="sp-card-desc">{{ skill.description }}</p>
           <div class="sp-card-meta">
             <span class="sp-card-author">{{ truncate(skill.author, 16) }}</span>
-            <span class="sp-card-staked" v-if="!skill.private">{{ (skill.totalStaked || 0).toLocaleString() }} POH staked</span>
-            <span class="sp-card-staked sp-card-staked--private" v-else>Local only</span>
+            <span class="sp-card-staked">{{ (skill.totalStaked || 0).toLocaleString() }} POH staked</span>
           </div>
-          <!-- Conviction progress bar (public skills only) -->
-          <div v-if="!skill.private" class="sp-conv-bar-bg sp-conv-bar-bg--card">
+          <div class="sp-conv-bar-bg sp-conv-bar-bg--card">
             <div class="sp-conv-bar-fill" :style="{ width: convictionPct(skill.totalStaked) + '%' }"></div>
-          </div>
-          <div class="sp-card-actions">
-            <template v-if="skill.private">
-              <button class="sp-btn sp-btn--publish" @click="doPublish(skill.id)">Publish</button>
-              <button class="sp-btn sp-btn--details" @click="openDetail(skill)">Details</button>
-            </template>
-            <template v-else>
-              <button class="sp-btn sp-btn--stake-outline" @click="openDetail(skill)">Stake</button>
-              <button class="sp-btn sp-btn--details" @click="openDetail(skill)">Details</button>
-            </template>
           </div>
         </div>
       </div>
@@ -514,9 +374,12 @@ onMounted(loadSkills)
   flex-wrap: wrap;
 }
 
-.sp-card-actions {
-  display: flex;
-  gap: 0.5rem;
+.sp-card {
+  cursor: pointer;
+}
+
+.sp-card:hover {
+  background: #060606;
 }
 
 /* ── Badges ──────────────────────────────────────────────────────────────────── */
@@ -566,73 +429,7 @@ onMounted(loadSkills)
   transition: width 0.4s ease;
 }
 
-/* ── Buttons ─────────────────────────────────────────────────────────────────── */
-.sp-btn {
-  padding: 0.4rem 0.9rem;
-  border-radius: 5px;
-  font-family: inherit;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: opacity 0.15s, border-color 0.15s;
-}
-
-.sp-btn:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.sp-btn--stake-outline {
-  background: transparent;
-  color: #22c55e;
-  border: 1px solid #1a3a27;
-}
-
-.sp-btn--stake-outline:hover {
-  border-color: #22c55e;
-}
-
-.sp-btn--details {
-  background: transparent;
-  color: #aaa;
-  border: 1px solid #1e1e1e;
-}
-
-.sp-btn--details:hover {
-  color: #fff;
-  border-color: #333;
-}
-
-.sp-btn--stake {
-  background: #22c55e;
-  color: #000;
-  border: none;
-  font-weight: 700;
-}
-
-.sp-btn--stake:hover:not(:disabled) {
-  opacity: 0.88;
-}
-
-.sp-btn--unstake {
-  background: transparent;
-  color: #aaa;
-  border: 1px solid #1e1e1e;
-}
-
-.sp-btn--unstake:hover:not(:disabled) {
-  color: #fff;
-  border-color: #333;
-}
-
-.sp-btn--publish {
-  background: #1a1206;
-  color: #d97706;
-  border: 1px solid #3a2a0a;
-}
-
-.sp-btn--publish:hover:not(:disabled) {
-  border-color: #d97706;
-}
+/* ── Back button ──────────────────────────────────────────────────────────────── */
 
 /* ── Empty state ─────────────────────────────────────────────────────────────── */
 .sp-empty {
@@ -760,59 +557,20 @@ onMounted(loadSkills)
   color: #555;
 }
 
-/* ── Staking UI ──────────────────────────────────────────────────────────────── */
-.sp-no-miner {
+/* ── Stake hint ───────────────────────────────────────────────────────────────── */
+.sp-stake-hint {
   color: #444;
-  font-size: 0.9rem;
-  padding: 0.5rem 0;
+  font-size: 1.1rem;
+  margin: 0;
 }
 
-.sp-stake-ui {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.sp-my-stake {
-  font-size: 0.88rem;
-  color: #555;
-}
-
-.sp-my-stake strong {
+.sp-link {
   color: #22c55e;
+  text-decoration: none;
 }
 
-.sp-stake-row {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.sp-stake-input {
-  background: #0a0a0a;
-  border: 1px solid #1e1e1e;
-  color: #fff;
-  padding: 0.45rem 0.75rem;
-  border-radius: 5px;
-  font-family: inherit;
-  font-size: 0.9rem;
-  width: 150px;
-  transition: border-color 0.15s;
-}
-
-.sp-stake-input:focus {
-  outline: none;
-  border-color: #333;
-}
-
-.sp-stake-error {
-  color: #e55;
-  font-size: 0.82rem;
-}
-
-.sp-stake-ok {
-  color: #22c55e;
-  font-size: 0.82rem;
+.sp-link:hover {
+  text-decoration: underline;
 }
 
 /* ── Schema pre ──────────────────────────────────────────────────────────────── */
@@ -827,22 +585,6 @@ onMounted(loadSkills)
   margin: 0;
 }
 
-/* ── Private skill section ───────────────────────────────────────────────────── */
-.sp-section--private {
-  border-color: #3a2a0a;
-}
-
-.sp-private-note {
-  color: #666;
-  font-size: 1.25rem;
-  line-height: 1.6;
-  margin: 0;
-}
-
-.sp-card-staked--private {
-  color: #d97706;
-  opacity: 0.75;
-}
 
 
 /* ── Responsive ──────────────────────────────────────────────────────────────── */
