@@ -15,6 +15,30 @@ async function fetchSkillsFromMiner() {
   }
 }
 
+// POST /chat/ask — miner-node-compatible endpoint; tries skill routing, falls back to static reply
+router.post('/ask', async (req, res) => {
+  const { message } = req.body;
+  if (!message) return res.status(400).json({ error: 'message required' });
+
+  try {
+    const skills        = await fetchSkillsFromMiner();
+    const skillContexts = brain.loadSkillContexts(skills);
+
+    if (skillContexts.length > 0) {
+      const route = await brain.routeMessage(message, skillContexts).catch(() => null);
+      if (route?.skillId) {
+        return res.json({ type: 'skill', skillId: route.skillId, input: route.input || {} });
+      }
+    }
+  } catch { /* fall through to static reply */ }
+
+  // Static helpful reply when LLM unavailable or no skill matched
+  res.json({
+    type: 'chat',
+    message: 'I\'m a PoH network node. Ask me about a wallet address or Farcaster profile and I\'ll use on-chain data skills to analyze it.',
+  });
+});
+
 // GET /chat/skills — list skills with context summaries
 router.get('/skills', async (req, res) => {
   const skills = await fetchSkillsFromMiner();
