@@ -21,15 +21,11 @@ const emit = defineEmits(['navigate'])
     <!-- Hero -->
     <section class="lp-hero">
       <div class="lp-hero-inner">
-        <div class="lp-tag">Decentralized Compute Network</div>
+
         <h1 class="lp-title">
-          An alternative foundation<br />for AI — not controlled<br />by any single government.
+          Decentralized <br>AI Compute Network<br />
         </h1>
-        <p class="lp-sub">
-          1. Start POH Miner<br>
-          2. AI will do tasks<br>
-          3. You earn POH and rest
-        </p>
+        
         <div class="lp-hero-actions">
           <button class="lp-cta-secondary" @click="emit('navigate', 'scanner')">
             Open Scanner →
@@ -50,7 +46,7 @@ const emit = defineEmits(['navigate'])
         <div class="lp-feature-icon">⬡</div>
         <h3 class="lp-feature-title">Miner Network</h3>
         <p class="lp-feature-desc">
-          Independent nodes compete to verify identities and earn POH rewards.
+          Independent nodes compete to solve tasks for AI and earn POH rewards.
           Anyone can join. No permission required.
         </p>
       </div>
@@ -72,34 +68,11 @@ const emit = defineEmits(['navigate'])
       </div>
     </section>
 
-    <!-- Network stat strip -->
-    <section class="lp-stat-strip">
-      <div class="lp-stat">
-        <span class="lp-stat-label">Architecture</span>
-        <span class="lp-stat-value">Decentralized PoW</span>
-      </div>
-      <div class="lp-stat-sep">·</div>
-      <div class="lp-stat">
-        <span class="lp-stat-label">Identity Layer</span>
-        <span class="lp-stat-value">AI + Human Signal</span>
-      </div>
-      <div class="lp-stat-sep">·</div>
-      <div class="lp-stat">
-        <span class="lp-stat-label">Governance</span>
-        <span class="lp-stat-value">On-Chain Conviction</span>
-      </div>
-      <div class="lp-stat-sep">·</div>
-      <div class="lp-stat">
-        <span class="lp-stat-label">Token</span>
-        <span class="lp-stat-value">POH</span>
-      </div>
-    </section>
-
     <!-- Footer -->
     <footer class="lp-footer">
       <a href="https://t.me/poh_network_group" target="_blank" rel="noopener" class="lp-footer-link">Telegram</a>
       <a href="https://x.com/poh_network" target="_blank" rel="noopener" class="lp-footer-link">X / Twitter</a>
-      <a href="https://drive.google.com/file/d/1hsO9V9VYTZ9pPcbgvYX6zJG_dSid1vfS/view?usp=sharing" target="_blank" rel="noopener" class="lp-footer-link">Deck</a>
+      <a href="https://drive.google.com/file/d/1677szgNnIN68pvmQ1VhPvvOPRepAC4lp/view?usp=sharing" target="_blank" rel="noopener" class="lp-footer-link">Deck</a>
     </footer>
   </div>
 </template>
