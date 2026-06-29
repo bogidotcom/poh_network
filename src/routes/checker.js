@@ -422,7 +422,7 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
   console.log('[checker] Received scan request');
   try {
     const { input, walletAddress, chainIds: chainFilter, txHash } = req.body;
-    const apiKey = req.body.apiKey || req.headers['x-api-key'];
+    const apiKey = req.body.apiKey || req.headers['x-api-key'] || req.query.apiKey;
     const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim()
                   || req.socket?.remoteAddress || null;
 

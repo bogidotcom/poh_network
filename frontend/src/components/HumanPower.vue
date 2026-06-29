@@ -1224,7 +1224,7 @@ onUnmounted(() => {
           </div>
           <div v-if="batchFile" class="file-info">
             <span class="file-name">{{ batchFile.name }} — {{ batchRowCount }} addresses</span>
-            <button @click="batchFile = null; batchRowCount = 0; batchRows = []" class="mini-btn"><Trash2 :size="12" /></button>
+            <button @click="batchFile.value = null; batchRowCount.value = 0; batchRows.value = []" class="mini-btn"><Trash2 :size="12" /></button>
           </div>
 
           <!-- Miner Network discovery + toggle (when enabled, Search publishes job to a peer and pulls verdict/result) -->
