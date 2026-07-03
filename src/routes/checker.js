@@ -22,6 +22,10 @@ const { checkHumanityVerified }   = require('../utils/humanityProtocol');
 const { getFarcasterData, getParagraphData } = require('../utils/social');
 const { createJob, getJob }       = require('../utils/jobQueue');
 const { broadcastFeedback }       = require('../utils/brainBroadcast');
+const { ScanRequestPublisher }    = require('../network/scan-request-publisher');
+
+const USE_MINER_JOBS = process.env.USE_MINER_JOBS !== 'false' && !!process.env.MINER_NODE_URL;
+const minerJobClient = USE_MINER_JOBS ? new ScanRequestPublisher() : null;
 const {
   getProfile, getProfiles, upsertProfile, consumeFreeScan, calcScanCost,
   getFreeScansLeft, distributeRewards, isIpAbuse, recordIp,
@@ -544,6 +548,14 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
     // ── Bulk: job queue ───────────────────────────────────────────────────
     if (inputs.length > 1) {
       const jobId = createJob(inputs, async input => {
+        if (minerJobClient) {
+          const minerResult = await minerJobClient.publishAndWait({
+            address: input,
+            chainFilter: chainFilter || undefined,
+          });
+          const shaped = ScanRequestPublisher.toCheckerShape(minerResult, input);
+          return shaped.results;
+        }
         const results = await scanWallet(input, scanCtx);
         const ofac    = await checkOfacFull(input);
         if (ofac.sanctioned) {
@@ -599,15 +611,83 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
       });
     }
 
-    // ── Single wallet: sync (existing behaviour) ──────────────────────────
-    const [results, ofac] = await Promise.all([
-      scanWallet(inputs[0], scanCtx),
-      checkOfacFull(inputs[0]),
-    ]);
-    const isCex = isInList('cex', inputs[0]);
+    // ── Single wallet ─────────────────────────────────────────────────────
+    const scanKey = inputs[0];
 
-    // Additional sanctions for badges (Task 4) — always return structured objects
-    const sanctionsCheck = isSanctioned(inputs[0]);
+    // Miner network path: publish poh_identity job (0.01 POH fee) and await result
+    if (minerJobClient) {
+      console.log(`[checker] Routing scan to miner network (poh_identity): ${scanKey}`);
+      const minerResult = await minerJobClient.publishAndWait({
+        address: scanKey,
+        chainFilter: chainFilter || undefined,
+      });
+      const shaped = ScanRequestPublisher.toCheckerShape(minerResult, scanKey);
+      const results = shaped.results;
+
+      const ofacSig = results.find(r => r.methodId === 'ofac_check' && r.ofac);
+      const ofacHit = ofacSig?.ofac?.sanctioned ? ofacSig.ofac : (ofacSig ? { sanctioned: true, ...ofacSig.ofac } : null);
+      const isCex   = results.some(r => r.cex) || isInList('cex', scanKey);
+      const sanctionsCheck = isSanctioned(scanKey);
+      const euHit  = sanctionsCheck.list === 'EU'      ? sanctionsCheck : { sanctioned: false, list: 'EU' };
+      const ukHit  = sanctionsCheck.list === 'UK-FCDO' ? sanctionsCheck : { sanctioned: false, list: 'UK-FCDO' };
+
+      if (!isFree && (txHash || paidFromBalance)) {
+        const { total } = calcScanCost(1);
+        const executedIds = [...new Set(results.map(r => r.methodId).filter(Boolean))];
+        distributeRewards(total, executedIds, allMethods, brain.getWeights());
+      }
+
+      // Cache miner result for 7 days
+      try {
+        const methodsHash  = computeMethodsHash(allMethods);
+        const fullCacheKey = `fullscan:v1:${scanKey}:${methodsHash}`;
+        await setCachedResponse(fullCacheKey, {
+          results,
+          ofac:          ofacHit,
+          cex:           isCex || null,
+          eu:            euHit,
+          uk:            ukHit,
+          verdict:       shaped.verdict,
+          confidence:    shaped.confidence,
+          reasoning:     shaped.reasoning,
+          vibeData:      shaped.vibeData,
+          farcasterData: shaped.farcasterData,
+          paragraphData: shaped.paragraphData,
+          profile:       shaped.profile,
+          cachedAt:      new Date().toISOString(),
+        }, SCAN_CACHE_TTL);
+      } catch (cacheErr) {
+        console.warn('[checker] Failed to cache miner scan:', cacheErr.message);
+      }
+
+      return res.json({
+        result:        results,
+        count:         results.length,
+        source:        'miner-network',
+        jobId:         shaped.jobId,
+        verdict:       shaped.verdict,
+        confidence:    shaped.confidence,
+        reasoning:     shaped.reasoning,
+        profile:       shaped.profile,
+        vibeData:      shaped.vibeData,
+        farcasterData: shaped.farcasterData,
+        paragraphData: shaped.paragraphData,
+        ofac:          ofacHit,
+        eu:            euHit,
+        uk:            ukHit,
+        cex:           isCex || null,
+        freeScansLeft: effectiveWallet ? getFreeScansLeft(effectiveWallet) : null,
+      });
+    }
+
+    // ── Local fallback (no MINER_NODE_URL) ────────────────────────────────
+    const [results, ofac] = await Promise.all([
+      scanWallet(scanKey, scanCtx),
+      checkOfacFull(scanKey),
+    ]);
+    const isCex = isInList('cex', scanKey);
+
+    const sanctionsCheck = isSanctioned(scanKey);
     const ofacHit = ofac.sanctioned ? ofac : null;
     const euHit   = sanctionsCheck.list === 'EU'       ? sanctionsCheck : { sanctioned: false, list: 'EU' };
     const ukHit   = sanctionsCheck.list === 'UK-FCDO'  ? sanctionsCheck : { sanctioned: false, list: 'UK-FCDO' };
@@ -615,7 +695,7 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
     if (ofac.sanctioned) {
       const cp = ofac.type === 'counterparty';
       results.unshift({
-        input:       inputs[0],
+        input:       scanKey,
         methodId:    'ofac_check',
         description: `⛔ OFAC SDN — ${ofac.name} (${ofac.program})${cp ? ` via counterparty ${ofac.matchedAddress?.slice(0, 10)}…` : ''}`,
         result:      false,
@@ -624,7 +704,7 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
     }
     if (isCex) {
       results.unshift({
-        input:       inputs[0],
+        input:       scanKey,
         methodId:    'cex_check',
         description: '🏦 CEX wallet — address belongs to a centralised exchange, not a human',
         result:      false,
@@ -635,7 +715,7 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
     const tetherBlacklist = checkTetherBlacklist(results);
     if (tetherBlacklist.blacklisted) {
       results.unshift({
-        input:       inputs[0],
+        input:       scanKey,
         methodId:    tetherBlacklist.methodId,
         description: `⛔ ${tetherBlacklist.description}`,
         result:      true,
@@ -649,7 +729,6 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
       distributeRewards(total, executedIds, allMethods, brain.getWeights());
     }
 
-    const scanKey = inputs[0];
     brainPending[scanKey] = { status: 'pending', startedAt: Date.now() };
     res.json({
       result:   results,
@@ -663,9 +742,6 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
       freeScansLeft: effectiveWallet ? getFreeScansLeft(effectiveWallet) : null,
     });
 
-    // Start social fetch immediately in parallel with brain analysis so both
-    // complete faster.  vibeCheck runs after brain verdict but social data is
-    // already ready by then for most addresses.
     const isEvm = /^0x[0-9a-fA-F]{40}$/.test(scanKey);
     const socialPromise = isEvm
       ? Promise.all([
@@ -676,13 +752,11 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
 
     brain.analyzeHumanness(scanKey, results, allMethods)
       .then(async verdict => {
-        // Hard override for Tether blacklist (Task 2) — on-chain fact trumps LLM
         const tetherHit = results.some(r => r.tetherBlacklist);
         if (tetherHit) {
           verdict = { verdict: 'AI', confidence: 0.99, reasoning: 'Address frozen by Tether USDT (blacklist)' };
         }
 
-        // ── Social vibe — await social data (likely ready; ran in parallel) ──
         let vibeData = null, farcasterData = null, paragraphData = null;
         try {
           [farcasterData, paragraphData] = await socialPromise;
@@ -694,7 +768,6 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
           console.warn('[vibe] Failed:', vibeErr.message);
         }
 
-        // Mark done — vibeData included so frontend gets it on the same poll
         brainPending[scanKey] = {
           status: 'done', ...verdict, signals: results,
           vibeData:      vibeData      || null,
@@ -703,7 +776,6 @@ router.post('/', upload.single('csv'), async (req, res, next) => {
         };
         console.log(`[brain] Verdict for ${scanKey}: ${verdict.verdict} (${(verdict.confidence * 100).toFixed(0)}%)`);
 
-        // ── Cache full scan bundle for 7 days ──────────────────────────────
         try {
           const methodsHash  = computeMethodsHash(allMethods);
           const fullCacheKey = `fullscan:v1:${scanKey}:${methodsHash}`;
