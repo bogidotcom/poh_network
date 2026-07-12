@@ -1,4 +1,6 @@
 <script setup>
+import LandingChat from './LandingChat.vue'
+
 const emit = defineEmits(['navigate'])
 </script>
 
@@ -40,6 +42,8 @@ const emit = defineEmits(['navigate'])
       </div>
     </section>
 
+    <LandingChat />
+
     <!-- Feature cards -->
     <section class="lp-features">
       <div class="lp-feature-card">
@@ -78,6 +82,10 @@ const emit = defineEmits(['navigate'])
 </template>
 
 <style scoped>
+:global(html) {
+  scroll-snap-type: y proximity;
+}
+
 .landing-root {
   min-height: 100vh;
   background: #000;
@@ -164,13 +172,16 @@ const emit = defineEmits(['navigate'])
 /* ── Hero ─────────────────────────────────────────────── */
 .lp-hero {
   position: relative;
-  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 10rem 2rem 10rem;
+  padding: 2rem;
   overflow: hidden;
-  min-height: 60vh;
+  min-height: 100vh;
+  min-height: 100dvh;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  box-sizing: border-box;
 }
 
 .lp-hero-inner {

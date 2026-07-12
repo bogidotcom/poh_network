@@ -20,6 +20,7 @@ const DEMO_SKILLS = [
 const skills = ref([])
 const loading = ref(true)
 const selectedSkill = ref(null)
+const apiReachable = ref(false)
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const minerBase = window._pohMinerBase || 'https://miner.proofofhuman.ge'
@@ -29,8 +30,16 @@ function truncate(str, n) {
   return str.length > n ? str.slice(0, n) + '…' : str
 }
 
+const GRADUATION_POH = 1000
+
+function stakedPoh(totalStaked) {
+  // API returns μPOH (1 POH = 1e9); demo fallback uses whole POH.
+  const raw = totalStaked || 0
+  return raw >= 1e6 ? raw / 1e9 : raw
+}
+
 function convictionPct(totalStaked) {
-  return Math.min(100, ((totalStaked || 0) / 10000) * 100)
+  return Math.min(100, (stakedPoh(totalStaked) / GRADUATION_POH) * 100)
 }
 
 // ── Load skills from miner network (fall back to demo) ────────────────────────
@@ -40,9 +49,11 @@ async function loadSkills() {
     const res = await fetch(`${minerBase}/api/skills`, { signal: AbortSignal.timeout(4000) })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = await res.json()
-    skills.value = (data.skills || []).filter(s => !s.private)
+    skills.value = data.skills || []
+    apiReachable.value = true
   } catch {
     skills.value = DEMO_SKILLS
+    apiReachable.value = false
   } finally {
     loading.value = false
   }
@@ -110,7 +121,7 @@ onMounted(loadSkills)
               <div class="sp-conv-bar-fill" :style="{ width: convictionPct(selectedSkill.totalStaked) + '%' }"></div>
             </div>
             <div class="sp-conv-label">
-              POH staked: <strong>{{ (selectedSkill.totalStaked || 0).toLocaleString() }}</strong> / 10,000 (graduation threshold)
+              POH staked: <strong>{{ stakedPoh(selectedSkill.totalStaked).toLocaleString(undefined, { maximumFractionDigits: 2 }) }}</strong> / {{ GRADUATION_POH.toLocaleString() }} (graduation threshold)
             </div>
           </div>
           <div v-if="selectedSkill.status === 'active'" class="sp-graduated-badge">✓ Graduated</div>
@@ -158,7 +169,7 @@ onMounted(loadSkills)
           <p class="sp-card-desc">{{ skill.description }}</p>
           <div class="sp-card-meta">
             <span class="sp-card-author">{{ truncate(skill.author, 16) }}</span>
-            <span class="sp-card-staked">{{ (skill.totalStaked || 0).toLocaleString() }} POH staked</span>
+            <span class="sp-card-staked">{{ stakedPoh(skill.totalStaked).toLocaleString(undefined, { maximumFractionDigits: 2 }) }} POH staked</span>
           </div>
           <div class="sp-conv-bar-bg sp-conv-bar-bg--card">
             <div class="sp-conv-bar-fill" :style="{ width: convictionPct(skill.totalStaked) + '%' }"></div>

@@ -2,8 +2,6 @@ import { ref } from 'vue'
 import axios from 'axios'
 
 const DEFAULT_BOOTNODES = [
-  'https://poh.assetux.com',
-  'https://bootnode.proofofhuman.ge',
   'https://miner.proofofhuman.ge',
 ]
 
