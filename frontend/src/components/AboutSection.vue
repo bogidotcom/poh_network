@@ -153,7 +153,7 @@ method.voteCount += 1`}</pre>
 
       <h4 class="yp-h3">6.2 Lifecycle</h4>
       <div class="yp-code">
-        <pre>proposed  →  staking  →  graduated (10,000 POH)  →  active  →  deprecated</pre>
+        <pre>proposed  →  staking  →  graduated (10 POH)  →  active  →  deprecated</pre>
       </div>
       <p class="yp-p">Once graduated, the skill is propagated to all nodes via <code>stateTransitions</code> in blocks and becomes available for job routing.</p>
 
@@ -162,8 +162,8 @@ method.voteCount += 1`}</pre>
         <table class="yp-table">
           <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
           <tbody>
-            <tr><td>Proposal fee</td><td>1,000 POH</td></tr>
-            <tr><td>Graduation threshold</td><td>10,000 POH staked total</td></tr>
+            <tr><td>Proposal fee</td><td>1 POH</td></tr>
+            <tr><td>Graduation threshold</td><td>10 POH staked total</td></tr>
             <tr><td>Staking model</td><td>Off-chain (tracked in miner stateTransitions, propagated P2P)</td></tr>
             <tr><td>Unstaking</td><td>Allowed at any time before graduation</td></tr>
           </tbody>
@@ -271,7 +271,7 @@ method.voteCount += 1`}</pre>
             <tr><td>Scan fee (paid tier)</td><td>$0.001 per scan (USDC/USDT)</td><td>100% → protocol FEE_RECIPIENT</td></tr>
             <tr><td>Block subsidy</td><td>1 POH per block</td><td>60% → block proposer; 40% → workers</td></tr>
             <tr><td>Job fee</td><td>Set by requester</td><td>100% → winning miner</td></tr>
-            <tr><td>Skill proposal fee</td><td>1,000 POH</td><td>Burned / protocol vault</td></tr>
+            <tr><td>Skill proposal fee</td><td>1 POH</td><td>Escrowed for the network <code>code_audit</code> job</td></tr>
           </tbody>
         </table>
       </div>
