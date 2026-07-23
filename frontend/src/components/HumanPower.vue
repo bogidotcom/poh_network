@@ -840,7 +840,6 @@ onUnmounted(() => {
 
       <!-- Desktop nav -->
       <nav class="nav desktop-nav">
-        <button class="nav-btn nav-btn--back" @click="emit('navigate', 'landing')">← Back</button>
         <button :class="['nav-btn', { active: currentSection === 'checker' }]" @click="showSection('checker')">
           <Search class="icon" :size="14" /> Scan
         </button>
@@ -887,7 +886,6 @@ onUnmounted(() => {
     <!-- Mobile menu -->
     <div class="mobile-menu" :class="{ open: mobileMenuOpen }" @click.self="mobileMenuOpen = false">
       <div class="mobile-menu-inner">
-        <button class="mobile-nav-btn" @click="emit('navigate', 'landing'); mobileMenuOpen = false">← Back</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'checker' }]" @click="showSection('checker')">Scan</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'votes' }]" @click="showSection('votes'); loadVotingFiltered()">Feedback</button>
         <button :class="['mobile-nav-btn', { active: currentSection === 'listing' }]" @click="showSection('listing')">Add signal</button>
@@ -1132,29 +1130,6 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <div class="roadmap-item">
-              <div class="roadmap-dot"></div>
-              <div class="roadmap-content">
-                <div class="roadmap-date">Jul-Aug 2026</div>
-                <div class="roadmap-desc">Trading analysis</div>
-              </div>
-            </div>
-            
-            <div class="roadmap-item">
-              <div class="roadmap-dot"></div>
-              <div class="roadmap-content">
-                <div class="roadmap-date">Aug-Sep 2026</div>
-                <div class="roadmap-desc">Getting smarter...</div>
-              </div>
-            </div>
-
-            <div class="roadmap-item">
-              <div class="roadmap-dot"></div>
-              <div class="roadmap-content">
-                <div class="roadmap-date">Q4 2026</div>
-                <div class="roadmap-desc">TBA</div>
-              </div>
-            </div>
           </div>
         </section>
 
